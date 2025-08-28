@@ -120,7 +120,7 @@ func parseAndOutput(input string, config Config) {
 
 	// 语法分析
 	p := parser.New(lex)
-	program := p.ParseProgram()
+	program := p.Parse()
 
 	// 收集错误
 	parserErrors := p.Errors()
@@ -178,8 +178,9 @@ func parseAndOutput(input string, config Config) {
 	// 显示 AST 结构
 	if config.showAST || config.verbose {
 		fmt.Println("=== AST STRUCTURE ===")
-		fmt.Printf("Program with %d statements:\n", len(program.Body))
-		for i, stmt := range program.Body {
+		children := program.GetChildren()
+		fmt.Printf("Program with %d statements:\n", len(children))
+		for i, stmt := range children {
 			fmt.Printf("  %d: %T\n", i+1, stmt)
 		}
 		fmt.Println()

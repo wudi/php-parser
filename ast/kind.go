@@ -1,505 +1,517 @@
 package ast
 
-// ASTKind 定义AST节点类型，与PHP官方zend_ast.h保持一致
-type ASTKind uint16
+import "fmt"
 
+// ASTKind 表示AST节点类型，对应PHP官方zend_ast.h的定义
+type ASTKind int
+
+// 特殊节点 (0-3) - ZEND_AST_SPECIAL
 const (
-	// 特殊节点 - special nodes (bit 6 set)
-	ASTZval         ASTKind = 64  // 1 << 6
-	ASTConstant     ASTKind = 65
-	ASTOpArray      ASTKind = 66
-	ASTZNode        ASTKind = 67
-
-	// 声明节点 - declaration nodes
-	ASTFuncDecl     ASTKind = 68
-	ASTClosure      ASTKind = 69
-	ASTMethod       ASTKind = 70
-	ASTClass        ASTKind = 71
-	ASTArrowFunc    ASTKind = 72
-	ASTPropertyHook   ASTKind = 73
-	ASTPropertyDecl   ASTKind = 74
-	ASTHookedProperty ASTKind = 75
-
-	// 列表节点 - list nodes (bit 7 set)
-	ASTArgList          ASTKind = 128 // 1 << 7
-	ASTArray            ASTKind = 129
-	ASTEncapsList       ASTKind = 130
-	ASTExprList         ASTKind = 131
-	ASTStmtList         ASTKind = 132
-	ASTIf               ASTKind = 133
-	ASTSwitchList       ASTKind = 134
-	ASTCatchList        ASTKind = 135
-	ASTParamList        ASTKind = 136
-	ASTClosureUses      ASTKind = 137
-	ASTPropDecl         ASTKind = 138
-	ASTConstDecl        ASTKind = 139
-	ASTClassConstDecl   ASTKind = 140
-	ASTNameList         ASTKind = 141
-	ASTTraitAdaptations ASTKind = 142
-	ASTUse              ASTKind = 143
-	ASTTypeUnion        ASTKind = 144
-	ASTTypeIntersection ASTKind = 145
-	ASTAttributeList    ASTKind = 146
-	ASTAttributeGroup   ASTKind = 147
-	ASTMatchArmList     ASTKind = 148
-	ASTModifierList     ASTKind = 149
-
-	// 0子节点 - 0 child nodes (bits 8-15 = 0)
-	ASTMagicConst      ASTKind = 0
-	ASTType            ASTKind = 1
-	ASTConstantClass   ASTKind = 2
-	ASTCallableConvert ASTKind = 3
-
-	// 1子节点 - 1 child node (bits 8-15 = 1)
-	ASTVar                   ASTKind = 256 // 1 << 8
-	ASTConst                 ASTKind = 257
-	ASTUnpack                ASTKind = 258
-	ASTUnaryPlus             ASTKind = 259
-	ASTUnaryMinus            ASTKind = 260
-	ASTCast                  ASTKind = 261
-	ASTCastVoid              ASTKind = 262
-	ASTEmpty                 ASTKind = 263
-	ASTIsset                 ASTKind = 264
-	ASTSilence               ASTKind = 265
-	ASTShellExec             ASTKind = 266
-	ASTPrint                 ASTKind = 267
-	ASTIncludeOrEval         ASTKind = 268
-	ASTUnaryOp               ASTKind = 269
-	ASTPreInc                ASTKind = 270
-	ASTPreDec                ASTKind = 271
-	ASTPostInc               ASTKind = 272
-	ASTPostDec               ASTKind = 273
-	ASTYieldFrom             ASTKind = 274
-	ASTClassName             ASTKind = 275
-	ASTGlobal                ASTKind = 276
-	ASTUnset                 ASTKind = 277
-	ASTReturn                ASTKind = 278
-	ASTLabel                 ASTKind = 279
-	ASTRef                   ASTKind = 280
-	ASTHaltCompiler          ASTKind = 281
-	ASTEcho                  ASTKind = 282
-	ASTThrow                 ASTKind = 283
-	ASTThrowExpr             ASTKind = 800  // Throw expression (PHP 8.0+)
-	ASTGoto                  ASTKind = 284
-	ASTBreak                 ASTKind = 285
-	ASTContinue              ASTKind = 286
-	ASTPropertyHookShortBody ASTKind = 287
-	ASTClone                 ASTKind = 288
-	ASTExit                  ASTKind = 289
-	ASTList                  ASTKind = 290
-	ASTAnonymousFunction     ASTKind = 291
-
-	// 2子节点 - 2 child nodes (bits 8-15 = 2)
-	ASTDim                       ASTKind = 512 // 2 << 8
-	ASTProp                      ASTKind = 513
-	ASTNullsafeProp              ASTKind = 514
-	ASTStaticProp                ASTKind = 515
-	ASTCall                      ASTKind = 516
-	ASTClassConst                ASTKind = 517
-	ASTAssign                    ASTKind = 518
-	ASTAssignRef                 ASTKind = 519
-	ASTAssignOp                  ASTKind = 520
-	ASTBinaryOp                  ASTKind = 521
-	ASTGreater                   ASTKind = 522
-	ASTGreaterEqual              ASTKind = 523
-	ASTAnd                       ASTKind = 524
-	ASTOr                        ASTKind = 525
-	ASTArrayElem                 ASTKind = 526
-	ASTNew                       ASTKind = 527
-	ASTInstanceof                ASTKind = 528
-	ASTYield                     ASTKind = 529
-	ASTCoalesce                  ASTKind = 530
-	ASTAssignCoalesce            ASTKind = 531
-	ASTStatic                    ASTKind = 532
-	ASTWhile                     ASTKind = 533
-	ASTDoWhile                   ASTKind = 534
-	ASTIfElem                    ASTKind = 535
-	ASTSwitch                    ASTKind = 536
-	ASTSwitchCase                ASTKind = 537
-	ASTDeclare                   ASTKind = 538
-	ASTAltIf                     ASTKind = 539
-	ASTAltWhile                  ASTKind = 540  
-	ASTAltFor                    ASTKind = 541
-	ASTAltForeach                ASTKind = 542
-	ASTElseIf                    ASTKind = 543
-	ASTUseTrait                  ASTKind = 544
-	ASTTraitPrecedence           ASTKind = 545
-	ASTMethodReference           ASTKind = 546
-	ASTNamespace                 ASTKind = 547
-	ASTNamespaceName             ASTKind = 548
-	ASTUseElem                   ASTKind = 549
-	ASTTraitAlias                ASTKind = 550
-	ASTGroupUse                  ASTKind = 551
-	ASTAttribute                 ASTKind = 552
-	ASTMatch                     ASTKind = 553
-	ASTMatchArm                  ASTKind = 554
-	ASTNamedArg                  ASTKind = 555
-	ASTParentPropertyHookCall    ASTKind = 556
-	ASTPipe                      ASTKind = 557
-	ASTInterface                 ASTKind = 558
-	ASTTrait                     ASTKind = 559
-	ASTEnum                      ASTKind = 560
-
-	// 3子节点 - 3 child nodes (bits 8-15 = 3)
-	ASTMethodCall         ASTKind = 768 // 3 << 8
-	ASTNullsafeMethodCall ASTKind = 769
-	ASTStaticCall         ASTKind = 770
-	ASTConditional        ASTKind = 771
-	ASTTry                ASTKind = 772
-	ASTCatch              ASTKind = 773
-	ASTPropGroup          ASTKind = 774
-	ASTConstElem          ASTKind = 775
-	ASTClassConstGroup    ASTKind = 776
-	ASTConstEnumInit      ASTKind = 777
-	ASTCase               ASTKind = 778
-	ASTEvalExpression     ASTKind = 779 
-	ASTVisibilityModifier ASTKind = 780
-	ASTFirstClassCallable ASTKind = 781
-	ASTAnonymousClass     ASTKind = 782
-
-	// 4子节点 - 4 child nodes (bits 8-15 = 4)
-	ASTFor      ASTKind = 1024 // 4 << 8
-	ASTForeach  ASTKind = 1025
-	ASTEnumCase ASTKind = 1026
-	ASTPropElem ASTKind = 1027
-
-	// 6子节点 - 6 child nodes (bits 8-15 = 6)
-	ASTParam ASTKind = 1536 // 6 << 8
+	AST_ZVAL     ASTKind = 0  // 字面量值
+	AST_CONSTANT ASTKind = 1  // 命名常量
+	AST_ZNODE    ASTKind = 2  // 编译时节点(内部使用)
+	AST_FUNC_DECL ASTKind = 3 // 函数声明(特殊处理)
 )
+
+// 声明节点 (64-73) - ZEND_AST_SPECIAL + 固定子节点数
+const (
+	AST_CLOSURE     ASTKind = 64 // 匿名函数/闭包
+	AST_METHOD      ASTKind = 65 // 类方法
+	AST_CLASS       ASTKind = 66 // 类声明
+	AST_ARROW_FUNC  ASTKind = 67 // 箭头函数
+	AST_ENUM        ASTKind = 68 // 枚举声明
+)
+
+// 列表节点 (128-149) - ZEND_AST_IS_LIST + 可变子节点数
+const (
+	AST_ARG_LIST            ASTKind = 128 // 参数列表
+	AST_ARRAY               ASTKind = 129 // 数组字面量
+	AST_ENCAPS_LIST         ASTKind = 130 // 字符串插值列表
+	AST_EXPR_LIST           ASTKind = 131 // 表达式列表
+	AST_STMT_LIST           ASTKind = 132 // 语句列表
+	AST_IF                  ASTKind = 133 // if语句链
+	AST_SWITCH_LIST         ASTKind = 134 // switch案例列表
+	AST_CATCH_LIST          ASTKind = 135 // catch子句列表
+	AST_PARAM_LIST          ASTKind = 136 // 形参列表
+	AST_CLOSURE_USES        ASTKind = 137 // use变量列表
+	AST_PROP_GROUP          ASTKind = 138 // 属性组
+	AST_CONST_DECL          ASTKind = 139 // 常量声明列表
+	AST_CLASS_CONST_GROUP   ASTKind = 140 // 类常量组
+	AST_NAME_LIST           ASTKind = 141 // 名称列表
+	AST_TRAIT_ADAPTATIONS   ASTKind = 142 // trait适配列表
+	AST_USE                 ASTKind = 143 // use声明列表
+	AST_ATTRIBUTE_GROUP     ASTKind = 144 // 属性组
+	AST_MATCH_ARM_LIST      ASTKind = 145 // match分支列表
+	AST_ENUM_CASE_LIST      ASTKind = 146 // 枚举案例列表
+	AST_PROPERTY_HOOK_LIST  ASTKind = 147 // 属性钩子列表
+)
+
+// 表达式节点 - 0个子节点 (256-257)
+const (
+	AST_MAGIC_CONST ASTKind = 256 // 魔术常量 (__FILE__, __LINE__, etc.)
+	AST_TYPE        ASTKind = 257 // 类型声明
+)
+
+// 表达式节点 - 1个子节点 (320-351)
+const (
+	AST_VAR                   ASTKind = 320 // 变量 $var
+	AST_CONST                 ASTKind = 321 // 常量引用
+	AST_UNPACK                ASTKind = 322 // 解包操作 ...$arr
+	AST_UNARY_PLUS            ASTKind = 323 // 一元加 +$x
+	AST_UNARY_MINUS           ASTKind = 324 // 一元减 -$x
+	AST_CAST                  ASTKind = 325 // 类型转换 (int)$x
+	AST_EMPTY                 ASTKind = 326 // empty($x)
+	AST_ISSET                 ASTKind = 327 // isset($x)
+	AST_SILENCE               ASTKind = 328 // 错误抑制 @$x
+	AST_SHELL_EXEC            ASTKind = 329 // 反引号执行 `command`
+	AST_CLONE                 ASTKind = 330 // clone $obj
+	AST_EXIT                  ASTKind = 331 // exit/die
+	AST_PRINT                 ASTKind = 332 // print $x
+	AST_INCLUDE_OR_EVAL       ASTKind = 333 // include/require/eval
+	AST_UNARY_OP              ASTKind = 334 // 通用一元运算 (!$x, ~$x)
+	AST_PRE_INC               ASTKind = 335 // 前缀++ ++$x
+	AST_PRE_DEC               ASTKind = 336 // 前缀-- --$x
+	AST_POST_INC              ASTKind = 337 // 后缀++ $x++
+	AST_POST_DEC              ASTKind = 338 // 后缀-- $x--
+	AST_YIELD_FROM            ASTKind = 339 // yield from $gen
+	AST_GLOBAL                ASTKind = 340 // global $x
+	AST_UNSET                 ASTKind = 341 // unset($x)
+	AST_RETURN                ASTKind = 342 // return $x
+	AST_LABEL                 ASTKind = 343 // label:
+	AST_REF                   ASTKind = 344 // 引用 &$x
+	AST_HALT_COMPILER         ASTKind = 345 // __halt_compiler()
+	AST_ECHO                  ASTKind = 346 // echo $x
+	AST_THROW                 ASTKind = 347 // throw $e
+	AST_GOTO                  ASTKind = 348 // goto label
+	AST_BREAK                 ASTKind = 349 // break [expr]
+	AST_CONTINUE              ASTKind = 350 // continue [expr]
+)
+
+// 表达式节点 - 2个子节点 (384-415)
+const (
+	AST_DIM                    ASTKind = 384 // 数组访问 $arr[$key]
+	AST_PROP                   ASTKind = 385 // 属性访问 $obj->prop
+	AST_NULLSAFE_PROP          ASTKind = 386 // 空安全属性 $obj?->prop
+	AST_STATIC_PROP            ASTKind = 387 // 静态属性 Class::$prop
+	AST_CALL                   ASTKind = 388 // 函数调用 func($args)
+	AST_CLASS_CONST            ASTKind = 389 // 类常量 Class::CONST
+	AST_ASSIGN                 ASTKind = 390 // 赋值 $x = $y
+	AST_ASSIGN_REF             ASTKind = 391 // 引用赋值 $x =& $y
+	AST_ASSIGN_OP              ASTKind = 392 // 复合赋值 $x += $y
+	AST_BINARY_OP              ASTKind = 393 // 二元运算 $x + $y
+	AST_ARRAY_ELEM             ASTKind = 394 // 数组元素 $key => $value
+	AST_NEW                    ASTKind = 395 // new Class($args)
+	AST_INSTANCEOF             ASTKind = 396 // $obj instanceof Class
+	AST_YIELD                  ASTKind = 397 // yield $key => $value
+	AST_COALESCE               ASTKind = 398 // 空合并 $x ?? $y
+	AST_ASSIGN_COALESCE        ASTKind = 399 // 空合并赋值 $x ??= $y
+	AST_STATIC                 ASTKind = 400 // static $var = $init
+	AST_WHILE                  ASTKind = 401 // while ($cond) $stmt
+	AST_DO_WHILE               ASTKind = 402 // do $stmt while ($cond)
+	AST_IF_ELEM                ASTKind = 403 // if/elseif元素
+	AST_SWITCH_CASE            ASTKind = 404 // case/default元素
+	AST_CATCH                  ASTKind = 405 // catch (Exception $e) {...}
+	AST_PARAM                  ASTKind = 406 // 函数参数
+	AST_TYPE_UNION             ASTKind = 407 // 联合类型 Type1|Type2
+	AST_TYPE_INTERSECTION      ASTKind = 408 // 交集类型 Type1&Type2
+	AST_ATTRIBUTE              ASTKind = 409 // 属性 #[Attribute]
+	AST_MATCH_ARM              ASTKind = 410 // match分支
+	AST_ENUM_CASE              ASTKind = 411 // 枚举案例
+	AST_PROPERTY_HOOK          ASTKind = 412 // 属性钩子
+)
+
+// 表达式节点 - 3个子节点 (448-463)
+const (
+	AST_METHOD_CALL           ASTKind = 448 // 方法调用 $obj->method($args)
+	AST_NULLSAFE_METHOD_CALL  ASTKind = 449 // 空安全方法调用 $obj?->method($args)
+	AST_STATIC_CALL           ASTKind = 450 // 静态方法调用 Class::method($args)
+	AST_CONDITIONAL           ASTKind = 451 // 三元运算符 $cond ? $true : $false
+	AST_TRY                   ASTKind = 452 // try语句
+	AST_FOREACH               ASTKind = 453 // foreach循环
+	AST_DECLARE               ASTKind = 454 // declare语句
+)
+
+// 表达式节点 - 4个子节点 (512-517)
+const (
+	AST_FOR     ASTKind = 512 // for循环
+	AST_SWITCH  ASTKind = 513 // switch语句
+)
+
+// 声明元素节点 (768-777)
+const (
+	AST_PROP_ELEM         ASTKind = 768 // 属性元素
+	AST_CONST_ELEM        ASTKind = 769 // 常量元素
+	AST_USE_TRAIT         ASTKind = 770 // trait使用
+	AST_TRAIT_PRECEDENCE  ASTKind = 771 // trait优先级
+	AST_METHOD_REFERENCE  ASTKind = 772 // 方法引用
+	AST_NAMESPACE         ASTKind = 773 // 命名空间
+	AST_USE_ELEM          ASTKind = 774 // use元素
+	AST_TRAIT_ALIAS       ASTKind = 775 // trait别名
+	AST_GROUP_USE         ASTKind = 776 // 分组use
+	AST_CLASS_NAME        ASTKind = 777 // 类名
+)
+
+// getChildCount 根据AST节点类型返回期望的子节点数量
+func (k ASTKind) getChildCount() int {
+	switch {
+	// 特殊节点
+	case k <= 3:
+		return -1 // 特殊处理
+	
+	// 声明节点 - 各有不同的子节点数
+	case k >= 64 && k <= 73:
+		switch k {
+		case AST_CLOSURE:
+			return 5 // name, params, uses, stmts, return_type
+		case AST_METHOD:
+			return 6 // flags, name, params, return_type, stmts, doc_comment
+		case AST_CLASS:
+			return 5 // flags, name, extends, implements, stmts
+		case AST_ARROW_FUNC:
+			return 4 // params, return_type, expr, static
+		case AST_ENUM:
+			return 5 // flags, name, type, implements, stmts
+		}
+		return -1
+	
+	// 列表节点 - 可变长度
+	case k >= 128 && k <= 149:
+		return -1 // 可变长度列表
+	
+	// 0个子节点
+	case k >= 256 && k <= 257:
+		return 0
+	
+	// 1个子节点
+	case k >= 320 && k <= 351:
+		return 1
+	
+	// 2个子节点  
+	case k >= 384 && k <= 415:
+		return 2
+	
+	// 3个子节点
+	case k >= 448 && k <= 463:
+		return 3
+	
+	// 4个子节点
+	case k >= 512 && k <= 517:
+		return 4
+	
+	// 声明元素节点 - 各有不同的子节点数
+	case k >= 768 && k <= 777:
+		switch k {
+		case AST_PROP_ELEM:
+			return 2 // name, default
+		case AST_CONST_ELEM:
+			return 2 // name, value
+		case AST_USE_TRAIT:
+			return 2 // name, adaptations
+		case AST_TRAIT_PRECEDENCE:
+			return 2 // method, insteadof
+		case AST_METHOD_REFERENCE:
+			return 2 // class, method
+		case AST_NAMESPACE:
+			return 2 // name, stmts
+		case AST_USE_ELEM:
+			return 2 // name, alias
+		case AST_TRAIT_ALIAS:
+			return 3 // method, alias, modifiers
+		case AST_GROUP_USE:
+			return 2 // prefix, uses
+		case AST_CLASS_NAME:
+			return 1 // name
+		}
+		return -1
+	
+	default:
+		return -1 // 未知类型
+	}
+}
 
 // String 返回AST节点类型的字符串表示
 func (k ASTKind) String() string {
 	switch k {
 	// 特殊节点
-	case ASTZval:
-		return "ZVAL"
-	case ASTConstant:
-		return "CONSTANT"
-	case ASTOpArray:
-		return "OP_ARRAY"
-	case ASTZNode:
-		return "ZNODE"
-
+	case AST_ZVAL:
+		return "AST_ZVAL"
+	case AST_CONSTANT:
+		return "AST_CONSTANT"
+	case AST_ZNODE:
+		return "AST_ZNODE"
+	case AST_FUNC_DECL:
+		return "AST_FUNC_DECL"
+	
 	// 声明节点
-	case ASTFuncDecl:
-		return "FUNC_DECL"
-	case ASTClosure:
-		return "CLOSURE"
-	case ASTMethod:
-		return "METHOD"
-	case ASTClass:
-		return "CLASS"
-	case ASTArrowFunc:
-		return "ARROW_FUNC"
-	case ASTPropertyHook:
-		return "PROPERTY_HOOK"
-	case ASTPropertyDecl:
-		return "PROPERTY_DECL"
-	case ASTHookedProperty:
-		return "HOOKED_PROPERTY"
-
+	case AST_CLOSURE:
+		return "AST_CLOSURE"
+	case AST_METHOD:
+		return "AST_METHOD"
+	case AST_CLASS:
+		return "AST_CLASS"
+	case AST_ARROW_FUNC:
+		return "AST_ARROW_FUNC"
+	case AST_ENUM:
+		return "AST_ENUM"
+	
 	// 列表节点
-	case ASTArgList:
-		return "ARG_LIST"
-	case ASTArray:
-		return "ARRAY"
-	case ASTEncapsList:
-		return "ENCAPS_LIST"
-	case ASTExprList:
-		return "EXPR_LIST"
-	case ASTStmtList:
-		return "STMT_LIST"
-	case ASTIf:
-		return "IF"
-	case ASTSwitchList:
-		return "SWITCH_LIST"
-	case ASTCatchList:
-		return "CATCH_LIST"
-	case ASTParamList:
-		return "PARAM_LIST"
-	case ASTClosureUses:
-		return "CLOSURE_USES"
-	case ASTPropDecl:
-		return "PROP_DECL"
-	case ASTConstDecl:
-		return "CONST_DECL"
-	case ASTClassConstDecl:
-		return "CLASS_CONST_DECL"
-	case ASTNameList:
-		return "NAME_LIST"
-	case ASTTraitAdaptations:
-		return "TRAIT_ADAPTATIONS"
-	case ASTUse:
-		return "USE"
-	case ASTTypeUnion:
-		return "TYPE_UNION"
-	case ASTTypeIntersection:
-		return "TYPE_INTERSECTION"
-	case ASTAttributeList:
-		return "ATTRIBUTE_LIST"
-	case ASTAttributeGroup:
-		return "ATTRIBUTE_GROUP"
-	case ASTMatchArmList:
-		return "MATCH_ARM_LIST"
-	case ASTModifierList:
-		return "MODIFIER_LIST"
-
-	// 0子节点
-	case ASTMagicConst:
-		return "MAGIC_CONST"
-	case ASTType:
-		return "TYPE"
-	case ASTConstantClass:
-		return "CONSTANT_CLASS"
-	case ASTCallableConvert:
-		return "CALLABLE_CONVERT"
-
-	// 1子节点
-	case ASTVar:
-		return "VAR"
-	case ASTConst:
-		return "CONST"
-	case ASTUnpack:
-		return "UNPACK"
-	case ASTUnaryPlus:
-		return "UNARY_PLUS"
-	case ASTUnaryMinus:
-		return "UNARY_MINUS"
-	case ASTCast:
-		return "CAST"
-	case ASTCastVoid:
-		return "CAST_VOID"
-	case ASTEmpty:
-		return "EMPTY"
-	case ASTIsset:
-		return "ISSET"
-	case ASTSilence:
-		return "SILENCE"
-	case ASTShellExec:
-		return "SHELL_EXEC"
-	case ASTPrint:
-		return "PRINT"
-	case ASTIncludeOrEval:
-		return "INCLUDE_OR_EVAL"
-	case ASTUnaryOp:
-		return "UNARY_OP"
-	case ASTPreInc:
-		return "PRE_INC"
-	case ASTPreDec:
-		return "PRE_DEC"
-	case ASTPostInc:
-		return "POST_INC"
-	case ASTPostDec:
-		return "POST_DEC"
-	case ASTYieldFrom:
-		return "YIELD_FROM"
-	case ASTClassName:
-		return "CLASS_NAME"
-	case ASTGlobal:
-		return "GLOBAL"
-	case ASTUnset:
-		return "UNSET"
-	case ASTReturn:
-		return "RETURN"
-	case ASTLabel:
-		return "LABEL"
-	case ASTRef:
-		return "REF"
-	case ASTHaltCompiler:
-		return "HALT_COMPILER"
-	case ASTEcho:
-		return "ECHO"
-	case ASTThrow:
-		return "THROW"
-	case ASTThrowExpr:
-		return "THROW_EXPR"
-	case ASTGoto:
-		return "GOTO"
-	case ASTBreak:
-		return "BREAK"
-	case ASTContinue:
-		return "CONTINUE"
-	case ASTPropertyHookShortBody:
-		return "PROPERTY_HOOK_SHORT_BODY"
-	case ASTClone:
-		return "CLONE"
-	case ASTExit:
-		return "EXIT"
-	case ASTList:
-		return "LIST"
-	case ASTAnonymousFunction:
-		return "ANONYMOUS_FUNCTION"
-
-	// 2子节点
-	case ASTDim:
-		return "DIM"
-	case ASTProp:
-		return "PROP"
-	case ASTNullsafeProp:
-		return "NULLSAFE_PROP"
-	case ASTStaticProp:
-		return "STATIC_PROP"
-	case ASTCall:
-		return "CALL"
-	case ASTClassConst:
-		return "CLASS_CONST"
-	case ASTAssign:
-		return "ASSIGN"
-	case ASTAssignRef:
-		return "ASSIGN_REF"
-	case ASTAssignOp:
-		return "ASSIGN_OP"
-	case ASTBinaryOp:
-		return "BINARY_OP"
-	case ASTGreater:
-		return "GREATER"
-	case ASTGreaterEqual:
-		return "GREATER_EQUAL"
-	case ASTAnd:
-		return "AND"
-	case ASTOr:
-		return "OR"
-	case ASTArrayElem:
-		return "ARRAY_ELEM"
-	case ASTNew:
-		return "NEW"
-	case ASTInstanceof:
-		return "INSTANCEOF"
-	case ASTYield:
-		return "YIELD"
-	case ASTCoalesce:
-		return "COALESCE"
-	case ASTAssignCoalesce:
-		return "ASSIGN_COALESCE"
-	case ASTStatic:
-		return "STATIC"
-	case ASTWhile:
-		return "WHILE"
-	case ASTDoWhile:
-		return "DO_WHILE"
-	case ASTIfElem:
-		return "IF_ELEM"
-	case ASTSwitch:
-		return "SWITCH"
-	case ASTSwitchCase:
-		return "SWITCH_CASE"
-	case ASTDeclare:
-		return "DECLARE"
-	case ASTAltIf:
-		return "ALT_IF"
-	case ASTAltWhile:
-		return "ALT_WHILE"
-	case ASTAltFor:
-		return "ALT_FOR"
-	case ASTAltForeach:
-		return "ALT_FOREACH"
-	case ASTElseIf:
-		return "ELSEIF"
-	case ASTUseTrait:
-		return "USE_TRAIT"
-	case ASTTraitPrecedence:
-		return "TRAIT_PRECEDENCE"
-	case ASTMethodReference:
-		return "METHOD_REFERENCE"
-	case ASTNamespace:
-		return "NAMESPACE"
-	case ASTNamespaceName:
-		return "NAMESPACE_NAME"
-	case ASTUseElem:
-		return "USE_ELEM"
-	case ASTTraitAlias:
-		return "TRAIT_ALIAS"
-	case ASTGroupUse:
-		return "GROUP_USE"
-	case ASTAttribute:
-		return "ATTRIBUTE"
-	case ASTMatch:
-		return "MATCH"
-	case ASTMatchArm:
-		return "MATCH_ARM"
-	case ASTNamedArg:
-		return "NAMED_ARG"
-	case ASTParentPropertyHookCall:
-		return "PARENT_PROPERTY_HOOK_CALL"
-	case ASTPipe:
-		return "PIPE"
-	case ASTInterface:
-		return "INTERFACE"
-	case ASTTrait:
-		return "TRAIT"
-	case ASTEnum:
-		return "ENUM"
-
-	// 3子节点
-	case ASTMethodCall:
-		return "METHOD_CALL"
-	case ASTNullsafeMethodCall:
-		return "NULLSAFE_METHOD_CALL"
-	case ASTStaticCall:
-		return "STATIC_CALL"
-	case ASTConditional:
-		return "CONDITIONAL"
-	case ASTTry:
-		return "TRY"
-	case ASTCatch:
-		return "CATCH"
-	case ASTPropGroup:
-		return "PROP_GROUP"
-	case ASTConstElem:
-		return "CONST_ELEM"
-	case ASTClassConstGroup:
-		return "CLASS_CONST_GROUP"
-	case ASTConstEnumInit:
-		return "CONST_ENUM_INIT"
-	case ASTCase:
-		return "CASE"
-	case ASTEvalExpression:
-		return "EVAL_EXPRESSION"
-	case ASTVisibilityModifier:
-		return "VISIBILITY_MODIFIER"
-	case ASTFirstClassCallable:
-		return "FIRST_CLASS_CALLABLE"
-	case ASTAnonymousClass:
-		return "ANONYMOUS_CLASS"
-
-	// 4子节点
-	case ASTFor:
-		return "FOR"
-	case ASTForeach:
-		return "FOREACH"
-	case ASTEnumCase:
-		return "ENUM_CASE"
-	case ASTPropElem:
-		return "PROP_ELEM"
-
-	// 6子节点
-	case ASTParam:
-		return "PARAM"
-
+	case AST_ARG_LIST:
+		return "AST_ARG_LIST"
+	case AST_ARRAY:
+		return "AST_ARRAY"
+	case AST_ENCAPS_LIST:
+		return "AST_ENCAPS_LIST"
+	case AST_EXPR_LIST:
+		return "AST_EXPR_LIST"
+	case AST_STMT_LIST:
+		return "AST_STMT_LIST"
+	case AST_IF:
+		return "AST_IF"
+	case AST_SWITCH_LIST:
+		return "AST_SWITCH_LIST"
+	case AST_CATCH_LIST:
+		return "AST_CATCH_LIST"
+	case AST_PARAM_LIST:
+		return "AST_PARAM_LIST"
+	case AST_CLOSURE_USES:
+		return "AST_CLOSURE_USES"
+	case AST_PROP_GROUP:
+		return "AST_PROP_GROUP"
+	case AST_CONST_DECL:
+		return "AST_CONST_DECL"
+	case AST_CLASS_CONST_GROUP:
+		return "AST_CLASS_CONST_GROUP"
+	case AST_NAME_LIST:
+		return "AST_NAME_LIST"
+	case AST_TRAIT_ADAPTATIONS:
+		return "AST_TRAIT_ADAPTATIONS"
+	case AST_USE:
+		return "AST_USE"
+	case AST_ATTRIBUTE_GROUP:
+		return "AST_ATTRIBUTE_GROUP"
+	case AST_MATCH_ARM_LIST:
+		return "AST_MATCH_ARM_LIST"
+	case AST_ENUM_CASE_LIST:
+		return "AST_ENUM_CASE_LIST"
+	case AST_PROPERTY_HOOK_LIST:
+		return "AST_PROPERTY_HOOK_LIST"
+	
+	// 0个子节点的表达式
+	case AST_MAGIC_CONST:
+		return "AST_MAGIC_CONST"
+	case AST_TYPE:
+		return "AST_TYPE"
+	
+	// 1个子节点的表达式
+	case AST_VAR:
+		return "AST_VAR"
+	case AST_CONST:
+		return "AST_CONST"
+	case AST_UNPACK:
+		return "AST_UNPACK"
+	case AST_UNARY_PLUS:
+		return "AST_UNARY_PLUS"
+	case AST_UNARY_MINUS:
+		return "AST_UNARY_MINUS"
+	case AST_CAST:
+		return "AST_CAST"
+	case AST_EMPTY:
+		return "AST_EMPTY"
+	case AST_ISSET:
+		return "AST_ISSET"
+	case AST_SILENCE:
+		return "AST_SILENCE"
+	case AST_SHELL_EXEC:
+		return "AST_SHELL_EXEC"
+	case AST_CLONE:
+		return "AST_CLONE"
+	case AST_EXIT:
+		return "AST_EXIT"
+	case AST_PRINT:
+		return "AST_PRINT"
+	case AST_INCLUDE_OR_EVAL:
+		return "AST_INCLUDE_OR_EVAL"
+	case AST_UNARY_OP:
+		return "AST_UNARY_OP"
+	case AST_PRE_INC:
+		return "AST_PRE_INC"
+	case AST_PRE_DEC:
+		return "AST_PRE_DEC"
+	case AST_POST_INC:
+		return "AST_POST_INC"
+	case AST_POST_DEC:
+		return "AST_POST_DEC"
+	case AST_YIELD_FROM:
+		return "AST_YIELD_FROM"
+	case AST_GLOBAL:
+		return "AST_GLOBAL"
+	case AST_UNSET:
+		return "AST_UNSET"
+	case AST_RETURN:
+		return "AST_RETURN"
+	case AST_LABEL:
+		return "AST_LABEL"
+	case AST_REF:
+		return "AST_REF"
+	case AST_HALT_COMPILER:
+		return "AST_HALT_COMPILER"
+	case AST_ECHO:
+		return "AST_ECHO"
+	case AST_THROW:
+		return "AST_THROW"
+	case AST_GOTO:
+		return "AST_GOTO"
+	case AST_BREAK:
+		return "AST_BREAK"
+	case AST_CONTINUE:
+		return "AST_CONTINUE"
+	
+	// 2个子节点的表达式
+	case AST_DIM:
+		return "AST_DIM"
+	case AST_PROP:
+		return "AST_PROP"
+	case AST_NULLSAFE_PROP:
+		return "AST_NULLSAFE_PROP"
+	case AST_STATIC_PROP:
+		return "AST_STATIC_PROP"
+	case AST_CALL:
+		return "AST_CALL"
+	case AST_CLASS_CONST:
+		return "AST_CLASS_CONST"
+	case AST_ASSIGN:
+		return "AST_ASSIGN"
+	case AST_ASSIGN_REF:
+		return "AST_ASSIGN_REF"
+	case AST_ASSIGN_OP:
+		return "AST_ASSIGN_OP"
+	case AST_BINARY_OP:
+		return "AST_BINARY_OP"
+	case AST_ARRAY_ELEM:
+		return "AST_ARRAY_ELEM"
+	case AST_NEW:
+		return "AST_NEW"
+	case AST_INSTANCEOF:
+		return "AST_INSTANCEOF"
+	case AST_YIELD:
+		return "AST_YIELD"
+	case AST_COALESCE:
+		return "AST_COALESCE"
+	case AST_ASSIGN_COALESCE:
+		return "AST_ASSIGN_COALESCE"
+	case AST_STATIC:
+		return "AST_STATIC"
+	case AST_WHILE:
+		return "AST_WHILE"
+	case AST_DO_WHILE:
+		return "AST_DO_WHILE"
+	case AST_IF_ELEM:
+		return "AST_IF_ELEM"
+	case AST_SWITCH_CASE:
+		return "AST_SWITCH_CASE"
+	case AST_CATCH:
+		return "AST_CATCH"
+	case AST_PARAM:
+		return "AST_PARAM"
+	case AST_TYPE_UNION:
+		return "AST_TYPE_UNION"
+	case AST_TYPE_INTERSECTION:
+		return "AST_TYPE_INTERSECTION"
+	case AST_ATTRIBUTE:
+		return "AST_ATTRIBUTE"
+	case AST_MATCH_ARM:
+		return "AST_MATCH_ARM"
+	case AST_ENUM_CASE:
+		return "AST_ENUM_CASE"
+	case AST_PROPERTY_HOOK:
+		return "AST_PROPERTY_HOOK"
+	
+	// 3个子节点的表达式
+	case AST_METHOD_CALL:
+		return "AST_METHOD_CALL"
+	case AST_NULLSAFE_METHOD_CALL:
+		return "AST_NULLSAFE_METHOD_CALL"
+	case AST_STATIC_CALL:
+		return "AST_STATIC_CALL"
+	case AST_CONDITIONAL:
+		return "AST_CONDITIONAL"
+	case AST_TRY:
+		return "AST_TRY"
+	case AST_FOREACH:
+		return "AST_FOREACH"
+	case AST_DECLARE:
+		return "AST_DECLARE"
+	
+	// 4个子节点的表达式
+	case AST_FOR:
+		return "AST_FOR"
+	case AST_SWITCH:
+		return "AST_SWITCH"
+	
+	// 声明元素节点
+	case AST_PROP_ELEM:
+		return "AST_PROP_ELEM"
+	case AST_CONST_ELEM:
+		return "AST_CONST_ELEM"
+	case AST_USE_TRAIT:
+		return "AST_USE_TRAIT"
+	case AST_TRAIT_PRECEDENCE:
+		return "AST_TRAIT_PRECEDENCE"
+	case AST_METHOD_REFERENCE:
+		return "AST_METHOD_REFERENCE"
+	case AST_NAMESPACE:
+		return "AST_NAMESPACE"
+	case AST_USE_ELEM:
+		return "AST_USE_ELEM"
+	case AST_TRAIT_ALIAS:
+		return "AST_TRAIT_ALIAS"
+	case AST_GROUP_USE:
+		return "AST_GROUP_USE"
+	case AST_CLASS_NAME:
+		return "AST_CLASS_NAME"
+	
 	default:
-		return "UNKNOWN"
+		return fmt.Sprintf("UNKNOWN_AST_KIND_%d", int(k))
 	}
 }
 
 // IsSpecial 检查是否为特殊节点
 func (k ASTKind) IsSpecial() bool {
-	return (uint16(k)>>6)&1 == 1
+	return k <= 3 || (k >= 64 && k <= 73)
 }
 
 // IsList 检查是否为列表节点
 func (k ASTKind) IsList() bool {
-	return (uint16(k)>>7)&1 == 1
+	return k >= 128 && k <= 149
 }
 
-// IsDecl 检查是否为声明节点
-func (k ASTKind) IsDecl() bool {
-	return k.IsSpecial() && k >= ASTFuncDecl
+// IsExpression 检查是否为表达式节点
+func (k ASTKind) IsExpression() bool {
+	return (k >= 256 && k <= 257) || 
+		   (k >= 320 && k <= 351) ||
+		   (k >= 384 && k <= 415) ||
+		   (k >= 448 && k <= 463) ||
+		   (k >= 512 && k <= 517)
 }
 
-// GetNumChildren 获取子节点数量（对于非特殊、非列表节点）
-func (k ASTKind) GetNumChildren() uint32 {
-	if k.IsList() || k.IsSpecial() {
-		return 0 // 列表和特殊节点的子节点数量是动态的
+// IsStatement 检查是否为语句节点 
+func (k ASTKind) IsStatement() bool {
+	// 大部分语句节点在列表节点和表达式节点中
+	switch k {
+	case AST_STMT_LIST, AST_IF, AST_SWITCH_LIST, 
+		 AST_WHILE, AST_DO_WHILE, AST_FOR, AST_FOREACH,
+		 AST_TRY, AST_DECLARE, AST_RETURN, AST_BREAK,
+		 AST_CONTINUE, AST_ECHO, AST_GLOBAL, AST_STATIC,
+		 AST_UNSET, AST_GOTO, AST_LABEL:
+		return true
+	default:
+		return false
 	}
-	return uint32(k) >> 8
+}
+
+// IsDeclaration 检查是否为声明节点
+func (k ASTKind) IsDeclaration() bool {
+	return (k >= 64 && k <= 73) || k == AST_FUNC_DECL ||
+		   (k >= 768 && k <= 777) || k == AST_CONST_DECL ||
+		   k == AST_PROP_GROUP || k == AST_CLASS_CONST_GROUP
 }
