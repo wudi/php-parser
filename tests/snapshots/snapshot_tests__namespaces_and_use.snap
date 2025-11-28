@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 397
 expression: program
 ---
 Program {
@@ -170,6 +171,7 @@ Program {
         },
         Class {
             attributes: [],
+            modifiers: [],
             name: Token {
                 kind: Identifier,
                 span: Span {
@@ -274,6 +276,7 @@ Program {
                         },
                     },
                     params: [],
+                    return_type: None,
                     body: [],
                     span: Span {
                         start: 156,

@@ -1,11 +1,13 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 459
 expression: program
 ---
 Program {
     statements: [
         Class {
             attributes: [],
+            modifiers: [],
             name: Token {
                 kind: Identifier,
                 span: Span {
@@ -161,6 +163,7 @@ Program {
                             },
                         },
                     ],
+                    return_type: None,
                     body: [],
                     span: Span {
                         start: 31,

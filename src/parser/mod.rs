@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use crate::lexer::{Lexer, LexerMode, token::{Token, TokenKind}};
-use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type, ParseError};
+use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, AssignOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type, ParseError};
 
 
 
@@ -1669,6 +1669,42 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     });
                     continue;
                 }
+                TokenKind::PlusEq | TokenKind::MinusEq | TokenKind::MulEq | TokenKind::DivEq | 
+                TokenKind::ModEq | TokenKind::ConcatEq | TokenKind::AndEq | TokenKind::OrEq | 
+                TokenKind::XorEq | TokenKind::SlEq | TokenKind::SrEq | TokenKind::PowEq | 
+                TokenKind::CoalesceEq => {
+                    let op = match self.current_token.kind {
+                        TokenKind::PlusEq => AssignOp::Plus,
+                        TokenKind::MinusEq => AssignOp::Minus,
+                        TokenKind::MulEq => AssignOp::Mul,
+                        TokenKind::DivEq => AssignOp::Div,
+                        TokenKind::ModEq => AssignOp::Mod,
+                        TokenKind::ConcatEq => AssignOp::Concat,
+                        TokenKind::AndEq => AssignOp::BitAnd,
+                        TokenKind::OrEq => AssignOp::BitOr,
+                        TokenKind::XorEq => AssignOp::BitXor,
+                        TokenKind::SlEq => AssignOp::ShiftLeft,
+                        TokenKind::SrEq => AssignOp::ShiftRight,
+                        TokenKind::PowEq => AssignOp::Pow,
+                        TokenKind::CoalesceEq => AssignOp::Coalesce,
+                        _ => unreachable!(),
+                    };
+                    
+                    let l_bp = 35; // Same as Assignment
+                    if l_bp < min_bp {
+                        break;
+                    }
+                    self.bump();
+                    let right = self.parse_expr(l_bp - 1);
+                    let span = Span::new(left.span().start, right.span().end);
+                    left = self.arena.alloc(Expr::AssignOp {
+                        var: left,
+                        op,
+                        expr: right,
+                        span,
+                    });
+                    continue;
+                }
                 TokenKind::Eq => {
                     // Assignment: $a = 1
                     let l_bp = 35; // Higher than 'and' (30), lower than 'ternary' (40)
@@ -2220,6 +2256,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: token.span,
                 })
             }
+            TokenKind::DoubleQuote => self.parse_interpolated_string(TokenKind::DoubleQuote),
+            TokenKind::StartHeredoc => self.parse_interpolated_string(TokenKind::EndHeredoc),
+            TokenKind::Backtick => self.parse_interpolated_string(TokenKind::Backtick),
             TokenKind::TypeTrue => {
                 self.bump();
                 self.arena.alloc(Expr::Boolean {
@@ -2265,11 +2304,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span,
                 })
             }
-            TokenKind::Minus | TokenKind::Plus | TokenKind::Caret | TokenKind::Inc | TokenKind::Dec => {
+            TokenKind::Minus | TokenKind::Plus | TokenKind::BitNot | TokenKind::At | TokenKind::Inc | TokenKind::Dec => {
                 let op = match token.kind {
                     TokenKind::Minus => UnaryOp::Minus,
                     TokenKind::Plus => UnaryOp::Plus,
-                    TokenKind::Caret => UnaryOp::BitNot,
+                    TokenKind::BitNot => UnaryOp::BitNot,
+                    TokenKind::At => UnaryOp::ErrorSuppress,
                     TokenKind::Inc => UnaryOp::PreInc,
                     TokenKind::Dec => UnaryOp::PreDec,
                     _ => unreachable!(),
@@ -2726,5 +2766,145 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             left = Type::Union(self.arena.alloc_slice_copy(&types));
         }
         Some(left)
+    }
+
+    fn parse_interpolated_string(&mut self, end_token: TokenKind) -> ExprId<'ast> {
+        let start = self.current_token.span.start;
+        self.bump(); // Eat opening token
+
+        let mut parts: std::vec::Vec<&'ast Expr<'ast>> = std::vec::Vec::new();
+        
+        while self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
+            match self.current_token.kind {
+                TokenKind::EncapsedAndWhitespace => {
+                    let token = self.current_token;
+                    self.bump();
+                    parts.push(self.arena.alloc(Expr::String {
+                        value: self.arena.alloc_slice_copy(self.lexer.slice(token.span)),
+                        span: token.span,
+                    }));
+                }
+                TokenKind::Variable => {
+                    let token = self.current_token;
+                    self.bump();
+                    let var_expr = self.arena.alloc(Expr::Variable {
+                        name: token.span,
+                        span: token.span,
+                    }) as &'ast Expr<'ast>;
+                    
+                    // Check for array offset
+                    if self.current_token.kind == TokenKind::OpenBracket {
+                        self.bump(); // [
+                        
+                        // Key
+                        let key = match self.current_token.kind {
+                            TokenKind::Identifier => {
+                                let t = self.current_token;
+                                self.bump();
+                                self.arena.alloc(Expr::String { value: self.arena.alloc_slice_copy(self.lexer.slice(t.span)), span: t.span }) as &'ast Expr<'ast>
+                            },
+                            TokenKind::NumString => {
+                                let t = self.current_token;
+                                self.bump();
+                                self.arena.alloc(Expr::Integer { value: self.arena.alloc_slice_copy(self.lexer.slice(t.span)), span: t.span }) as &'ast Expr<'ast>
+                            },
+                            TokenKind::Variable => {
+                                let t = self.current_token;
+                                self.bump();
+                                self.arena.alloc(Expr::Variable { name: t.span, span: t.span }) as &'ast Expr<'ast>
+                            },
+                            TokenKind::Minus => {
+                                // Handle negative number?
+                                self.bump();
+                                if self.current_token.kind == TokenKind::NumString {
+                                    let t = self.current_token;
+                                    self.bump();
+                                    // TODO: Combine minus and number
+                                    self.arena.alloc(Expr::Integer { value: self.arena.alloc_slice_copy(self.lexer.slice(t.span)), span: t.span }) as &'ast Expr<'ast>
+                                } else {
+                                    self.arena.alloc(Expr::Error { span: self.current_token.span }) as &'ast Expr<'ast>
+                                }
+                            }
+                            _ => {
+                                // Error
+                                self.arena.alloc(Expr::Error { span: self.current_token.span }) as &'ast Expr<'ast>
+                            }
+                        };
+                        
+                        if self.current_token.kind == TokenKind::CloseBracket {
+                            self.bump();
+                        }
+                        
+                        parts.push(self.arena.alloc(Expr::ArrayDimFetch {
+                            array: var_expr,
+                            dim: Some(key),
+                            span: Span::new(token.span.start, self.current_token.span.end),
+                        }));
+                    } else if self.current_token.kind == TokenKind::Arrow {
+                         // Property fetch $foo->bar
+                         self.bump();
+                         if self.current_token.kind == TokenKind::Identifier {
+                             let prop_name = self.current_token;
+                             self.bump();
+                             
+                             parts.push(self.arena.alloc(Expr::PropertyFetch {
+                                 target: var_expr,
+                                 property: self.arena.alloc(Expr::Variable { name: prop_name.span, span: prop_name.span }),
+                                 span: Span::new(token.span.start, prop_name.span.end),
+                             }));
+                         } else {
+                             parts.push(var_expr);
+                         }
+                    } else {
+                        parts.push(var_expr);
+                    }
+                }
+                TokenKind::CurlyOpen => {
+                    self.bump();
+                    let expr = self.parse_expr(0);
+                    if self.current_token.kind == TokenKind::CloseBrace {
+                        self.bump();
+                    }
+                    parts.push(expr);
+                }
+                TokenKind::DollarOpenCurlyBraces => {
+                    self.bump();
+                    // ${expr}
+                    let expr = self.parse_expr(0);
+                    if self.current_token.kind == TokenKind::CloseBrace {
+                        self.bump();
+                    }
+                    parts.push(expr);
+                }
+                _ => {
+                    // Unexpected token inside string
+                    let token = self.current_token;
+                    self.bump();
+                    parts.push(self.arena.alloc(Expr::Error { span: token.span }));
+                }
+            }
+        }
+
+        let end = if self.current_token.kind == end_token {
+            let end = self.current_token.span.end;
+            self.bump();
+            end
+        } else {
+            self.current_token.span.start
+        };
+
+        let span = Span::new(start, end);
+
+        if end_token == TokenKind::Backtick {
+             self.arena.alloc(Expr::ShellExec {
+                parts: self.arena.alloc_slice_copy(&parts),
+                span,
+            })
+        } else {
+            self.arena.alloc(Expr::InterpolatedString {
+                parts: self.arena.alloc_slice_copy(&parts),
+                span,
+            })
+        }
     }
 }

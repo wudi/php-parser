@@ -191,8 +191,13 @@ pub enum Expr<'ast> {
         expr: ExprId<'ast>,
         span: Span,
     },
+    AssignOp {
+        var: ExprId<'ast>,
+        op: AssignOp,
+        expr: ExprId<'ast>,
+        span: Span,
+    },
     Binary {
-
         left: ExprId<'ast>,
         op: BinaryOp,
         right: ExprId<'ast>,
@@ -265,6 +270,14 @@ pub enum Expr<'ast> {
     },
     String {
         value: &'ast [u8],
+        span: Span,
+    },
+    InterpolatedString {
+        parts: &'ast [ExprId<'ast>],
+        span: Span,
+    },
+    ShellExec {
+        parts: &'ast [ExprId<'ast>],
         span: Span,
     },
     PostInc {
@@ -364,12 +377,14 @@ pub enum UnaryOp {
     BitNot,
     PreInc,
     PreDec,
+    ErrorSuppress,
 }
 
 impl<'ast> Expr<'ast> {
     pub fn span(&self) -> Span {
         match self {
             Expr::Assign { span, .. } => *span,
+            Expr::AssignOp { span, .. } => *span,
             Expr::Binary { span, .. } => *span,
             Expr::Unary { span, .. } => *span,
             Expr::Call { span, .. } => *span,
@@ -386,6 +401,8 @@ impl<'ast> Expr<'ast> {
             Expr::Boolean { span, .. } => *span,
             Expr::Null { span, .. } => *span,
             Expr::String { span, .. } => *span,
+            Expr::InterpolatedString { span, .. } => *span,
+            Expr::ShellExec { span, .. } => *span,
             Expr::PostInc { span, .. } => *span,
             Expr::PostDec { span, .. } => *span,
             Expr::Ternary { span, .. } => *span,
@@ -471,6 +488,23 @@ pub enum BinaryOp {
     LogicalOr,
     LogicalXor,
     Instanceof,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    Plus, // +=
+    Minus, // -=
+    Mul, // *=
+    Div, // /=
+    Mod, // %=
+    Concat, // .=
+    BitAnd, // &=
+    BitOr, // |=
+    BitXor, // ^=
+    ShiftLeft, // <<=
+    ShiftRight, // >>=
+    Pow, // **=
+    Coalesce, // ??=
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 385
 expression: program
 ---
 Program {
@@ -91,17 +92,52 @@ Program {
                     end: 125,
                 },
             },
-            extends: None,
-            implements: [
-                Token {
-                    kind: Identifier,
+            members: [
+                Property {
+                    modifiers: [],
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 0,
+                            end: 0,
+                        },
+                    },
+                    default: None,
                     span: Span {
-                        start: 137,
+                        start: 126,
                         end: 138,
                     },
                 },
-            ],
-            members: [
+                Property {
+                    modifiers: [],
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 0,
+                            end: 0,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 137,
+                        end: 140,
+                    },
+                },
+                Property {
+                    modifiers: [],
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 0,
+                            end: 0,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 139,
+                        end: 152,
+                    },
+                },
                 TraitUse {
                     traits: [
                         Token {
@@ -134,15 +170,21 @@ Program {
                             },
                         },
                     ],
-                    ty: Some(
-                        Token {
-                            kind: TypeInt,
-                            span: Span {
-                                start: 180,
-                                end: 183,
-                            },
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 0,
+                            end: 0,
                         },
-                    ),
+                    },
+                    default: None,
+                    span: Span {
+                        start: 164,
+                        end: 186,
+                    },
+                },
+                Property {
+                    modifiers: [],
                     name: Token {
                         kind: Variable,
                         span: Span {
@@ -152,7 +194,7 @@ Program {
                     },
                     default: None,
                     span: Span {
-                        start: 164,
+                        start: 184,
                         end: 202,
                     },
                 },
