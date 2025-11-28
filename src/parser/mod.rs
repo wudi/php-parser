@@ -1790,7 +1790,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.bump(); // Eat break
         
         let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
-            Some(self.parse_expr(0))
+            let expr = self.parse_expr(0);
+            self.validate_break_continue_level(expr);
+            Some(expr)
         } else {
             None
         };
@@ -1810,7 +1812,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.bump(); // Eat continue
         
         let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
-            Some(self.parse_expr(0))
+            let expr = self.parse_expr(0);
+            self.validate_break_continue_level(expr);
+            Some(expr)
         } else {
             None
         };
@@ -1823,6 +1827,28 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             level,
             span: Span::new(start, end),
         })
+    }
+
+    fn validate_break_continue_level(&mut self, expr: ExprId<'ast>) {
+        if let Expr::Integer { value, span } = expr {
+            if value.is_empty() {
+                self.errors.push(ParseError { span: *span, message: "break/continue level must be a positive integer" });
+                return;
+            }
+            let mut num: usize = 0;
+            for b in *value {
+                if !b.is_ascii_digit() {
+                    num = 0;
+                    break;
+                }
+                num = num.saturating_mul(10).saturating_add((b - b'0') as usize);
+            }
+            if num == 0 {
+                self.errors.push(ParseError { span: *span, message: "break/continue level must be a positive integer" });
+            }
+        } else {
+            self.errors.push(ParseError { span: expr.span(), message: "break/continue level must be a positive integer literal" });
+        }
     }
 
     fn parse_goto(&mut self) -> StmtId<'ast> {
