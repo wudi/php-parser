@@ -1,10 +1,15 @@
 ---
 source: tests/recovery_tests.rs
-assertion_line: 64
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Class {
             attributes: [],
             modifiers: [],
@@ -60,7 +65,7 @@ Program {
         },
     ],
     span: Span {
-        start: 10,
+        start: 0,
         end: 62,
     },
 }

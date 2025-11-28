@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Foreach {
             expr: Variable {
                 name: Span {
@@ -65,7 +71,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 54,
     },
 }

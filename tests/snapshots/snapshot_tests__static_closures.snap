@@ -1,0 +1,94 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                    span: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                },
+                expr: Closure {
+                    attributes: [],
+                    is_static: true,
+                    params: [],
+                    uses: [],
+                    return_type: None,
+                    body: [],
+                    span: Span {
+                        start: 15,
+                        end: 36,
+                    },
+                },
+                span: Span {
+                    start: 10,
+                    end: 36,
+                },
+            },
+            span: Span {
+                start: 10,
+                end: 43,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 41,
+                        end: 43,
+                    },
+                    span: Span {
+                        start: 41,
+                        end: 43,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: true,
+                    params: [],
+                    return_type: None,
+                    expr: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 61,
+                            end: 62,
+                        },
+                    },
+                    span: Span {
+                        start: 46,
+                        end: 62,
+                    },
+                },
+                span: Span {
+                    start: 41,
+                    end: 62,
+                },
+            },
+            span: Span {
+                start: 41,
+                end: 68,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 68,
+    },
+}

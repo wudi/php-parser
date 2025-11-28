@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         If {
             condition: Binary {
                 left: Variable {
@@ -197,7 +203,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 11,
+        start: 0,
         end: 171,
     },
 }

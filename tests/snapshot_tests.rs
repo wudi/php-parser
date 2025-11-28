@@ -502,3 +502,18 @@ fn test_named_arguments() {
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
+
+#[test]
+fn test_static_closures() {
+    let source = b"<?php
+    $a = static function() {};
+    $b = static fn() => 1;
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}

@@ -280,6 +280,15 @@ pub enum Expr<'ast> {
         parts: &'ast [ExprId<'ast>],
         span: Span,
     },
+    Include {
+        kind: IncludeKind,
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    MagicConst {
+        kind: MagicConstKind,
+        span: Span,
+    },
     PostInc {
         var: ExprId<'ast>,
         span: Span,
@@ -326,6 +335,7 @@ pub enum Expr<'ast> {
     },
     Closure {
         attributes: &'ast [AttributeGroup<'ast>],
+        is_static: bool,
         params: &'ast [Param<'ast>],
         uses: &'ast [ClosureUse<'ast>],
         return_type: Option<&'ast Type<'ast>>,
@@ -334,8 +344,13 @@ pub enum Expr<'ast> {
     },
     ArrowFunction {
         attributes: &'ast [AttributeGroup<'ast>],
+        is_static: bool,
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    Clone {
         expr: ExprId<'ast>,
         span: Span,
     },
@@ -378,6 +393,7 @@ pub enum UnaryOp {
     PreInc,
     PreDec,
     ErrorSuppress,
+    Reference,
 }
 
 impl<'ast> Expr<'ast> {
@@ -403,6 +419,8 @@ impl<'ast> Expr<'ast> {
             Expr::String { span, .. } => *span,
             Expr::InterpolatedString { span, .. } => *span,
             Expr::ShellExec { span, .. } => *span,
+            Expr::Include { span, .. } => *span,
+            Expr::MagicConst { span, .. } => *span,
             Expr::PostInc { span, .. } => *span,
             Expr::PostDec { span, .. } => *span,
             Expr::Ternary { span, .. } => *span,
@@ -415,6 +433,7 @@ impl<'ast> Expr<'ast> {
             Expr::Exit { span, .. } => *span,
             Expr::Closure { span, .. } => *span,
             Expr::ArrowFunction { span, .. } => *span,
+            Expr::Clone { span, .. } => *span,
             Expr::Error { span } => *span,
         }
     }
@@ -623,5 +642,25 @@ pub struct DeclareItem<'ast> {
     pub key: &'ast Token,
     pub value: ExprId<'ast>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum IncludeKind {
+    Include,
+    IncludeOnce,
+    Require,
+    RequireOnce,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MagicConstKind {
+    Dir,
+    File,
+    Line,
+    Function,
+    Class,
+    Trait,
+    Method,
+    Namespace,
 }
 

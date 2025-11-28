@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Try {
             body: [
                 Throw {
@@ -149,7 +155,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 10,
+        start: 0,
         end: 161,
     },
 }

@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Echo {
             exprs: [
                 Binary {
@@ -72,7 +78,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 25,
     },
 }

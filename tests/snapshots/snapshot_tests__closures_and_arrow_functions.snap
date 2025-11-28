@@ -13,6 +13,12 @@ Program {
                 end: 7,
             },
         },
+        Nop {
+            span: Span {
+                start: 1,
+                end: 7,
+            },
+        },
         Expression {
             expr: Assign {
                 var: Variable {
@@ -27,6 +33,7 @@ Program {
                 },
                 expr: Closure {
                     attributes: [],
+                    is_static: false,
                     params: [
                         Param {
                             attributes: [],
@@ -98,6 +105,7 @@ Program {
                 },
                 expr: Closure {
                     attributes: [],
+                    is_static: false,
                     params: [
                         Param {
                             attributes: [],
@@ -201,6 +209,7 @@ Program {
                 },
                 expr: ArrowFunction {
                     attributes: [],
+                    is_static: false,
                     params: [
                         Param {
                             attributes: [],
@@ -277,6 +286,7 @@ Program {
                 },
                 expr: ArrowFunction {
                     attributes: [],
+                    is_static: false,
                     params: [
                         Param {
                             attributes: [],
