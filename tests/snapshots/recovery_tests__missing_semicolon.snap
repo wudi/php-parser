@@ -1,0 +1,55 @@
+---
+source: tests/recovery_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Echo {
+            exprs: [
+                Integer {
+                    value: [
+                        49,
+                    ],
+                    span: Span {
+                        start: 15,
+                        end: 16,
+                    },
+                },
+            ],
+            span: Span {
+                start: 10,
+                end: 25,
+            },
+        },
+        Echo {
+            exprs: [
+                Integer {
+                    value: [
+                        50,
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 27,
+                    },
+                },
+            ],
+            span: Span {
+                start: 21,
+                end: 33,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 21,
+                end: 25,
+            },
+            message: "Missing semicolon",
+        },
+    ],
+    span: Span {
+        start: 10,
+        end: 33,
+    },
+}

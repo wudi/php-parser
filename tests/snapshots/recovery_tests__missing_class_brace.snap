@@ -1,0 +1,64 @@
+---
+source: tests/recovery_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Class {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 16,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                        },
+                    ],
+                    ty: None,
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 37,
+                            end: 39,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 30,
+                        end: 62,
+                    },
+                },
+            ],
+            span: Span {
+                start: 10,
+                end: 62,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 62,
+                end: 62,
+            },
+            message: "Missing '}'",
+        },
+    ],
+    span: Span {
+        start: 10,
+        end: 62,
+    },
+}

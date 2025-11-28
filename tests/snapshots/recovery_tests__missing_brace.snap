@@ -1,0 +1,71 @@
+---
+source: tests/recovery_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        If {
+            condition: Boolean {
+                value: true,
+                span: Span {
+                    start: 14,
+                    end: 18,
+                },
+            },
+            then_block: [
+                Echo {
+                    exprs: [
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 35,
+                                end: 36,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 30,
+                        end: 63,
+                    },
+                },
+                Echo {
+                    exprs: [
+                        Integer {
+                            value: [
+                                50,
+                            ],
+                            span: Span {
+                                start: 64,
+                                end: 65,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 59,
+                        end: 71,
+                    },
+                },
+            ],
+            else_block: None,
+            span: Span {
+                start: 10,
+                end: 71,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 71,
+                end: 71,
+            },
+            message: "Missing '}'",
+        },
+    ],
+    span: Span {
+        start: 10,
+        end: 71,
+    },
+}

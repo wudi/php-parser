@@ -329,18 +329,6 @@ Program {
             },
             span: Span {
                 start: 156,
-                end: 192,
-            },
-        },
-        Expression {
-            expr: Error {
-                span: Span {
-                    start: 175,
-                    end: 192,
-                },
-            },
-            span: Span {
-                start: 175,
                 end: 197,
             },
         },

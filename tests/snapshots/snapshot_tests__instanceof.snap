@@ -155,18 +155,6 @@ Program {
             },
             span: Span {
                 start: 63,
-                end: 107,
-            },
-        },
-        Expression {
-            expr: Error {
-                span: Span {
-                    start: 86,
-                    end: 107,
-                },
-            },
-            span: Span {
-                start: 86,
                 end: 114,
             },
         },
@@ -233,31 +221,11 @@ Program {
             },
             span: Span {
                 start: 112,
-                end: 166,
-            },
-        },
-        Expression {
-            expr: Error {
-                span: Span {
-                    start: 140,
-                    end: 166,
-                },
-            },
-            span: Span {
-                start: 140,
                 end: 171,
             },
         },
     ],
-    errors: [
-        ParseError {
-            span: Span {
-                start: 112,
-                end: 114,
-            },
-            message: "Missing semicolon",
-        },
-    ],
+    errors: [],
     span: Span {
         start: 10,
         end: 171,

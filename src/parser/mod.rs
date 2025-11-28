@@ -22,31 +22,31 @@ pub struct Parser<'src, 'ast> {
 }
 
 impl<'src, 'ast> Parser<'src, 'ast> {
-    pub fn new(mut lexer: Lexer<'src>, arena: &'ast Bump) -> Self {
-        let current_token = lexer.next().unwrap_or(Token {
-            kind: TokenKind::Eof,
-            span: Span::default(),
-        });
-        let next_token = lexer.next().unwrap_or(Token {
-            kind: TokenKind::Eof,
-            span: Span::default(),
-        });
-        
-        Self {
+    pub fn new(lexer: Lexer<'src>, arena: &'ast Bump) -> Self {
+        let mut parser = Self {
             lexer,
             arena,
-            current_token,
-            next_token,
+            current_token: Token { kind: TokenKind::Eof, span: Span::default() },
+            next_token: Token { kind: TokenKind::Eof, span: Span::default() },
             errors: std::vec::Vec::new(),
-        }
+        };
+        parser.bump();
+        parser.bump();
+        parser
     }
 
     fn bump(&mut self) {
         self.current_token = self.next_token;
-        self.next_token = self.lexer.next().unwrap_or(Token {
-            kind: TokenKind::Eof,
-            span: Span::default(),
-        });
+        loop {
+            let token = self.lexer.next().unwrap_or(Token {
+                kind: TokenKind::Eof,
+                span: Span::default(),
+            });
+            if token.kind != TokenKind::Comment && token.kind != TokenKind::DocComment {
+                self.next_token = token;
+                break;
+            }
+        }
     }
 
     fn expect_semicolon(&mut self) {
@@ -235,7 +235,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn parse_block(&mut self) -> StmtId<'ast> {
         let start = self.current_token.span.start;
-        self.bump(); // Eat {
+        
+        if self.current_token.kind == TokenKind::OpenBrace {
+            self.bump(); // Eat {
+        } else {
+            self.errors.push(ParseError {
+                span: self.current_token.span,
+                message: "Expected '{'",
+            });
+            return self.arena.alloc(Stmt::Error { span: self.current_token.span });
+        }
 
         let mut statements = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace && self.current_token.kind != TokenKind::Eof {
@@ -244,6 +253,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         if self.current_token.kind == TokenKind::CloseBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError {
+                span: self.current_token.span,
+                message: "Missing '}'",
+            });
         }
 
         let end = self.current_token.span.end;
@@ -501,6 +515,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::OpenBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
+            return self.arena.alloc(Stmt::Class {
+                attributes,
+                name,
+                extends,
+                implements: self.arena.alloc_slice_copy(&implements),
+                members: &[],
+                span: Span::new(start, self.current_token.span.end),
+            });
         }
         
         let mut members = std::vec::Vec::new();
@@ -510,6 +534,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::CloseBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
         }
         
         let end = self.current_token.span.end;
@@ -555,6 +581,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::OpenBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
+            return self.arena.alloc(Stmt::Interface {
+                attributes,
+                name,
+                extends: self.arena.alloc_slice_copy(&extends),
+                members: &[],
+                span: Span::new(start, self.current_token.span.end),
+            });
         }
         
         let mut members = std::vec::Vec::new();
@@ -564,6 +599,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::CloseBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
         }
         
         let end = self.current_token.span.end;
@@ -595,6 +632,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::OpenBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
+            return self.arena.alloc(Stmt::Trait {
+                attributes,
+                name,
+                members: &[],
+                span: Span::new(start, self.current_token.span.end),
+            });
         }
         
         let mut members = std::vec::Vec::new();
@@ -604,6 +649,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::CloseBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
         }
         
         let end = self.current_token.span.end;
@@ -634,12 +681,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
             if self.current_token.kind == TokenKind::CloseBrace {
                 self.bump();
+            } else {
+                self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
             }
             Some(self.arena.alloc_slice_copy(&statements) as &'ast [StmtId<'ast>])
         } else {
-            if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-            }
+            self.expect_semicolon();
             None
         };
         
@@ -711,6 +758,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 if self.current_token.kind == TokenKind::CloseBrace {
                     self.bump();
+                } else {
+                    self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
                 }
             } else {
                 let alias = if self.current_token.kind == TokenKind::As {
@@ -769,6 +818,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::OpenBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
+            return self.arena.alloc(Stmt::Enum {
+                attributes,
+                name,
+                members: &[],
+                span: Span::new(start, self.current_token.span.end),
+            });
         }
         
         let mut members = std::vec::Vec::new();
@@ -778,6 +835,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::CloseBrace {
             self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
         }
         
         let end = self.current_token.span.end;
