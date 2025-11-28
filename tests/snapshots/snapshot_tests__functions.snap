@@ -1,0 +1,150 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Function {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 19,
+                    end: 22,
+                },
+            },
+            params: [
+                Param {
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 23,
+                            end: 25,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    span: Span {
+                        start: 23,
+                        end: 25,
+                    },
+                },
+                Param {
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 27,
+                            end: 29,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    span: Span {
+                        start: 27,
+                        end: 29,
+                    },
+                },
+            ],
+            body: [
+                Return {
+                    expr: Some(
+                        Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 48,
+                                    end: 50,
+                                },
+                                span: Span {
+                                    start: 48,
+                                    end: 50,
+                                },
+                            },
+                            op: Plus,
+                            right: Variable {
+                                name: Span {
+                                    start: 53,
+                                    end: 55,
+                                },
+                                span: Span {
+                                    start: 53,
+                                    end: 55,
+                                },
+                            },
+                            span: Span {
+                                start: 48,
+                                end: 55,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 41,
+                        end: 62,
+                    },
+                },
+            ],
+            span: Span {
+                start: 10,
+                end: 76,
+            },
+        },
+        Echo {
+            exprs: [
+                Call {
+                    func: Variable {
+                        name: Span {
+                            start: 77,
+                            end: 80,
+                        },
+                        span: Span {
+                            start: 77,
+                            end: 80,
+                        },
+                    },
+                    args: [
+                        Arg {
+                            value: Integer {
+                                value: [
+                                    49,
+                                ],
+                                span: Span {
+                                    start: 81,
+                                    end: 82,
+                                },
+                            },
+                            span: Span {
+                                start: 81,
+                                end: 82,
+                            },
+                        },
+                        Arg {
+                            value: Integer {
+                                value: [
+                                    50,
+                                ],
+                                span: Span {
+                                    start: 84,
+                                    end: 85,
+                                },
+                            },
+                            span: Span {
+                                start: 84,
+                                end: 85,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 77,
+                        end: 87,
+                    },
+                },
+            ],
+            span: Span {
+                start: 72,
+                end: 92,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

@@ -1,0 +1,165 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Class {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 16,
+                    end: 20,
+                },
+            },
+            members: [
+                Property {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 31,
+                                end: 37,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 38,
+                            end: 43,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 31,
+                        end: 60,
+                    },
+                },
+                Property {
+                    modifiers: [
+                        Token {
+                            kind: Private,
+                            span: Span {
+                                start: 53,
+                                end: 60,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 61,
+                            end: 65,
+                        },
+                    },
+                    default: Some(
+                        Integer {
+                            value: [
+                                50,
+                                48,
+                            ],
+                            span: Span {
+                                start: 68,
+                                end: 70,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 53,
+                        end: 85,
+                    },
+                },
+                Const {
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 86,
+                            end: 90,
+                        },
+                    },
+                    value: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 93,
+                            end: 94,
+                        },
+                    },
+                    span: Span {
+                        start: 80,
+                        end: 119,
+                    },
+                },
+                Method {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 113,
+                                end: 119,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 129,
+                            end: 136,
+                        },
+                    },
+                    params: [],
+                    body: [
+                        Return {
+                            expr: Some(
+                                PropertyFetch {
+                                    target: Variable {
+                                        name: Span {
+                                            start: 160,
+                                            end: 165,
+                                        },
+                                        span: Span {
+                                            start: 160,
+                                            end: 165,
+                                        },
+                                    },
+                                    property: Variable {
+                                        name: Span {
+                                            start: 167,
+                                            end: 171,
+                                        },
+                                        span: Span {
+                                            start: 167,
+                                            end: 171,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 160,
+                                        end: 171,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 153,
+                                end: 182,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 113,
+                        end: 188,
+                    },
+                },
+            ],
+            span: Span {
+                start: 10,
+                end: 193,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

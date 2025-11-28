@@ -1,0 +1,159 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Try {
+            body: [
+                Throw {
+                    expr: New {
+                        class: Call {
+                            func: Variable {
+                                name: Span {
+                                    start: 34,
+                                    end: 43,
+                                },
+                                span: Span {
+                                    start: 34,
+                                    end: 43,
+                                },
+                            },
+                            args: [
+                                Arg {
+                                    value: String {
+                                        value: [
+                                            39,
+                                            101,
+                                            114,
+                                            114,
+                                            111,
+                                            114,
+                                            39,
+                                        ],
+                                        span: Span {
+                                            start: 44,
+                                            end: 51,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 44,
+                                        end: 51,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 34,
+                                end: 53,
+                            },
+                        },
+                        args: [],
+                        span: Span {
+                            start: 30,
+                            end: 53,
+                        },
+                    },
+                    span: Span {
+                        start: 24,
+                        end: 59,
+                    },
+                },
+            ],
+            catches: [
+                Catch {
+                    types: [
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 67,
+                                end: 76,
+                            },
+                        },
+                    ],
+                    var: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 77,
+                            end: 79,
+                        },
+                    },
+                    body: [
+                        Echo {
+                            exprs: [
+                                MethodCall {
+                                    target: Variable {
+                                        name: Span {
+                                            start: 96,
+                                            end: 98,
+                                        },
+                                        span: Span {
+                                            start: 96,
+                                            end: 98,
+                                        },
+                                    },
+                                    method: Variable {
+                                        name: Span {
+                                            start: 100,
+                                            end: 110,
+                                        },
+                                        span: Span {
+                                            start: 100,
+                                            end: 110,
+                                        },
+                                    },
+                                    args: [],
+                                    span: Span {
+                                        start: 96,
+                                        end: 113,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 91,
+                                end: 119,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 60,
+                        end: 127,
+                    },
+                },
+            ],
+            finally: Some(
+                [
+                    Echo {
+                        exprs: [
+                            String {
+                                value: [
+                                    39,
+                                    100,
+                                    111,
+                                    110,
+                                    101,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 143,
+                                    end: 149,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 138,
+                            end: 156,
+                        },
+                    },
+                ],
+            ),
+            span: Span {
+                start: 10,
+                end: 161,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}
