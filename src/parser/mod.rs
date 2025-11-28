@@ -1072,6 +1072,17 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             if self.current_token.kind == TokenKind::CloseParen {
                 self.bump();
             }
+
+            let return_type = if self.current_token.kind == TokenKind::Colon {
+                self.bump();
+                if let Some(t) = self.parse_type() {
+                    Some(self.arena.alloc(t) as &'ast Type<'ast>)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             
             let body = if self.current_token.kind == TokenKind::OpenBrace {
                 let body_stmt = self.parse_block();
@@ -1095,6 +1106,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 modifiers: self.arena.alloc_slice_copy(&modifiers),
                 name,
                 params: self.arena.alloc_slice_copy(&params),
+                return_type,
                 body,
                 span: Span::new(start, end),
             }
@@ -1983,7 +1995,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         self.bump();
                     }
                     while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                        let by_ref = if self.current_token.kind == TokenKind::Ampersand {
+                        let by_ref = if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg) {
                             self.bump();
                             true
                         } else {

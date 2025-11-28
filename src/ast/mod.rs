@@ -505,6 +505,7 @@ pub enum ClassMember<'ast> {
         modifiers: &'ast [Token],
         name: &'ast Token,
         params: &'ast [Param<'ast>],
+        return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
         span: Span,
     },

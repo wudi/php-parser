@@ -29,6 +29,15 @@ fn main() {
     let mut stack = vec![std::path::PathBuf::from(dir)];
 
     while let Some(path) = stack.pop() {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
         if path.is_dir() {
             match fs::read_dir(&path) {
                 Ok(entries) => {
@@ -49,6 +58,7 @@ fn main() {
 
             match fs::read_to_string(&path) {
                 Ok(code) => {
+                    // println!("Parsing {:?}", path);
                     let bump = Bump::new();
                     let lexer = Lexer::new(code.as_bytes());
                     let mut parser = Parser::new(lexer, &bump);
