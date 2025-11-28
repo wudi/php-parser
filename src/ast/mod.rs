@@ -94,6 +94,8 @@ pub enum Stmt<'ast> {
     Enum {
         attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
+        backed_type: Option<&'ast Type<'ast>>,
+        implements: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
         span: Span,
     },
@@ -153,6 +155,14 @@ pub enum Stmt<'ast> {
     Nop {
         span: Span,
     },
+    Label {
+        name: &'ast Token,
+        span: Span,
+    },
+    Goto {
+        label: &'ast Token,
+        span: Span,
+    },
     Error {
         span: Span,
     },
@@ -187,6 +197,11 @@ pub struct Param<'ast> {
 #[derive(Debug)]
 pub enum Expr<'ast> {
     Assign {
+        var: ExprId<'ast>,
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    AssignRef {
         var: ExprId<'ast>,
         expr: ExprId<'ast>,
         span: Span,
@@ -308,6 +323,16 @@ pub enum Expr<'ast> {
         arms: &'ast [MatchArm<'ast>],
         span: Span,
     },
+    Print {
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    Yield {
+        key: Option<ExprId<'ast>>,
+        value: Option<ExprId<'ast>>,
+        from: bool,
+        span: Span,
+    },
     Cast {
         kind: CastKind,
         expr: ExprId<'ast>,
@@ -352,6 +377,17 @@ pub enum Expr<'ast> {
     },
     Clone {
         expr: ExprId<'ast>,
+        span: Span,
+    },
+    NullsafePropertyFetch {
+        target: ExprId<'ast>,
+        property: ExprId<'ast>,
+        span: Span,
+    },
+    NullsafeMethodCall {
+        target: ExprId<'ast>,
+        method: ExprId<'ast>,
+        args: &'ast [Arg<'ast>],
         span: Span,
     },
     Error {
@@ -400,6 +436,7 @@ impl<'ast> Expr<'ast> {
     pub fn span(&self) -> Span {
         match self {
             Expr::Assign { span, .. } => *span,
+            Expr::AssignRef { span, .. } => *span,
             Expr::AssignOp { span, .. } => *span,
             Expr::Binary { span, .. } => *span,
             Expr::Unary { span, .. } => *span,
@@ -425,6 +462,7 @@ impl<'ast> Expr<'ast> {
             Expr::PostDec { span, .. } => *span,
             Expr::Ternary { span, .. } => *span,
             Expr::Match { span, .. } => *span,
+            Expr::Yield { span, .. } => *span,
             Expr::Cast { span, .. } => *span,
             Expr::Empty { span, .. } => *span,
             Expr::Isset { span, .. } => *span,
@@ -434,6 +472,9 @@ impl<'ast> Expr<'ast> {
             Expr::Closure { span, .. } => *span,
             Expr::ArrowFunction { span, .. } => *span,
             Expr::Clone { span, .. } => *span,
+            Expr::Print { span, .. } => *span,
+            Expr::NullsafePropertyFetch { span, .. } => *span,
+            Expr::NullsafeMethodCall { span, .. } => *span,
             Expr::Error { span } => *span,
         }
     }
@@ -469,6 +510,8 @@ impl<'ast> Stmt<'ast> {
             Stmt::InlineHtml { span, .. } => *span,
             Stmt::Declare { span, .. } => *span,
             Stmt::HaltCompiler { span } => *span,
+            Stmt::Label { span, .. } => *span,
+            Stmt::Goto { span, .. } => *span,
             Stmt::Error { span } => *span,
             Stmt::Nop { span } => *span,
         }
@@ -553,6 +596,15 @@ pub enum ClassMember<'ast> {
         default: Option<ExprId<'ast>>,
         span: Span,
     },
+    PropertyHook {
+        attributes: &'ast [AttributeGroup<'ast>],
+        modifiers: &'ast [Token],
+        ty: Option<&'ast Type<'ast>>,
+        name: &'ast Token,
+        default: Option<ExprId<'ast>>,
+        hooks: &'ast [PropertyHook<'ast>],
+        span: Span,
+    },
     Method {
         attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
@@ -564,13 +616,14 @@ pub enum ClassMember<'ast> {
     },
     Const {
         attributes: &'ast [AttributeGroup<'ast>],
-        name: &'ast Token,
-        value: ExprId<'ast>,
+        modifiers: &'ast [Token],
+        consts: &'ast [ClassConst<'ast>],
         span: Span,
     },
     TraitUse {
         attributes: &'ast [AttributeGroup<'ast>],
         traits: &'ast [Name<'ast>],
+        adaptations: &'ast [TraitAdaptation<'ast>],
         span: Span,
     },
     Case {
@@ -589,9 +642,56 @@ pub struct Case<'ast> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct ClassConst<'ast> {
+    pub name: &'ast Token,
+    pub value: ExprId<'ast>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PropertyHookBody<'ast> {
+    None,
+    Statements(&'ast [StmtId<'ast>]),
+    Expr(ExprId<'ast>),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PropertyHook<'ast> {
+    pub attributes: &'ast [AttributeGroup<'ast>],
+    pub modifiers: &'ast [Token],
+    pub name: &'ast Token,
+    pub params: &'ast [Param<'ast>],
+    pub by_ref: bool,
+    pub body: PropertyHookBody<'ast>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TraitMethodRef<'ast> {
+    pub trait_name: Option<Name<'ast>>,
+    pub method: &'ast Token,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TraitAdaptation<'ast> {
+    Precedence {
+        method: TraitMethodRef<'ast>,
+        insteadof: &'ast [Name<'ast>],
+        span: Span,
+    },
+    Alias {
+        method: TraitMethodRef<'ast>,
+        alias: Option<&'ast Token>,
+        visibility: Option<&'ast Token>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Catch<'ast> {
-    pub types: &'ast [Token], // Multi-catch: TryCatch|Exception
-    pub var: &'ast Token,
+    pub types: &'ast [Name<'ast>], // Multi-catch: TryCatch|Exception
+    pub var: Option<&'ast Token>, // Variable may be omitted in PHP 8+
     pub body: &'ast [StmtId<'ast>],
     pub span: Span,
 }
@@ -606,6 +706,7 @@ pub struct Name<'ast> {
 pub struct UseItem<'ast> {
     pub name: Name<'ast>,
     pub alias: Option<&'ast Token>,
+    pub kind: UseKind,
     pub span: Span,
 }
 
@@ -632,6 +733,7 @@ pub struct AttributeGroup<'ast> {
 #[derive(Debug, Clone, Copy)]
 pub enum Type<'ast> {
     Simple(&'ast Token),
+    Name(Name<'ast>),
     Union(&'ast [Type<'ast>]),
     Intersection(&'ast [Type<'ast>]),
     Nullable(&'ast Type<'ast>),
@@ -663,4 +765,3 @@ pub enum MagicConstKind {
     Method,
     Namespace,
 }
-

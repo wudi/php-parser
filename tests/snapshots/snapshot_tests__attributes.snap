@@ -212,22 +212,31 @@ Program {
                             },
                         },
                     ],
-                    name: Token {
-                        kind: Identifier,
-                        span: Span {
-                            start: 150,
-                            end: 158,
+                    modifiers: [],
+                    consts: [
+                        ClassConst {
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 150,
+                                    end: 158,
+                                },
+                            },
+                            value: Integer {
+                                value: [
+                                    49,
+                                ],
+                                span: Span {
+                                    start: 161,
+                                    end: 162,
+                                },
+                            },
+                            span: Span {
+                                start: 150,
+                                end: 162,
+                            },
                         },
-                    },
-                    value: Integer {
-                        value: [
-                            49,
-                        ],
-                        span: Span {
-                            start: 161,
-                            end: 162,
-                        },
-                    },
+                    ],
                     span: Span {
                         start: 123,
                         end: 175,

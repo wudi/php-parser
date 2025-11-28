@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::time::Instant;
 use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;

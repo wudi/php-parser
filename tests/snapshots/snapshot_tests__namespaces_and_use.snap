@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 397
 expression: program
 ---
 Program {
@@ -95,6 +96,7 @@ Program {
                         },
                     },
                     alias: None,
+                    kind: Normal,
                     span: Span {
                         start: 33,
                         end: 49,
@@ -162,6 +164,7 @@ Program {
                             },
                         },
                     ),
+                    kind: Normal,
                     span: Span {
                         start: 55,
                         end: 78,
@@ -345,6 +348,7 @@ Program {
                                     },
                                 },
                                 alias: None,
+                                kind: Normal,
                                 span: Span {
                                     start: 210,
                                     end: 225,

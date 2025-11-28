@@ -1,5 +1,6 @@
 ---
 source: tests/recovery_tests.rs
+assertion_line: 16
 expression: program
 ---
 Program {
@@ -24,23 +25,6 @@ Program {
             ],
             span: Span {
                 start: 10,
-                end: 25,
-            },
-        },
-        Echo {
-            exprs: [
-                Integer {
-                    value: [
-                        50,
-                    ],
-                    span: Span {
-                        start: 26,
-                        end: 27,
-                    },
-                },
-            ],
-            span: Span {
-                start: 21,
                 end: 33,
             },
         },

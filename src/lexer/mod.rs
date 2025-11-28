@@ -1222,12 +1222,30 @@ impl<'src> Iterator for Lexer<'src> {
                     b"const" => TokenKind::Const,
                     b"return" => TokenKind::Return,
                     b"yield" => {
-                        if self.input[self.cursor..].starts_with(b" from") {
-                            TokenKind::Yield
+                        // Detect "yield from" as a single token to match PHP scanner
+                        let mut look = self.cursor;
+                        while let Some(b) = self.input.get(look) {
+                            if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
+                                look += 1;
+                            } else {
+                                break;
+                            }
+                        }
+                        let from_kw = b"from";
+                        let is_from = self.input.get(look..look + from_kw.len())
+                            .map(|s| {
+                                s.iter().zip(from_kw.iter()).all(|(c, k)| c.to_ascii_lowercase() == *k)
+                            })
+                            .unwrap_or(false)
+                            && !self.input.get(look + from_kw.len()).map(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c >= 0x80).unwrap_or(false);
+
+                        if is_from {
+                            self.cursor = look + from_kw.len();
+                            TokenKind::YieldFrom
                         } else {
                             TokenKind::Yield
                         }
-                    },
+                    }
                     b"try" => TokenKind::Try,
                     b"catch" => TokenKind::Catch,
                     b"finally" => TokenKind::Finally,
@@ -1236,6 +1254,7 @@ impl<'src> Iterator for Lexer<'src> {
                     b"elseif" => TokenKind::ElseIf,
                     b"endif" => TokenKind::EndIf,
                     b"else" => TokenKind::Else,
+                    b"insteadof" => TokenKind::Insteadof,
                     b"while" => TokenKind::While,
                     b"endwhile" => TokenKind::EndWhile,
                     b"do" => TokenKind::Do,

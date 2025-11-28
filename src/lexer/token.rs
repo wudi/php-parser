@@ -11,7 +11,7 @@ pub enum TokenKind {
     // Keywords
     Function, Class, Interface, Trait, Extends, Implements, Enum,
     If, Else, ElseIf, EndIf, Return, Echo, Print,
-    While, Do, For, Foreach, EndWhile, EndFor, EndForeach, As, Switch, EndSwitch, Case, Default, Break, Continue, Goto,
+    While, Do, For, Foreach, EndWhile, EndFor, EndForeach, As, Switch, EndSwitch, Case, Default, Break, Continue, Goto, Insteadof,
     Try, Catch, Finally, Throw,
     Public, Protected, Private, Static, Abstract, Final, Readonly,
     Namespace, Use, Global,
@@ -120,4 +120,3 @@ pub enum TokenKind {
     AmpersandFollowedByVar,
     AmpersandNotFollowedByVar,
 }
-

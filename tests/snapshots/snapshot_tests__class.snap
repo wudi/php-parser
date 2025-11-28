@@ -86,22 +86,31 @@ Program {
                 },
                 Const {
                     attributes: [],
-                    name: Token {
-                        kind: Identifier,
-                        span: Span {
-                            start: 86,
-                            end: 90,
+                    modifiers: [],
+                    consts: [
+                        ClassConst {
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 86,
+                                    end: 90,
+                                },
+                            },
+                            value: Integer {
+                                value: [
+                                    49,
+                                ],
+                                span: Span {
+                                    start: 93,
+                                    end: 94,
+                                },
+                            },
+                            span: Span {
+                                start: 86,
+                                end: 94,
+                            },
                         },
-                    },
-                    value: Integer {
-                        value: [
-                            49,
-                        ],
-                        span: Span {
-                            start: 93,
-                            end: 94,
-                        },
-                    },
+                    ],
                     span: Span {
                         start: 80,
                         end: 119,

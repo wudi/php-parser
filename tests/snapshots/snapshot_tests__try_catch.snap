@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 186
 expression: program
 ---
 Program {
@@ -63,21 +64,31 @@ Program {
             catches: [
                 Catch {
                     types: [
-                        Token {
-                            kind: Identifier,
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 67,
+                                        end: 76,
+                                    },
+                                },
+                            ],
                             span: Span {
                                 start: 67,
                                 end: 76,
                             },
                         },
                     ],
-                    var: Token {
-                        kind: Variable,
-                        span: Span {
-                            start: 77,
-                            end: 79,
+                    var: Some(
+                        Token {
+                            kind: Variable,
+                            span: Span {
+                                start: 77,
+                                end: 79,
+                            },
                         },
-                    },
+                    ),
                     body: [
                         Echo {
                             exprs: [
