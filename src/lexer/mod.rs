@@ -23,6 +23,7 @@ enum LexerState {
     VarOffset,
 }
 
+#[derive(Debug, Clone)]
 pub struct Lexer<'src> {
     input: &'src [u8],
     cursor: usize,
@@ -42,6 +43,10 @@ impl<'src> Lexer<'src> {
 
     pub fn set_mode(&mut self, mode: LexerMode) {
         self.mode = mode;
+    }
+
+    pub fn slice(&self, span: Span) -> &'src [u8] {
+        &self.input[span.start..span.end]
     }
 
     fn peek(&self) -> Option<u8> {
@@ -1211,8 +1216,9 @@ impl<'src> Iterator for Lexer<'src> {
                     b"false" => TokenKind::TypeFalse,
                     b"true" => TokenKind::TypeTrue,
                         b"exit" => TokenKind::Exit,
-                    b"die" => TokenKind::Exit,
+                    b"die" => TokenKind::Die,
                     b"function" => TokenKind::Function,
+                    b"fn" => TokenKind::Fn,
                     b"const" => TokenKind::Const,
                     b"return" => TokenKind::Return,
                     b"yield" => {

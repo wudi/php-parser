@@ -185,3 +185,189 @@ fn test_try_catch() {
     
     assert_debug_snapshot!("try_catch", program);
 }
+
+#[test]
+fn test_loops() {
+    let source = b"<?php
+    do {
+        echo $i;
+    } while ($i > 0);
+
+    for ($i = 0; $i < 10; $i++) {
+        echo $i;
+    }
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_control_flow_statements() {
+    let source = b"<?php
+    break;
+    break 2;
+    continue;
+    continue 2;
+    global $a, $b;
+    static $c = 1, $d;
+    unset($a, $b);
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_ternary_and_coalesce() {
+    let source = b"<?php
+    $a = $b ? $c : $d;
+    $a = $b ?: $d;
+    $a = $b ?? $c ?? $d;
+    $a = $b <=> $c;
+    $a = $b ** $c;
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_match_expression() {
+    let source = b"<?php
+    $result = match ($status) {
+        1 => 'pending',
+        2, 3 => 'active',
+        default => 'unknown',
+    };
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_instanceof() {
+    let source = b"<?php
+    $a = $b instanceof A;
+    $a = $b instanceof $c;
+    $a = !$b instanceof A; // !($b instanceof A)
+    $a = $b instanceof A && $c; // ($b instanceof A) && $c
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_casts() {
+    let source = b"<?php
+    $a = (int) $b;
+    $a = (bool) $b;
+    $a = (float) $b;
+    $a = (string) $b;
+    $a = (array) $b;
+    $a = (object) $b;
+    $a = (unset) $b;
+    $a = (int) $b + 1; // ((int) $b) + 1
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_special_constructs() {
+    let code = "
+<?php
+empty($a);
+isset($a, $b);
+eval('echo 1;');
+die();
+die('error');
+exit;
+exit(1);
+";
+    let mut lexer = Lexer::new(code.as_bytes());
+    let bump = Bump::new();
+    let mut parser = Parser::new(lexer, &bump);
+    let program = parser.parse_program();
+    assert_debug_snapshot!("special_constructs", program);
+}
+
+#[test]
+fn test_closures_and_arrow_functions() {
+    let code = "
+<?php
+$a = function($b) { return $b; };
+$c = function($d) use ($e) { return $d + $e; };
+$f = fn($x) => $x * 2;
+$g = fn($y): int => $y + 1;
+";
+    let mut lexer = Lexer::new(code.as_bytes());
+    let bump = Bump::new();
+    let mut parser = Parser::new(lexer, &bump);
+    let program = parser.parse_program();
+    assert_debug_snapshot!("closures_and_arrow_functions", program);
+}
+
+#[test]
+fn test_break_continue() {
+    let source = b"<?php
+    while (true) {
+        break;
+        break 2;
+        continue;
+        continue 2;
+    }
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_global_static_unset() {
+    let source = b"<?php
+    function foo() {
+        global $a, $b;
+        static $c = 1, $d;
+        unset($a, $b);
+    }
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}

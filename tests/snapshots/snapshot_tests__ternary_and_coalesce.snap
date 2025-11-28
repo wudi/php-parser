@@ -1,0 +1,285 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                    span: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                },
+                expr: Ternary {
+                    condition: Variable {
+                        name: Span {
+                            start: 15,
+                            end: 17,
+                        },
+                        span: Span {
+                            start: 15,
+                            end: 17,
+                        },
+                    },
+                    if_true: Some(
+                        Variable {
+                            name: Span {
+                                start: 20,
+                                end: 22,
+                            },
+                            span: Span {
+                                start: 20,
+                                end: 22,
+                            },
+                        },
+                    ),
+                    if_false: Variable {
+                        name: Span {
+                            start: 25,
+                            end: 27,
+                        },
+                        span: Span {
+                            start: 25,
+                            end: 27,
+                        },
+                    },
+                    span: Span {
+                        start: 15,
+                        end: 27,
+                    },
+                },
+                span: Span {
+                    start: 10,
+                    end: 27,
+                },
+            },
+            span: Span {
+                start: 10,
+                end: 35,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 33,
+                        end: 35,
+                    },
+                    span: Span {
+                        start: 33,
+                        end: 35,
+                    },
+                },
+                expr: Ternary {
+                    condition: Variable {
+                        name: Span {
+                            start: 38,
+                            end: 40,
+                        },
+                        span: Span {
+                            start: 38,
+                            end: 40,
+                        },
+                    },
+                    if_true: None,
+                    if_false: Variable {
+                        name: Span {
+                            start: 44,
+                            end: 46,
+                        },
+                        span: Span {
+                            start: 44,
+                            end: 46,
+                        },
+                    },
+                    span: Span {
+                        start: 38,
+                        end: 46,
+                    },
+                },
+                span: Span {
+                    start: 33,
+                    end: 46,
+                },
+            },
+            span: Span {
+                start: 33,
+                end: 54,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 52,
+                        end: 54,
+                    },
+                    span: Span {
+                        start: 52,
+                        end: 54,
+                    },
+                },
+                expr: Binary {
+                    left: Variable {
+                        name: Span {
+                            start: 57,
+                            end: 59,
+                        },
+                        span: Span {
+                            start: 57,
+                            end: 59,
+                        },
+                    },
+                    op: Coalesce,
+                    right: Binary {
+                        left: Variable {
+                            name: Span {
+                                start: 63,
+                                end: 65,
+                            },
+                            span: Span {
+                                start: 63,
+                                end: 65,
+                            },
+                        },
+                        op: Coalesce,
+                        right: Variable {
+                            name: Span {
+                                start: 69,
+                                end: 71,
+                            },
+                            span: Span {
+                                start: 69,
+                                end: 71,
+                            },
+                        },
+                        span: Span {
+                            start: 63,
+                            end: 71,
+                        },
+                    },
+                    span: Span {
+                        start: 57,
+                        end: 71,
+                    },
+                },
+                span: Span {
+                    start: 52,
+                    end: 71,
+                },
+            },
+            span: Span {
+                start: 52,
+                end: 79,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 77,
+                        end: 79,
+                    },
+                    span: Span {
+                        start: 77,
+                        end: 79,
+                    },
+                },
+                expr: Binary {
+                    left: Variable {
+                        name: Span {
+                            start: 82,
+                            end: 84,
+                        },
+                        span: Span {
+                            start: 82,
+                            end: 84,
+                        },
+                    },
+                    op: Spaceship,
+                    right: Variable {
+                        name: Span {
+                            start: 89,
+                            end: 91,
+                        },
+                        span: Span {
+                            start: 89,
+                            end: 91,
+                        },
+                    },
+                    span: Span {
+                        start: 82,
+                        end: 91,
+                    },
+                },
+                span: Span {
+                    start: 77,
+                    end: 91,
+                },
+            },
+            span: Span {
+                start: 77,
+                end: 99,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 97,
+                        end: 99,
+                    },
+                    span: Span {
+                        start: 97,
+                        end: 99,
+                    },
+                },
+                expr: Binary {
+                    left: Variable {
+                        name: Span {
+                            start: 102,
+                            end: 104,
+                        },
+                        span: Span {
+                            start: 102,
+                            end: 104,
+                        },
+                    },
+                    op: Pow,
+                    right: Variable {
+                        name: Span {
+                            start: 108,
+                            end: 110,
+                        },
+                        span: Span {
+                            start: 108,
+                            end: 110,
+                        },
+                    },
+                    span: Span {
+                        start: 102,
+                        end: 110,
+                    },
+                },
+                span: Span {
+                    start: 97,
+                    end: 110,
+                },
+            },
+            span: Span {
+                start: 97,
+                end: 116,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

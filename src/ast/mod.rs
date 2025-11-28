@@ -31,6 +31,18 @@ pub enum Stmt<'ast> {
         body: &'ast [StmtId<'ast>],
         span: Span,
     },
+    DoWhile {
+        body: &'ast [StmtId<'ast>],
+        condition: ExprId<'ast>,
+        span: Span,
+    },
+    For {
+        init: &'ast [ExprId<'ast>],
+        condition: &'ast [ExprId<'ast>], // Can be multiple expressions separated by comma, but usually one. PHP allows empty.
+        loop_expr: &'ast [ExprId<'ast>],
+        body: &'ast [StmtId<'ast>],
+        span: Span,
+    },
     Foreach {
         expr: ExprId<'ast>,
         key_var: Option<ExprId<'ast>>,
@@ -50,7 +62,35 @@ pub enum Stmt<'ast> {
     },
     Class {
         name: &'ast Token,
+        extends: Option<&'ast Token>,
+        implements: &'ast [Token],
         members: &'ast [ClassMember<'ast>],
+        span: Span,
+    },
+    Interface {
+        name: &'ast Token,
+        extends: &'ast [Token],
+        members: &'ast [ClassMember<'ast>],
+        span: Span,
+    },
+    Trait {
+        name: &'ast Token,
+        members: &'ast [ClassMember<'ast>],
+        span: Span,
+    },
+    Enum {
+        name: &'ast Token,
+        members: &'ast [ClassMember<'ast>],
+        span: Span,
+    },
+    Namespace {
+        name: Option<&'ast Token>,
+        body: Option<&'ast [StmtId<'ast>]>,
+        span: Span,
+    },
+    Use {
+        uses: &'ast [UseItem<'ast>],
+        kind: UseKind,
         span: Span,
     },
     Switch {
@@ -68,6 +108,26 @@ pub enum Stmt<'ast> {
         expr: ExprId<'ast>,
         span: Span,
     },
+    Break {
+        level: Option<ExprId<'ast>>,
+        span: Span,
+    },
+    Continue {
+        level: Option<ExprId<'ast>>,
+        span: Span,
+    },
+    Global {
+        vars: &'ast [ExprId<'ast>],
+        span: Span,
+    },
+    Static {
+        vars: &'ast [StaticVar<'ast>],
+        span: Span,
+    },
+    Unset {
+        vars: &'ast [ExprId<'ast>],
+        span: Span,
+    },
     Expression {
         expr: ExprId<'ast>,
         span: Span,
@@ -76,6 +136,13 @@ pub enum Stmt<'ast> {
         span: Span,
     },
     Noop,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StaticVar<'ast> {
+    pub var: ExprId<'ast>,
+    pub default: Option<ExprId<'ast>>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -154,13 +221,106 @@ pub enum Expr<'ast> {
         value: &'ast [u8], 
         span: Span,
     },
+    Float {
+        value: &'ast [u8],
+        span: Span,
+    },
+    Boolean {
+        value: bool,
+        span: Span,
+    },
+    Null {
+        span: Span,
+    },
     String {
         value: &'ast [u8],
+        span: Span,
+    },
+    PostInc {
+        var: ExprId<'ast>,
+        span: Span,
+    },
+    PostDec {
+        var: ExprId<'ast>,
+        span: Span,
+    },
+    Ternary {
+        condition: ExprId<'ast>,
+        if_true: Option<ExprId<'ast>>,
+        if_false: ExprId<'ast>,
+        span: Span,
+    },
+    Match {
+        condition: ExprId<'ast>,
+        arms: &'ast [MatchArm<'ast>],
+        span: Span,
+    },
+    Cast {
+        kind: CastKind,
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    Empty {
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    Isset {
+        vars: &'ast [ExprId<'ast>],
+        span: Span,
+    },
+    Eval {
+        expr: ExprId<'ast>,
+        span: Span,
+    },
+    Die {
+        expr: Option<ExprId<'ast>>,
+        span: Span,
+    },
+    Exit {
+        expr: Option<ExprId<'ast>>,
+        span: Span,
+    },
+    Closure {
+        params: &'ast [Param<'ast>],
+        uses: &'ast [ClosureUse<'ast>],
+        return_type: Option<&'ast Token>,
+        body: &'ast [StmtId<'ast>],
+        span: Span,
+    },
+    ArrowFunction {
+        params: &'ast [Param<'ast>],
+        return_type: Option<&'ast Token>,
+        expr: ExprId<'ast>,
         span: Span,
     },
     Error {
         span: Span,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClosureUse<'ast> {
+    pub var: &'ast Token,
+    pub by_ref: bool,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastKind {
+    Int,
+    Bool,
+    Float,
+    String,
+    Array,
+    Object,
+    Unset,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MatchArm<'ast> {
+    pub conditions: Option<&'ast [ExprId<'ast>]>, // None for default
+    pub body: ExprId<'ast>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +329,8 @@ pub enum UnaryOp {
     Minus,
     Not,
     BitNot,
+    PreInc,
+    PreDec,
 }
 
 impl<'ast> Expr<'ast> {
@@ -187,7 +349,22 @@ impl<'ast> Expr<'ast> {
             Expr::New { span, .. } => *span,
             Expr::Variable { span, .. } => *span,
             Expr::Integer { span, .. } => *span,
+            Expr::Float { span, .. } => *span,
+            Expr::Boolean { span, .. } => *span,
+            Expr::Null { span, .. } => *span,
             Expr::String { span, .. } => *span,
+            Expr::PostInc { span, .. } => *span,
+            Expr::PostDec { span, .. } => *span,
+            Expr::Ternary { span, .. } => *span,
+            Expr::Match { span, .. } => *span,
+            Expr::Cast { span, .. } => *span,
+            Expr::Empty { span, .. } => *span,
+            Expr::Isset { span, .. } => *span,
+            Expr::Eval { span, .. } => *span,
+            Expr::Die { span, .. } => *span,
+            Expr::Exit { span, .. } => *span,
+            Expr::Closure { span, .. } => *span,
+            Expr::ArrowFunction { span, .. } => *span,
             Expr::Error { span } => *span,
         }
     }
@@ -200,13 +377,25 @@ impl<'ast> Stmt<'ast> {
             Stmt::Return { span, .. } => *span,
             Stmt::If { span, .. } => *span,
             Stmt::While { span, .. } => *span,
+            Stmt::DoWhile { span, .. } => *span,
+            Stmt::For { span, .. } => *span,
             Stmt::Foreach { span, .. } => *span,
             Stmt::Block { span, .. } => *span,
             Stmt::Function { span, .. } => *span,
             Stmt::Class { span, .. } => *span,
+            Stmt::Interface { span, .. } => *span,
+            Stmt::Trait { span, .. } => *span,
+            Stmt::Enum { span, .. } => *span,
+            Stmt::Namespace { span, .. } => *span,
+            Stmt::Use { span, .. } => *span,
             Stmt::Switch { span, .. } => *span,
             Stmt::Try { span, .. } => *span,
             Stmt::Throw { span, .. } => *span,
+            Stmt::Break { span, .. } => *span,
+            Stmt::Continue { span, .. } => *span,
+            Stmt::Global { span, .. } => *span,
+            Stmt::Static { span, .. } => *span,
+            Stmt::Unset { span, .. } => *span,
             Stmt::Expression { span, .. } => *span,
             Stmt::Error { span } => *span,
             Stmt::Noop => Span::default(),
@@ -237,6 +426,15 @@ pub enum BinaryOp {
     BitAnd,
     BitOr,
     BitXor,
+    Coalesce,
+    Spaceship,
+    Pow,
+    ShiftLeft,
+    ShiftRight,
+    LogicalAnd,
+    LogicalOr,
+    LogicalXor,
+    Instanceof,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -249,6 +447,8 @@ pub struct Arg<'ast> {
 pub struct ArrayItem<'ast> {
     pub key: Option<ExprId<'ast>>,
     pub value: ExprId<'ast>,
+    pub by_ref: bool,
+    pub unpack: bool,
     pub span: Span,
 }
 
@@ -256,6 +456,7 @@ pub struct ArrayItem<'ast> {
 pub enum ClassMember<'ast> {
     Property {
         modifiers: &'ast [Token],
+        ty: Option<&'ast Token>,
         name: &'ast Token,
         default: Option<ExprId<'ast>>,
         span: Span,
@@ -271,7 +472,16 @@ pub enum ClassMember<'ast> {
         name: &'ast Token,
         value: ExprId<'ast>,
         span: Span,
-    }
+    },
+    TraitUse {
+        traits: &'ast [Token],
+        span: Span,
+    },
+    Case {
+        name: &'ast Token,
+        value: Option<ExprId<'ast>>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -287,5 +497,19 @@ pub struct Catch<'ast> {
     pub var: &'ast Token,
     pub body: &'ast [StmtId<'ast>],
     pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UseItem<'ast> {
+    pub name: &'ast Token,
+    pub alias: Option<&'ast Token>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UseKind {
+    Normal,
+    Function,
+    Const,
 }
 

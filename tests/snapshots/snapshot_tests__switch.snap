@@ -50,13 +50,8 @@ Program {
                                 end: 81,
                             },
                         },
-                        Expression {
-                            expr: Error {
-                                span: Span {
-                                    start: 76,
-                                    end: 81,
-                                },
-                            },
+                        Break {
+                            level: None,
                             span: Span {
                                 start: 76,
                                 end: 95,
@@ -102,13 +97,8 @@ Program {
                                 end: 140,
                             },
                         },
-                        Expression {
-                            expr: Error {
-                                span: Span {
-                                    start: 135,
-                                    end: 140,
-                                },
-                            },
+                        Break {
+                            level: None,
                             span: Span {
                                 start: 135,
                                 end: 157,

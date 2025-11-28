@@ -17,10 +17,10 @@ pub enum TokenKind {
     Namespace, Use, Global,
     New, Clone, InstanceOf,
     Array, Const,
-    Include, IncludeOnce, Require, RequireOnce, Eval, Exit,
+    Include, IncludeOnce, Require, RequireOnce, Eval, Exit, Die,
     Empty, Isset, Unset, List,
     Yield, YieldFrom,
-    Declare, Match,
+    Declare, Match, Fn,
     HaltCompiler, // __halt_compiler
     Attribute, // #[
 

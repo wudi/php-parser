@@ -1,0 +1,164 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        DoWhile {
+            body: [
+                Echo {
+                    exprs: [
+                        Variable {
+                            name: Span {
+                                start: 28,
+                                end: 30,
+                            },
+                            span: Span {
+                                start: 28,
+                                end: 30,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 23,
+                        end: 37,
+                    },
+                },
+            ],
+            condition: Binary {
+                left: Variable {
+                    name: Span {
+                        start: 45,
+                        end: 47,
+                    },
+                    span: Span {
+                        start: 45,
+                        end: 47,
+                    },
+                },
+                op: Gt,
+                right: Integer {
+                    value: [
+                        48,
+                    ],
+                    span: Span {
+                        start: 50,
+                        end: 51,
+                    },
+                },
+                span: Span {
+                    start: 45,
+                    end: 51,
+                },
+            },
+            span: Span {
+                start: 10,
+                end: 62,
+            },
+        },
+        For {
+            init: [
+                Assign {
+                    var: Variable {
+                        name: Span {
+                            start: 64,
+                            end: 66,
+                        },
+                        span: Span {
+                            start: 64,
+                            end: 66,
+                        },
+                    },
+                    expr: Integer {
+                        value: [
+                            48,
+                        ],
+                        span: Span {
+                            start: 69,
+                            end: 70,
+                        },
+                    },
+                    span: Span {
+                        start: 64,
+                        end: 70,
+                    },
+                },
+            ],
+            condition: [
+                Binary {
+                    left: Variable {
+                        name: Span {
+                            start: 72,
+                            end: 74,
+                        },
+                        span: Span {
+                            start: 72,
+                            end: 74,
+                        },
+                    },
+                    op: Lt,
+                    right: Integer {
+                        value: [
+                            49,
+                            48,
+                        ],
+                        span: Span {
+                            start: 77,
+                            end: 79,
+                        },
+                    },
+                    span: Span {
+                        start: 72,
+                        end: 79,
+                    },
+                },
+            ],
+            loop_expr: [
+                PostInc {
+                    var: Variable {
+                        name: Span {
+                            start: 81,
+                            end: 83,
+                        },
+                        span: Span {
+                            start: 81,
+                            end: 83,
+                        },
+                    },
+                    span: Span {
+                        start: 81,
+                        end: 85,
+                    },
+                },
+            ],
+            body: [
+                Echo {
+                    exprs: [
+                        Variable {
+                            name: Span {
+                                start: 102,
+                                end: 104,
+                            },
+                            span: Span {
+                                start: 102,
+                                end: 104,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 97,
+                        end: 111,
+                    },
+                },
+            ],
+            span: Span {
+                start: 59,
+                end: 116,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

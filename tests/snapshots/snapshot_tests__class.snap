@@ -12,6 +12,8 @@ Program {
                     end: 20,
                 },
             },
+            extends: None,
+            implements: [],
             members: [
                 Property {
                     modifiers: [
@@ -23,6 +25,7 @@ Program {
                             },
                         },
                     ],
+                    ty: None,
                     name: Token {
                         kind: Variable,
                         span: Span {
@@ -46,6 +49,7 @@ Program {
                             },
                         },
                     ],
+                    ty: None,
                     name: Token {
                         kind: Variable,
                         span: Span {

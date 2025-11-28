@@ -1,0 +1,173 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Break {
+            level: None,
+            span: Span {
+                start: 10,
+                end: 26,
+            },
+        },
+        Break {
+            level: Some(
+                Integer {
+                    value: [
+                        50,
+                    ],
+                    span: Span {
+                        start: 27,
+                        end: 28,
+                    },
+                },
+            ),
+            span: Span {
+                start: 21,
+                end: 42,
+            },
+        },
+        Continue {
+            level: None,
+            span: Span {
+                start: 34,
+                end: 56,
+            },
+        },
+        Continue {
+            level: Some(
+                Integer {
+                    value: [
+                        50,
+                    ],
+                    span: Span {
+                        start: 57,
+                        end: 58,
+                    },
+                },
+            ),
+            span: Span {
+                start: 48,
+                end: 70,
+            },
+        },
+        Global {
+            vars: [
+                Variable {
+                    name: Span {
+                        start: 71,
+                        end: 73,
+                    },
+                    span: Span {
+                        start: 71,
+                        end: 73,
+                    },
+                },
+                Variable {
+                    name: Span {
+                        start: 75,
+                        end: 77,
+                    },
+                    span: Span {
+                        start: 75,
+                        end: 77,
+                    },
+                },
+            ],
+            span: Span {
+                start: 64,
+                end: 89,
+            },
+        },
+        Static {
+            vars: [
+                StaticVar {
+                    var: Assign {
+                        var: Variable {
+                            name: Span {
+                                start: 90,
+                                end: 92,
+                            },
+                            span: Span {
+                                start: 90,
+                                end: 92,
+                            },
+                        },
+                        expr: Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 95,
+                                end: 96,
+                            },
+                        },
+                        span: Span {
+                            start: 90,
+                            end: 96,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 90,
+                        end: 96,
+                    },
+                },
+                StaticVar {
+                    var: Variable {
+                        name: Span {
+                            start: 98,
+                            end: 100,
+                        },
+                        span: Span {
+                            start: 98,
+                            end: 100,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 98,
+                        end: 100,
+                    },
+                },
+            ],
+            span: Span {
+                start: 83,
+                end: 111,
+            },
+        },
+        Unset {
+            vars: [
+                Variable {
+                    name: Span {
+                        start: 112,
+                        end: 114,
+                    },
+                    span: Span {
+                        start: 112,
+                        end: 114,
+                    },
+                },
+                Variable {
+                    name: Span {
+                        start: 116,
+                        end: 118,
+                    },
+                    span: Span {
+                        start: 116,
+                        end: 118,
+                    },
+                },
+            ],
+            span: Span {
+                start: 106,
+                end: 125,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

@@ -1,0 +1,247 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Interface {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 20,
+                    end: 21,
+                },
+            },
+            extends: [],
+            members: [
+                Method {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 32,
+                                end: 38,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 48,
+                            end: 51,
+                        },
+                    },
+                    params: [],
+                    body: [],
+                    span: Span {
+                        start: 32,
+                        end: 60,
+                    },
+                },
+            ],
+            span: Span {
+                start: 10,
+                end: 70,
+            },
+        },
+        Trait {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 71,
+                    end: 72,
+                },
+            },
+            members: [
+                Method {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 83,
+                                end: 89,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 99,
+                            end: 102,
+                        },
+                    },
+                    params: [],
+                    body: [],
+                    span: Span {
+                        start: 83,
+                        end: 113,
+                    },
+                },
+            ],
+            span: Span {
+                start: 65,
+                end: 123,
+            },
+        },
+        Class {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 124,
+                    end: 125,
+                },
+            },
+            extends: None,
+            implements: [
+                Token {
+                    kind: Identifier,
+                    span: Span {
+                        start: 137,
+                        end: 138,
+                    },
+                },
+            ],
+            members: [
+                TraitUse {
+                    traits: [
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 153,
+                                end: 154,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 149,
+                        end: 170,
+                    },
+                },
+                Property {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 164,
+                                end: 170,
+                            },
+                        },
+                        Token {
+                            kind: Readonly,
+                            span: Span {
+                                start: 171,
+                                end: 179,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Token {
+                            kind: TypeInt,
+                            span: Span {
+                                start: 180,
+                                end: 183,
+                            },
+                        },
+                    ),
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 184,
+                            end: 186,
+                        },
+                    },
+                    default: None,
+                    span: Span {
+                        start: 164,
+                        end: 202,
+                    },
+                },
+                Method {
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 196,
+                                end: 202,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 212,
+                            end: 215,
+                        },
+                    },
+                    params: [],
+                    body: [],
+                    span: Span {
+                        start: 196,
+                        end: 226,
+                    },
+                },
+            ],
+            span: Span {
+                start: 118,
+                end: 235,
+            },
+        },
+        Enum {
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 236,
+                    end: 237,
+                },
+            },
+            members: [
+                Case {
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 253,
+                            end: 254,
+                        },
+                    },
+                    value: None,
+                    span: Span {
+                        start: 248,
+                        end: 268,
+                    },
+                },
+                Case {
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 269,
+                            end: 270,
+                        },
+                    },
+                    value: Some(
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 273,
+                                end: 274,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 264,
+                        end: 281,
+                    },
+                },
+            ],
+            span: Span {
+                start: 231,
+                end: 286,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}
