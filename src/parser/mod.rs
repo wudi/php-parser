@@ -1373,11 +1373,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     | TokenKind::TypeNull
                     | TokenKind::TypeFalse
                     | TokenKind::TypeTrue
-                    | TokenKind::TypeMixed
-                    | TokenKind::TypeIterable
-                    | TokenKind::TypeObject
-                    | TokenKind::TypeCallable
-            ) {
+                            | TokenKind::TypeMixed
+                            | TokenKind::TypeIterable
+                            | TokenKind::TypeObject
+                            | TokenKind::TypeCallable
+                            | TokenKind::As
+                            | TokenKind::Empty
+                            | TokenKind::Isset
+                    ) {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
                 token
@@ -1473,12 +1476,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     let readonly_count = param.modifiers.iter().filter(|m| m.kind == TokenKind::Readonly).count();
                     let by_ref = param.by_ref;
 
-                    match ctx {
-                        ClassMemberCtx::Interface | ClassMemberCtx::Trait => {
-                            self.errors.push(ParseError { span: param.span, message: "property promotion not allowed in interfaces/traits" });
-                            continue;
-                        }
-                        _ => {}
+                    if matches!(ctx, ClassMemberCtx::Interface) {
+                        self.errors.push(ParseError { span: param.span, message: "property promotion not allowed in interfaces/traits" });
+                        continue;
                     }
 
                     if vis_count > 1 {
@@ -2308,8 +2308,68 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             let mut unpack = false;
             let start = self.current_token.span.start;
 
-            // Named argument: Identifier :
-            if self.current_token.kind == TokenKind::Identifier && self.next_token.kind == TokenKind::Colon {
+            // Named argument: identifier-like token followed by :
+            if matches!(
+                self.current_token.kind,
+                TokenKind::Identifier
+                    | TokenKind::Class
+                    | TokenKind::Trait
+                    | TokenKind::Interface
+                    | TokenKind::Enum
+                    | TokenKind::Static
+                    | TokenKind::New
+                    | TokenKind::Match
+                    | TokenKind::If
+                    | TokenKind::Else
+                    | TokenKind::ElseIf
+                    | TokenKind::For
+                    | TokenKind::Foreach
+                    | TokenKind::While
+                    | TokenKind::Do
+                    | TokenKind::Switch
+                    | TokenKind::Case
+                    | TokenKind::Default
+                    | TokenKind::Return
+                    | TokenKind::Throw
+                    | TokenKind::Break
+                    | TokenKind::Continue
+                    | TokenKind::Try
+                    | TokenKind::Catch
+                    | TokenKind::Finally
+                    | TokenKind::Use
+                    | TokenKind::Global
+                    | TokenKind::Abstract
+                    | TokenKind::Final
+                    | TokenKind::Public
+                    | TokenKind::Protected
+                    | TokenKind::Private
+                    | TokenKind::Const
+                    | TokenKind::Include
+                    | TokenKind::IncludeOnce
+                    | TokenKind::Require
+                    | TokenKind::RequireOnce
+                    | TokenKind::Namespace
+                    | TokenKind::Implements
+                    | TokenKind::Extends
+                    | TokenKind::List
+                    | TokenKind::Array
+                    | TokenKind::Isset
+                    | TokenKind::Empty
+                    | TokenKind::TypeInt
+                    | TokenKind::TypeFloat
+                    | TokenKind::TypeBool
+                    | TokenKind::TypeString
+                    | TokenKind::TypeVoid
+                    | TokenKind::TypeNever
+                    | TokenKind::TypeNull
+                    | TokenKind::TypeTrue
+                    | TokenKind::TypeFalse
+                    | TokenKind::TypeMixed
+                    | TokenKind::TypeIterable
+                    | TokenKind::TypeObject
+                    | TokenKind::TypeCallable
+                    | TokenKind::As
+            ) && self.next_token.kind == TokenKind::Colon {
                 name = Some(self.arena.alloc(self.current_token.clone()));
                 self.bump(); // Identifier
                 self.bump(); // Colon
@@ -2677,7 +2737,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         } else {
                             self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
                         }
-                    } else if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Variable) {
+                    } else if matches!(self.current_token.kind, 
+                        TokenKind::Identifier |
+                        TokenKind::Variable |
+                        TokenKind::As |
+                        TokenKind::Empty |
+                        TokenKind::Isset
+                    ) {
                         let token = self.current_token;
                         self.bump();
                         self.arena.alloc(Expr::Variable {
@@ -2796,6 +2862,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         TokenKind::Enum | 
                         TokenKind::List | 
                         TokenKind::Array | 
+                        TokenKind::As |
+                        TokenKind::Empty |
+                        TokenKind::Isset |
                         TokenKind::TypeInt |
                         TokenKind::TypeFloat |
                         TokenKind::TypeBool |
@@ -2946,6 +3015,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             | TokenKind::Enum
                             | TokenKind::List
                             | TokenKind::Array
+                            | TokenKind::As
+                            | TokenKind::Empty
+                            | TokenKind::Isset
                     ) {
                         let token = self.current_token;
                         self.bump();
@@ -3397,7 +3469,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     from: false,
             span,
         })
-    }
+   }
+
+            TokenKind::Throw => {
+                // Throw expression (PHP 8+): reuse error node to avoid a new variant
+                let start = token.span.start;
+                self.bump();
+                let expr = self.parse_expr(0);
+                let span = Span::new(start, expr.span().end);
+                self.arena.alloc(Expr::Error { span })
+            }
 
             TokenKind::Function => {
                 let start = if let Some(first) = attributes.first() {
