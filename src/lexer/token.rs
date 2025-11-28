@@ -9,7 +9,7 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum TokenKind {
     // Keywords
-    Function, Class, Interface, Trait, Extends, Implements,
+    Function, Class, Interface, Trait, Extends, Implements, Enum,
     If, Else, ElseIf, Return, Echo, Print,
     While, Do, For, Foreach, As, Switch, Case, Default, Break, Continue, Goto,
     Try, Catch, Finally, Throw,
@@ -22,7 +22,8 @@ pub enum TokenKind {
     Yield, YieldFrom,
     Declare, Match,
     HaltCompiler, // __halt_compiler
-    
+    Attribute, // #[
+
     // Magic Constants
     Line, File, Dir, ClassC, TraitC, MethodC, FuncC, NsC,
 
@@ -37,6 +38,7 @@ pub enum TokenKind {
     LNumber, 
     DNumber, 
     StringLiteral, 
+    NumString, // For array offset in string
     Variable,
     InlineHtml,
     EncapsedAndWhitespace,
@@ -80,6 +82,8 @@ pub enum TokenKind {
     Spaceship, // <=>
     
     Ampersand, // &
+    AmpersandFollowedByVarOrVararg,
+    AmpersandNotFollowedByVarOrVararg,
     Pipe, // |
     Caret, // ^
     BitNot, // ~
@@ -88,8 +92,12 @@ pub enum TokenKind {
     
     AmpersandAmpersand, // &&
     PipePipe, // ||
+    LogicalAnd, // and
+    LogicalOr, // or
+    LogicalXor, // xor
     Question, // ?
     Coalesce, // ??
+    At, // @
     
     SemiColon,
     Colon,
@@ -109,5 +117,7 @@ pub enum TokenKind {
     
     // Error token for lexing failures
     Error,
+    AmpersandFollowedByVar,
+    AmpersandNotFollowedByVar,
 }
 
