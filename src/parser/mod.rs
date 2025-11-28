@@ -669,6 +669,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     break;
                 }
             }
+            for (i, n) in implements.iter().enumerate() {
+                for prev in implements.iter().take(i) {
+                    if self.name_eq(prev, n) {
+                        self.errors.push(ParseError { span: n.span, message: "duplicate interface in implements list" });
+                        break;
+                    }
+                }
+            }
         }
         
         if self.current_token.kind == TokenKind::OpenBrace {
@@ -739,6 +747,17 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     self.bump();
                 } else {
                     break;
+                }
+            }
+            for (i, n) in extends.iter().enumerate() {
+                if self.name_eq_token(n, name) {
+                    self.errors.push(ParseError { span: n.span, message: "interface cannot extend itself" });
+                }
+                for prev in extends.iter().take(i) {
+                    if self.name_eq(prev, n) {
+                        self.errors.push(ParseError { span: n.span, message: "duplicate interface in extends list" });
+                        break;
+                    }
                 }
             }
         }
@@ -1032,6 +1051,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     self.bump();
                 } else {
                     break;
+                }
+            }
+            for (i, n) in implements.iter().enumerate() {
+                for prev in implements.iter().take(i) {
+                    if self.name_eq(prev, n) {
+                        self.errors.push(ParseError { span: n.span, message: "duplicate interface in implements list" });
+                        break;
+                    }
                 }
             }
         }
@@ -2855,6 +2882,22 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     fn token_eq_ident(&self, token: &Token, ident: &[u8]) -> bool {
         let slice = self.lexer.slice(token.span);
         slice.eq_ignore_ascii_case(ident)
+    }
+
+    fn name_eq(&self, a: &Name<'ast>, b: &Name<'ast>) -> bool {
+        if a.parts.len() != b.parts.len() {
+            return false;
+        }
+        a.parts.iter().zip(b.parts.iter()).all(|(x, y)| {
+            self.lexer.slice(x.span).eq_ignore_ascii_case(self.lexer.slice(y.span))
+        })
+    }
+
+    fn name_eq_token(&self, name: &Name<'ast>, tok: &Token) -> bool {
+        if name.parts.len() != 1 {
+            return false;
+        }
+        self.lexer.slice(name.parts[0].span).eq_ignore_ascii_case(self.lexer.slice(tok.span))
     }
 
     fn sync_to_statement_end(&mut self) {
