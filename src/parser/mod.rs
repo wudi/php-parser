@@ -90,81 +90,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
         
         loop {
-            if matches!(
-                self.current_token.kind,
-                TokenKind::Identifier
-                    | TokenKind::New
-                    | TokenKind::Static
-                    | TokenKind::Class
-                    | TokenKind::Trait
-                    | TokenKind::Interface
-                    | TokenKind::Enum
-                    | TokenKind::Namespace
-                    | TokenKind::TypeInt
-                    | TokenKind::TypeFloat
-                    | TokenKind::TypeBool
-                    | TokenKind::TypeString
-                    | TokenKind::TypeVoid
-                    | TokenKind::TypeNever
-                    | TokenKind::TypeNull
-                    | TokenKind::TypeFalse
-                    | TokenKind::TypeTrue
-                    | TokenKind::TypeMixed
-                    | TokenKind::TypeIterable
-                    | TokenKind::TypeObject
-                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::As
-                    | TokenKind::Empty
-                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::Default
-                    | TokenKind::Switch
-                    | TokenKind::Case
-                    | TokenKind::For
-                    | TokenKind::Foreach
-                    | TokenKind::While
-                    | TokenKind::Do
-                    | TokenKind::If
-                    | TokenKind::Else
-                    | TokenKind::ElseIf
-                    | TokenKind::Try
-                    | TokenKind::Catch
-                    | TokenKind::Finally
-                    | TokenKind::Throw
-                    | TokenKind::Return
-                    | TokenKind::Break
-                    | TokenKind::Continue
-                    | TokenKind::Goto
-                    | TokenKind::Echo
-                    | TokenKind::Print
-                    | TokenKind::List
-                    | TokenKind::Clone
-                    | TokenKind::Include
-                    | TokenKind::IncludeOnce
-                    | TokenKind::Require
-                    | TokenKind::RequireOnce
-                    | TokenKind::Global
-                    | TokenKind::Unset
-                    | TokenKind::Exit
-                    | TokenKind::Die
-                    | TokenKind::Eval
-                    | TokenKind::Yield
-                    | TokenKind::YieldFrom
-                    | TokenKind::Declare
-                    | TokenKind::Match
-                    | TokenKind::Fn
-                    | TokenKind::Const
-                    | TokenKind::Use
-                    | TokenKind::Public
-                    | TokenKind::Protected
-                    | TokenKind::Private
-                    | TokenKind::Abstract
-                    | TokenKind::Final
-                    | TokenKind::Readonly
-                    | TokenKind::Array
-                    | TokenKind::LogicalAnd
-                    | TokenKind::LogicalOr | TokenKind::Insteadof
-                    | TokenKind::LogicalXor
-            ) {
+            if self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved() {
                 parts.push(self.current_token);
                 self.bump();
             } else {
@@ -1303,7 +1229,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.validate_modifiers(&modifiers, ModifierContext::Other);
         if self.current_token.kind == TokenKind::Case {
              self.bump();
-             let name = if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Default | TokenKind::Class | TokenKind::Function | TokenKind::Trait | TokenKind::Interface | TokenKind::Enum | TokenKind::TypeInt | TokenKind::TypeFloat | TokenKind::TypeBool | TokenKind::TypeString | TokenKind::TypeVoid | TokenKind::TypeNever | TokenKind::TypeNull | TokenKind::TypeFalse | TokenKind::TypeTrue | TokenKind::TypeMixed | TokenKind::TypeIterable | TokenKind::TypeObject | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor | TokenKind::As | TokenKind::Empty | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor | TokenKind::Switch | TokenKind::Case | TokenKind::For | TokenKind::Foreach | TokenKind::While | TokenKind::Do | TokenKind::Try | TokenKind::Catch | TokenKind::Finally | TokenKind::Throw | TokenKind::If | TokenKind::Else | TokenKind::ElseIf | TokenKind::EndIf | TokenKind::Return | TokenKind::Echo | TokenKind::Print | TokenKind::Global | TokenKind::Static | TokenKind::Abstract | TokenKind::Final | TokenKind::Readonly | TokenKind::Public | TokenKind::Protected | TokenKind::Private | TokenKind::Const | TokenKind::List | TokenKind::Array | TokenKind::Exit | TokenKind::Die | TokenKind::Clone | TokenKind::New | TokenKind::InstanceOf | TokenKind::Yield | TokenKind::YieldFrom | TokenKind::Declare | TokenKind::EndDeclare | TokenKind::Match | TokenKind::Fn | TokenKind::HaltCompiler | TokenKind::Include | TokenKind::IncludeOnce | TokenKind::Require | TokenKind::RequireOnce | TokenKind::Eval | TokenKind::Unset | TokenKind::Use | TokenKind::Namespace | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor) {
+             let name = if self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved() {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
                 token
@@ -1425,81 +1351,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::Function {
             self.bump();
-            let name = if matches!(
-                self.current_token.kind,
-                TokenKind::Identifier
-                    | TokenKind::New
-                    | TokenKind::Static
-                    | TokenKind::Class
-                    | TokenKind::Trait
-                    | TokenKind::Interface
-                    | TokenKind::Enum
-                    | TokenKind::Namespace
-                    | TokenKind::TypeInt
-                    | TokenKind::TypeFloat
-                    | TokenKind::TypeBool
-                    | TokenKind::TypeString
-                    | TokenKind::TypeVoid
-                    | TokenKind::TypeNever
-                    | TokenKind::TypeNull
-                    | TokenKind::TypeFalse
-                    | TokenKind::TypeTrue
-                    | TokenKind::TypeMixed
-                    | TokenKind::TypeIterable
-                    | TokenKind::TypeObject
-                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::As
-                    | TokenKind::Empty
-                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::Default
-                    | TokenKind::Switch
-                    | TokenKind::Case
-                    | TokenKind::For
-                    | TokenKind::Foreach
-                    | TokenKind::While
-                    | TokenKind::Do
-                    | TokenKind::If
-                    | TokenKind::Else
-                    | TokenKind::ElseIf
-                    | TokenKind::Try
-                    | TokenKind::Catch
-                    | TokenKind::Finally
-                    | TokenKind::Throw
-                    | TokenKind::Return
-                    | TokenKind::Break
-                    | TokenKind::Continue
-                    | TokenKind::Goto
-                    | TokenKind::Echo
-                    | TokenKind::Print
-                    | TokenKind::List
-                    | TokenKind::Clone
-                    | TokenKind::Include
-                    | TokenKind::IncludeOnce
-                    | TokenKind::Require
-                    | TokenKind::RequireOnce
-                    | TokenKind::Global
-                    | TokenKind::Unset
-                    | TokenKind::Exit
-                    | TokenKind::Die
-                    | TokenKind::Eval
-                    | TokenKind::Yield
-                    | TokenKind::YieldFrom
-                    | TokenKind::Declare
-                    | TokenKind::Match
-                    | TokenKind::Fn
-                    | TokenKind::Const
-                    | TokenKind::Use
-                    | TokenKind::Public
-                    | TokenKind::Protected
-                    | TokenKind::Private
-                    | TokenKind::Abstract
-                    | TokenKind::Final
-                    | TokenKind::Readonly
-                    | TokenKind::Array
-                    | TokenKind::LogicalAnd
-                    | TokenKind::LogicalOr | TokenKind::Insteadof
-                    | TokenKind::LogicalXor
-                    ) {
+            let name = if self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved() {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
                 token
@@ -1641,7 +1493,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             let mut first_name = None;
 
             if let Some(t) = ty {
-                if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Default | TokenKind::Switch | TokenKind::Case | TokenKind::For | TokenKind::Foreach | TokenKind::While | TokenKind::Do | TokenKind::If | TokenKind::Else | TokenKind::ElseIf | TokenKind::Try | TokenKind::Catch | TokenKind::Finally | TokenKind::Throw | TokenKind::Return | TokenKind::Break | TokenKind::Continue | TokenKind::Goto | TokenKind::Echo | TokenKind::Print | TokenKind::List | TokenKind::Clone | TokenKind::Include | TokenKind::IncludeOnce | TokenKind::Require | TokenKind::RequireOnce | TokenKind::Global | TokenKind::Unset | TokenKind::Exit | TokenKind::Die | TokenKind::Eval | TokenKind::Yield | TokenKind::YieldFrom | TokenKind::Declare | TokenKind::Match | TokenKind::Fn | TokenKind::Const | TokenKind::Use | TokenKind::Public | TokenKind::Protected | TokenKind::Private | TokenKind::Abstract | TokenKind::Final | TokenKind::Readonly | TokenKind::Array | TokenKind::LogicalAnd | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalXor) {
+                if self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved() {
                     const_type = Some(self.arena.alloc(t) as &'ast Type<'ast>);
                 } else {
                     match t {
@@ -2465,67 +2317,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             let start = self.current_token.span.start;
 
             // Named argument: identifier-like token followed by :
-            if matches!(
-                self.current_token.kind,
-                TokenKind::Identifier
-                    | TokenKind::Class
-                    | TokenKind::Trait
-                    | TokenKind::Interface
-                    | TokenKind::Enum
-                    | TokenKind::Static
-                    | TokenKind::New
-                    | TokenKind::Match
-                    | TokenKind::If
-                    | TokenKind::Else
-                    | TokenKind::ElseIf
-                    | TokenKind::For
-                    | TokenKind::Foreach
-                    | TokenKind::While
-                    | TokenKind::Do
-                    | TokenKind::Switch
-                    | TokenKind::Case
-                    | TokenKind::Default
-                    | TokenKind::Return
-                    | TokenKind::Throw
-                    | TokenKind::Break
-                    | TokenKind::Continue
-                    | TokenKind::Try
-                    | TokenKind::Catch
-                    | TokenKind::Finally
-                    | TokenKind::Use
-                    | TokenKind::Global
-                    | TokenKind::Abstract
-                    | TokenKind::Final
-                    | TokenKind::Public
-                    | TokenKind::Protected
-                    | TokenKind::Private
-                    | TokenKind::Const
-                    | TokenKind::Include
-                    | TokenKind::IncludeOnce
-                    | TokenKind::Require
-                    | TokenKind::RequireOnce
-                    | TokenKind::Namespace
-                    | TokenKind::Implements
-                    | TokenKind::Extends
-                    | TokenKind::List
-                    | TokenKind::Array
-                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::Empty
-                    | TokenKind::TypeInt
-                    | TokenKind::TypeFloat
-                    | TokenKind::TypeBool
-                    | TokenKind::TypeString
-                    | TokenKind::TypeVoid
-                    | TokenKind::TypeNever
-                    | TokenKind::TypeNull
-                    | TokenKind::TypeTrue
-                    | TokenKind::TypeFalse
-                    | TokenKind::TypeMixed
-                    | TokenKind::TypeIterable
-                    | TokenKind::TypeObject
-                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    | TokenKind::As
-            ) && self.next_token.kind == TokenKind::Colon {
+            if (self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved()) && self.next_token.kind == TokenKind::Colon {
                 name = Some(self.arena.alloc(self.current_token.clone()));
                 self.bump(); // Identifier
                 self.bump(); // Colon
@@ -2905,79 +2697,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         } else {
                             self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
                         }
-                    } else if matches!(self.current_token.kind, 
-                        TokenKind::Identifier | 
-                        TokenKind::Variable | 
-                        TokenKind::Default | 
-                        TokenKind::Class | 
-                        TokenKind::Function | 
-                        TokenKind::Fn | 
-                        TokenKind::Match | 
-                        TokenKind::Switch | 
-                        TokenKind::Case | 
-                        TokenKind::Break | 
-                        TokenKind::Continue | 
-                        TokenKind::Echo | 
-                        TokenKind::Print | 
-                        TokenKind::If | 
-                        TokenKind::Else | 
-                        TokenKind::ElseIf | 
-                        TokenKind::While | 
-                        TokenKind::Do | 
-                        TokenKind::For | 
-                        TokenKind::Foreach | 
-                        TokenKind::Declare | 
-                        TokenKind::EndDeclare | 
-                        TokenKind::Try | 
-                        TokenKind::Catch | 
-                        TokenKind::Finally | 
-                        TokenKind::Throw | 
-                        TokenKind::Use | 
-                        TokenKind::Global | 
-                        TokenKind::Static | 
-                        TokenKind::Abstract | 
-                        TokenKind::Final | 
-                        TokenKind::Private | 
-                        TokenKind::Protected | 
-                        TokenKind::Public | TokenKind::Readonly | 
-                        TokenKind::Const | 
-                        TokenKind::Return | 
-                        TokenKind::New | 
-                        TokenKind::Clone | 
-                        TokenKind::Include | 
-                        TokenKind::IncludeOnce | 
-                        TokenKind::Require | 
-                        TokenKind::RequireOnce | 
-                        TokenKind::Namespace | 
-                        TokenKind::Implements | 
-                        TokenKind::Extends | 
-                        TokenKind::Interface | 
-                        TokenKind::Trait | 
-                        TokenKind::Enum | 
-                        TokenKind::Goto |
-                        TokenKind::List | 
-                        TokenKind::Array | 
-                        TokenKind::As |
-                        TokenKind::Empty |
-                        TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
-                        TokenKind::Unset |
-                        TokenKind::Eval |
-                        TokenKind::Exit |
-                        TokenKind::Die |
-                        TokenKind::TypeInt |
-                        TokenKind::TypeFloat |
-                        TokenKind::TypeBool |
-                        TokenKind::TypeString |
-                        TokenKind::TypeVoid |
-                        TokenKind::TypeNever |
-                        TokenKind::TypeNull |
-                        TokenKind::TypeTrue |
-                        TokenKind::TypeFalse |
-                        TokenKind::TypeMixed |
-                        TokenKind::TypeIterable |
-                        TokenKind::TypeObject |
-                        TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    ) {
+                    } else if self.current_token.kind == TokenKind::Identifier || self.current_token.kind == TokenKind::Variable || self.current_token.kind.is_semi_reserved() {
                         let token = self.current_token;
                         self.bump();
                         self.arena.alloc(Expr::Variable {
@@ -3045,79 +2765,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         } else {
                             self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
                         }
-                    } else if matches!(self.current_token.kind, 
-                        TokenKind::Identifier | 
-                        TokenKind::Variable | 
-                        TokenKind::Default | 
-                        TokenKind::Class | 
-                        TokenKind::Function | 
-                        TokenKind::Fn | 
-                        TokenKind::Match | 
-                        TokenKind::Switch | 
-                        TokenKind::Case | 
-                        TokenKind::Break | 
-                        TokenKind::Continue | 
-                        TokenKind::Echo | 
-                        TokenKind::Print | 
-                        TokenKind::If | 
-                        TokenKind::Else | 
-                        TokenKind::ElseIf | 
-                        TokenKind::While | 
-                        TokenKind::Do | 
-                        TokenKind::For | 
-                        TokenKind::Foreach | 
-                        TokenKind::Declare | 
-                        TokenKind::EndDeclare | 
-                        TokenKind::Try | 
-                        TokenKind::Catch | 
-                        TokenKind::Finally | 
-                        TokenKind::Throw | 
-                        TokenKind::Use | 
-                        TokenKind::Global | 
-                        TokenKind::Static | 
-                        TokenKind::Abstract | 
-                        TokenKind::Final | 
-                        TokenKind::Private | 
-                        TokenKind::Protected | 
-                        TokenKind::Public | TokenKind::Readonly | 
-                        TokenKind::Const | 
-                        TokenKind::Return | 
-                        TokenKind::New | 
-                        TokenKind::Clone | 
-                        TokenKind::Include | 
-                        TokenKind::IncludeOnce | 
-                        TokenKind::Require | 
-                        TokenKind::RequireOnce | 
-                        TokenKind::Namespace | 
-                        TokenKind::Implements | 
-                        TokenKind::Extends | 
-                        TokenKind::Interface | 
-                        TokenKind::Trait | 
-                        TokenKind::Enum | 
-                        TokenKind::Goto |
-                        TokenKind::List | 
-                        TokenKind::Array | 
-                        TokenKind::As |
-                        TokenKind::Empty |
-                        TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
-                        TokenKind::Unset |
-                        TokenKind::Eval |
-                        TokenKind::Exit |
-                        TokenKind::Die |
-                        TokenKind::TypeInt |
-                        TokenKind::TypeFloat |
-                        TokenKind::TypeBool |
-                        TokenKind::TypeString |
-                        TokenKind::TypeVoid |
-                        TokenKind::TypeNever |
-                        TokenKind::TypeNull |
-                        TokenKind::TypeTrue |
-                        TokenKind::TypeFalse |
-                        TokenKind::TypeMixed |
-                        TokenKind::TypeIterable |
-                        TokenKind::TypeObject |
-                        TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    ) {
+                    } else if self.current_token.kind == TokenKind::Identifier || self.current_token.kind == TokenKind::Variable || self.current_token.kind.is_semi_reserved() {
                         // We need to wrap this token in an Expr
                         // Reusing Variable/Identifier logic from parse_nud would be good but we need to call it explicitly or just handle it here
                         let token = self.current_token;
@@ -3189,94 +2837,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         } else {
                             self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
                         }
-                    } else if matches!(
-                        self.current_token.kind,
-                        TokenKind::Identifier
-                            | TokenKind::Variable
-                            | TokenKind::Const
-                            | TokenKind::Class
-                            | TokenKind::TypeInt
-                            | TokenKind::TypeFloat
-                            | TokenKind::TypeBool
-                            | TokenKind::TypeString
-                            | TokenKind::TypeVoid
-                            | TokenKind::TypeNever
-                            | TokenKind::TypeNull
-                            | TokenKind::TypeFalse
-                            | TokenKind::TypeTrue
-                            | TokenKind::TypeMixed
-                            | TokenKind::TypeIterable
-                            | TokenKind::TypeObject
-                            | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                            | TokenKind::Default
-                            | TokenKind::Function
-                            | TokenKind::Fn
-                            | TokenKind::Match
-                            | TokenKind::Switch
-                            | TokenKind::Case
-                            | TokenKind::Break
-                            | TokenKind::Continue
-                            | TokenKind::Echo
-                            | TokenKind::Print
-                            | TokenKind::If
-                            | TokenKind::Else
-                            | TokenKind::ElseIf
-                            | TokenKind::While
-                            | TokenKind::Do
-                            | TokenKind::For
-                            | TokenKind::Foreach
-                            | TokenKind::Declare
-                            | TokenKind::EndDeclare
-                            | TokenKind::Try
-                            | TokenKind::Catch
-                            | TokenKind::Finally
-                            | TokenKind::Throw
-                            | TokenKind::Use
-                            | TokenKind::Global
-                            | TokenKind::Static
-                            | TokenKind::Abstract
-                            | TokenKind::Final
-                            | TokenKind::Private
-                            | TokenKind::Protected
-                            | TokenKind::Public
-                            | TokenKind::Readonly
-                            | TokenKind::Return
-                            | TokenKind::New
-                            | TokenKind::Clone
-                            | TokenKind::Include
-                            | TokenKind::IncludeOnce
-                            | TokenKind::Require
-                            | TokenKind::RequireOnce
-                            | TokenKind::Namespace
-                            | TokenKind::Implements
-                            | TokenKind::Extends
-                            | TokenKind::Interface
-                            | TokenKind::Trait
-                            | TokenKind::Enum
-                            | TokenKind::Goto
-                            | TokenKind::List
-                            | TokenKind::Array
-                            
-                            | TokenKind::Exit
-                            | TokenKind::Die
-                            | TokenKind::Eval
-                            | TokenKind::Yield
-                            | TokenKind::YieldFrom
-                            | TokenKind::HaltCompiler
-                            | TokenKind::As
-                            | TokenKind::Empty
-                            | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                            | TokenKind::Unset
-                            | TokenKind::Extends
-                            | TokenKind::Interface
-                            | TokenKind::Trait
-                            | TokenKind::Enum
-                            | TokenKind::List
-                            | TokenKind::Array
-                            | TokenKind::As
-                            | TokenKind::Empty
-                            | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
-                    ) {
+                    } else if self.current_token.kind == TokenKind::Identifier || self.current_token.kind == TokenKind::Variable || self.current_token.kind.is_semi_reserved() {
                         let token = self.current_token;
                         self.bump();
                         self.arena.alloc(Expr::Variable { 
@@ -4165,6 +3726,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         } else {
             false
         };
+
+        let variadic = if self.current_token.kind == TokenKind::Ellipsis {
+            self.bump();
+            true
+        } else {
+            false
+        };
         
         if self.current_token.kind == TokenKind::Variable {
             let param_name = self.arena.alloc(self.current_token);
@@ -4190,6 +3758,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 ty,
                 default,
                 by_ref,
+                variadic,
                 span: Span::new(start, end),
             }
         } else {
@@ -4198,11 +3767,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
             Param {
                 attributes,
-                               modifiers: self.arena.alloc_slice_copy(&modifiers),
+                modifiers: self.arena.alloc_slice_copy(&modifiers),
                 name: self.arena.alloc(Token { kind: TokenKind::Error, span }),
                 ty: None,
                 default: None,
                 by_ref,
+                variadic,
                 span,
             }
         }
@@ -4404,54 +3974,22 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandNotFollowedByVarOrVararg) {
              // Check lookahead to distinguish from by-ref param
-             if !matches!(self.next_token.kind, 
-                TokenKind::Identifier | 
-                TokenKind::Array | 
-                TokenKind::Static |
-                TokenKind::TypeInt | 
-                TokenKind::TypeString | 
-                TokenKind::TypeBool | 
-                TokenKind::TypeFloat | 
-                TokenKind::TypeVoid | 
-                TokenKind::TypeObject | 
-                TokenKind::TypeMixed | 
-                TokenKind::TypeNever | 
-                TokenKind::TypeNull | 
-                TokenKind::TypeFalse | 
-                TokenKind::TypeTrue | 
-                TokenKind::TypeIterable | 
-                TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
-                TokenKind::Question |
-                TokenKind::OpenParen |
-                TokenKind::Namespace |
-                TokenKind::NsSeparator) {
+             if !(self.next_token.kind == TokenKind::Identifier 
+                || self.next_token.kind == TokenKind::Question 
+                || self.next_token.kind == TokenKind::OpenParen 
+                || self.next_token.kind == TokenKind::NsSeparator 
+                || self.next_token.kind.is_semi_reserved()) {
                  return Some(left);
              }
 
             let mut types = std::vec::Vec::new();
             types.push(left);
             while matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandNotFollowedByVarOrVararg) {
-                 if !matches!(self.next_token.kind, 
-                    TokenKind::Identifier | 
-                    TokenKind::Array | 
-                    TokenKind::Static |
-                    TokenKind::TypeInt | 
-                    TokenKind::TypeString | 
-                    TokenKind::TypeBool | 
-                    TokenKind::TypeFloat | 
-                    TokenKind::TypeVoid | 
-                    TokenKind::TypeObject | 
-                    TokenKind::TypeMixed | 
-                    TokenKind::TypeNever | 
-                    TokenKind::TypeNull | 
-                    TokenKind::TypeFalse | 
-                    TokenKind::TypeTrue | 
-                    TokenKind::TypeIterable | 
-                    TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
-                    TokenKind::Question |
-                    TokenKind::OpenParen |
-                    TokenKind::Namespace |
-                    TokenKind::NsSeparator) {
+                 if !(self.next_token.kind == TokenKind::Identifier 
+                    || self.next_token.kind == TokenKind::Question 
+                    || self.next_token.kind == TokenKind::OpenParen 
+                    || self.next_token.kind == TokenKind::NsSeparator 
+                    || self.next_token.kind.is_semi_reserved()) {
                      break;
                  }
 

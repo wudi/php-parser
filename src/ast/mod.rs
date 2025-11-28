@@ -196,6 +196,7 @@ pub struct Param<'ast> {
     pub ty: Option<&'ast Type<'ast>>,
     pub default: Option<ExprId<'ast>>,
     pub by_ref: bool,
+    pub variadic: bool,
     pub span: Span,
 }
 

@@ -120,3 +120,90 @@ pub enum TokenKind {
     AmpersandFollowedByVar,
     AmpersandNotFollowedByVar,
 }
+
+impl TokenKind {
+    pub fn is_semi_reserved(self) -> bool {
+        matches!(
+            self,
+            TokenKind::New
+                | TokenKind::Static
+                | TokenKind::Class
+                | TokenKind::Trait
+                | TokenKind::Interface
+                | TokenKind::Extends
+                | TokenKind::Implements
+                | TokenKind::Enum
+                | TokenKind::Namespace
+                | TokenKind::TypeInt
+                | TokenKind::TypeFloat
+                | TokenKind::TypeBool
+                | TokenKind::TypeString
+                | TokenKind::TypeVoid
+                | TokenKind::TypeNever
+                | TokenKind::TypeNull
+                | TokenKind::TypeFalse
+                | TokenKind::TypeTrue
+                | TokenKind::TypeMixed
+                | TokenKind::TypeIterable
+                | TokenKind::TypeObject
+                | TokenKind::TypeCallable
+                | TokenKind::LogicalOr
+                | TokenKind::Insteadof
+                | TokenKind::LogicalAnd
+                | TokenKind::LogicalXor
+                | TokenKind::As
+                | TokenKind::Empty
+                | TokenKind::Isset
+                | TokenKind::Default
+                | TokenKind::Switch
+                | TokenKind::Case
+                | TokenKind::For
+                | TokenKind::Foreach
+                | TokenKind::While
+                | TokenKind::Do
+                | TokenKind::If
+                | TokenKind::Else
+                | TokenKind::ElseIf
+                | TokenKind::EndIf
+                | TokenKind::Try
+                | TokenKind::Catch
+                | TokenKind::Finally
+                | TokenKind::Throw
+                | TokenKind::Return
+                | TokenKind::Break
+                | TokenKind::Continue
+                | TokenKind::Goto
+                | TokenKind::Echo
+                | TokenKind::Print
+                | TokenKind::List
+                | TokenKind::Clone
+                | TokenKind::Include
+                | TokenKind::IncludeOnce
+                | TokenKind::Require
+                | TokenKind::RequireOnce
+                | TokenKind::Global
+                | TokenKind::Unset
+                | TokenKind::Exit
+                | TokenKind::Die
+                | TokenKind::Eval
+                | TokenKind::Yield
+                | TokenKind::YieldFrom
+                | TokenKind::Declare
+                | TokenKind::EndDeclare
+                | TokenKind::Match
+                | TokenKind::Fn
+                | TokenKind::Const
+                | TokenKind::Use
+                | TokenKind::Public
+                | TokenKind::Protected
+                | TokenKind::Private
+                | TokenKind::Abstract
+                | TokenKind::Final
+                | TokenKind::Readonly
+                | TokenKind::Array
+                | TokenKind::Function
+                | TokenKind::HaltCompiler
+                | TokenKind::InstanceOf
+        )
+    }
+}
