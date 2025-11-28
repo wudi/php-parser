@@ -1901,6 +1901,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
 
             let value = self.parse_expr(0);
+            self.validate_declare_item(key, value);
 
             declares.push(crate::ast::DeclareItem {
                 key,
@@ -1948,6 +1949,49 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             body,
             span: Span::new(start, end),
         })
+    }
+
+    fn validate_declare_item(&mut self, key: &Token, value: ExprId<'ast>) {
+        if self.token_eq_ident(key, b"strict_types") {
+            if let Some(num) = self.int_literal_value(value) {
+                if num != 0 && num != 1 {
+                    self.errors.push(ParseError { span: value.span(), message: "strict_types must be 0 or 1" });
+                }
+            } else {
+                self.errors.push(ParseError { span: value.span(), message: "strict_types must be an integer literal" });
+            }
+        } else if self.token_eq_ident(key, b"ticks") {
+            if let Some(num) = self.int_literal_value(value) {
+                if num == 0 {
+                    self.errors.push(ParseError { span: value.span(), message: "ticks must be a positive integer" });
+                }
+            } else {
+                self.errors.push(ParseError { span: value.span(), message: "ticks must be an integer literal" });
+            }
+        } else if self.token_eq_ident(key, b"encoding") {
+            match value {
+                Expr::String { .. } => {}
+                _ => self.errors.push(ParseError { span: value.span(), message: "encoding must be a string literal" }),
+            }
+        }
+    }
+
+    fn int_literal_value(&self, expr: ExprId<'ast>) -> Option<u64> {
+        if let Expr::Integer { value, .. } = expr {
+            let mut num: u64 = 0;
+            for b in *value {
+                if *b == b'_' {
+                    continue;
+                }
+                if !b.is_ascii_digit() {
+                    return None;
+                }
+                num = num.saturating_mul(10).saturating_add((*b - b'0') as u64);
+            }
+            Some(num)
+        } else {
+            None
+        }
     }
 
     fn parse_global(&mut self) -> StmtId<'ast> {
