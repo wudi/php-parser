@@ -1354,7 +1354,30 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         if self.current_token.kind == TokenKind::Function {
             self.bump();
-            let name = if self.current_token.kind == TokenKind::Identifier {
+            let name = if matches!(
+                self.current_token.kind,
+                TokenKind::Identifier
+                    | TokenKind::New
+                    | TokenKind::Static
+                    | TokenKind::Class
+                    | TokenKind::Trait
+                    | TokenKind::Interface
+                    | TokenKind::Enum
+                    | TokenKind::Namespace
+                    | TokenKind::TypeInt
+                    | TokenKind::TypeFloat
+                    | TokenKind::TypeBool
+                    | TokenKind::TypeString
+                    | TokenKind::TypeVoid
+                    | TokenKind::TypeNever
+                    | TokenKind::TypeNull
+                    | TokenKind::TypeFalse
+                    | TokenKind::TypeTrue
+                    | TokenKind::TypeMixed
+                    | TokenKind::TypeIterable
+                    | TokenKind::TypeObject
+                    | TokenKind::TypeCallable
+            ) {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
                 token
@@ -2306,6 +2329,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
             if self.current_token.kind == TokenKind::Comma {
                 self.bump();
+                // Allow trailing comma in argument list
+                if self.current_token.kind == TokenKind::CloseParen {
+                    break;
+                }
             } else if self.current_token.kind != TokenKind::CloseParen {
                 break;
             }
@@ -2873,6 +2900,52 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             | TokenKind::TypeIterable
                             | TokenKind::TypeObject
                             | TokenKind::TypeCallable
+                            | TokenKind::Default
+                            | TokenKind::Function
+                            | TokenKind::Fn
+                            | TokenKind::Match
+                            | TokenKind::Switch
+                            | TokenKind::Case
+                            | TokenKind::Break
+                            | TokenKind::Continue
+                            | TokenKind::Echo
+                            | TokenKind::Print
+                            | TokenKind::If
+                            | TokenKind::Else
+                            | TokenKind::ElseIf
+                            | TokenKind::While
+                            | TokenKind::Do
+                            | TokenKind::For
+                            | TokenKind::Foreach
+                            | TokenKind::Declare
+                            | TokenKind::EndDeclare
+                            | TokenKind::Try
+                            | TokenKind::Catch
+                            | TokenKind::Finally
+                            | TokenKind::Throw
+                            | TokenKind::Use
+                            | TokenKind::Global
+                            | TokenKind::Static
+                            | TokenKind::Abstract
+                            | TokenKind::Final
+                            | TokenKind::Private
+                            | TokenKind::Protected
+                            | TokenKind::Public
+                            | TokenKind::Return
+                            | TokenKind::New
+                            | TokenKind::Clone
+                            | TokenKind::Include
+                            | TokenKind::IncludeOnce
+                            | TokenKind::Require
+                            | TokenKind::RequireOnce
+                            | TokenKind::Namespace
+                            | TokenKind::Implements
+                            | TokenKind::Extends
+                            | TokenKind::Interface
+                            | TokenKind::Trait
+                            | TokenKind::Enum
+                            | TokenKind::List
+                            | TokenKind::Array
                     ) {
                         let token = self.current_token;
                         self.bump();
