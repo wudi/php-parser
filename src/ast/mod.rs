@@ -55,36 +55,41 @@ pub enum Stmt<'ast> {
         span: Span,
     },
     Function {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token, 
         params: &'ast [Param<'ast>],
         body: &'ast [StmtId<'ast>],
         span: Span,
     },
     Class {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
-        extends: Option<&'ast Token>,
-        implements: &'ast [Token],
+        extends: Option<Name<'ast>>,
+        implements: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
         span: Span,
     },
     Interface {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
-        extends: &'ast [Token],
+        extends: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
         span: Span,
     },
     Trait {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         members: &'ast [ClassMember<'ast>],
         span: Span,
     },
     Enum {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         members: &'ast [ClassMember<'ast>],
         span: Span,
     },
     Namespace {
-        name: Option<&'ast Token>,
+        name: Option<Name<'ast>>,
         body: Option<&'ast [StmtId<'ast>]>,
         span: Span,
     },
@@ -147,6 +152,7 @@ pub struct StaticVar<'ast> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Param<'ast> {
+    pub attributes: &'ast [AttributeGroup<'ast>],
     pub name: &'ast Token,
     pub ty: Option<&'ast Token>, // Simplified type hint
     pub default: Option<ExprId<'ast>>,
@@ -281,6 +287,7 @@ pub enum Expr<'ast> {
         span: Span,
     },
     Closure {
+        attributes: &'ast [AttributeGroup<'ast>],
         params: &'ast [Param<'ast>],
         uses: &'ast [ClosureUse<'ast>],
         return_type: Option<&'ast Token>,
@@ -288,6 +295,7 @@ pub enum Expr<'ast> {
         span: Span,
     },
     ArrowFunction {
+        attributes: &'ast [AttributeGroup<'ast>],
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Token>,
         expr: ExprId<'ast>,
@@ -455,6 +463,7 @@ pub struct ArrayItem<'ast> {
 #[derive(Debug, Clone, Copy)]
 pub enum ClassMember<'ast> {
     Property {
+        attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
         ty: Option<&'ast Token>,
         name: &'ast Token,
@@ -462,6 +471,7 @@ pub enum ClassMember<'ast> {
         span: Span,
     },
     Method {
+        attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
         name: &'ast Token,
         params: &'ast [Param<'ast>],
@@ -469,15 +479,18 @@ pub enum ClassMember<'ast> {
         span: Span,
     },
     Const {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         value: ExprId<'ast>,
         span: Span,
     },
     TraitUse {
-        traits: &'ast [Token],
+        attributes: &'ast [AttributeGroup<'ast>],
+        traits: &'ast [Name<'ast>],
         span: Span,
     },
     Case {
+        attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         value: Option<ExprId<'ast>>,
         span: Span,
@@ -500,8 +513,14 @@ pub struct Catch<'ast> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct Name<'ast> {
+    pub parts: &'ast [Token],
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct UseItem<'ast> {
-    pub name: &'ast Token,
+    pub name: Name<'ast>,
     pub alias: Option<&'ast Token>,
     pub span: Span,
 }
@@ -511,5 +530,18 @@ pub enum UseKind {
     Normal,
     Function,
     Const,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Attribute<'ast> {
+    pub name: Name<'ast>,
+    pub args: &'ast [Arg<'ast>],
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AttributeGroup<'ast> {
+    pub attributes: &'ast [Attribute<'ast>],
+    pub span: Span,
 }
 

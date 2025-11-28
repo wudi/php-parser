@@ -1,0 +1,238 @@
+---
+source: tests/snapshot_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Use {
+            uses: [
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 10,
+                                    end: 13,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 13,
+                                    end: 14,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 14,
+                                    end: 19,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 19,
+                                    end: 20,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 21,
+                                    end: 27,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 10,
+                            end: 27,
+                        },
+                    },
+                    alias: None,
+                    span: Span {
+                        start: 10,
+                        end: 27,
+                    },
+                },
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 10,
+                                    end: 13,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 13,
+                                    end: 14,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 14,
+                                    end: 19,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 19,
+                                    end: 20,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 29,
+                                    end: 35,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 10,
+                            end: 35,
+                        },
+                    },
+                    alias: Some(
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 39,
+                                end: 42,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 10,
+                        end: 42,
+                    },
+                },
+            ],
+            kind: Normal,
+            span: Span {
+                start: 6,
+                end: 48,
+            },
+        },
+        Use {
+            uses: [
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 58,
+                                    end: 61,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 61,
+                                    end: 62,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 62,
+                                    end: 71,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 71,
+                                    end: 72,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 73,
+                                    end: 76,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 58,
+                            end: 76,
+                        },
+                    },
+                    alias: None,
+                    span: Span {
+                        start: 58,
+                        end: 76,
+                    },
+                },
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 58,
+                                    end: 61,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 61,
+                                    end: 62,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 62,
+                                    end: 71,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 71,
+                                    end: 72,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 78,
+                                    end: 81,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 58,
+                            end: 81,
+                        },
+                    },
+                    alias: None,
+                    span: Span {
+                        start: 58,
+                        end: 81,
+                    },
+                },
+            ],
+            kind: Function,
+            span: Span {
+                start: 45,
+                end: 84,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}

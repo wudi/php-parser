@@ -371,3 +371,70 @@ fn test_global_static_unset() {
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
+
+#[test]
+fn test_namespaces_and_use() {
+    let code = r#"<?php
+namespace App\Models;
+
+use App\Utils\Logger;
+use App\Utils\Config as Cfg;
+
+class User extends \Base\Entity implements \JsonSerializable, Logger {
+    public function save() {
+    }
+}
+
+namespace {
+    use App\Models\User;
+    $u = new User();
+}
+"#;
+    let arena = Bump::new();
+    let lexer = Lexer::new(code.as_bytes());
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+    insta::assert_debug_snapshot!("namespaces_and_use", program);
+}
+
+#[test]
+fn test_group_use() {
+    let code = r#"<?php
+use App\Utils\{Logger, Config as Cfg};
+use function App\Functions\{foo, bar};
+"#;
+    let arena = Bump::new();
+    let lexer = Lexer::new(code.as_bytes());
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+    insta::assert_debug_snapshot!("group_use", program);
+}
+
+#[test]
+fn test_attributes() {
+    let source = b"<?php
+    #[Attribute1]
+    #[Attribute2(1, 'foo')]
+    class MyClass {
+        #[PropAttr]
+        public $prop;
+
+        #[ConstAttr]
+        const MY_CONST = 1;
+
+        #[MethodAttr]
+        public function myMethod(#[ParamAttr] $param) {
+        }
+    }
+
+    #[FuncAttr]
+    function myFunc() {}
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}

@@ -1,0 +1,411 @@
+---
+source: tests/snapshot_tests.rs
+assertion_line: 397
+expression: program
+---
+Program {
+    statements: [
+        Namespace {
+            name: Some(
+                Name {
+                    parts: [
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 16,
+                                end: 19,
+                            },
+                        },
+                        Token {
+                            kind: NsSeparator,
+                            span: Span {
+                                start: 19,
+                                end: 20,
+                            },
+                        },
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 20,
+                                end: 26,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 16,
+                        end: 26,
+                    },
+                },
+            ),
+            body: None,
+            span: Span {
+                start: 6,
+                end: 32,
+            },
+        },
+        Use {
+            uses: [
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 33,
+                                    end: 36,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 36,
+                                    end: 37,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 37,
+                                    end: 42,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 42,
+                                    end: 43,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 43,
+                                    end: 49,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 33,
+                            end: 49,
+                        },
+                    },
+                    alias: None,
+                    span: Span {
+                        start: 33,
+                        end: 49,
+                    },
+                },
+            ],
+            kind: Normal,
+            span: Span {
+                start: 29,
+                end: 54,
+            },
+        },
+        Use {
+            uses: [
+                UseItem {
+                    name: Name {
+                        parts: [
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 55,
+                                    end: 58,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 58,
+                                    end: 59,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 59,
+                                    end: 64,
+                                },
+                            },
+                            Token {
+                                kind: NsSeparator,
+                                span: Span {
+                                    start: 64,
+                                    end: 65,
+                                },
+                            },
+                            Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 65,
+                                    end: 71,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 55,
+                            end: 71,
+                        },
+                    },
+                    alias: Some(
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 75,
+                                end: 78,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 55,
+                        end: 78,
+                    },
+                },
+            ],
+            kind: Normal,
+            span: Span {
+                start: 51,
+                end: 86,
+            },
+        },
+        Class {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 87,
+                    end: 91,
+                },
+            },
+            extends: Some(
+                Name {
+                    parts: [
+                        Token {
+                            kind: NsSeparator,
+                            span: Span {
+                                start: 100,
+                                end: 101,
+                            },
+                        },
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 101,
+                                end: 105,
+                            },
+                        },
+                        Token {
+                            kind: NsSeparator,
+                            span: Span {
+                                start: 105,
+                                end: 106,
+                            },
+                        },
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 106,
+                                end: 112,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 100,
+                        end: 112,
+                    },
+                },
+            ),
+            implements: [
+                Name {
+                    parts: [
+                        Token {
+                            kind: NsSeparator,
+                            span: Span {
+                                start: 124,
+                                end: 125,
+                            },
+                        },
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 125,
+                                end: 141,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 124,
+                        end: 141,
+                    },
+                },
+                Name {
+                    parts: [
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 143,
+                                end: 149,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 143,
+                        end: 149,
+                    },
+                },
+            ],
+            members: [
+                Method {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 156,
+                                end: 162,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 172,
+                            end: 176,
+                        },
+                    },
+                    params: [],
+                    body: [],
+                    span: Span {
+                        start: 156,
+                        end: 188,
+                    },
+                },
+            ],
+            span: Span {
+                start: 81,
+                end: 199,
+            },
+        },
+        Namespace {
+            name: None,
+            body: Some(
+                [
+                    Use {
+                        uses: [
+                            UseItem {
+                                name: Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 210,
+                                                end: 213,
+                                            },
+                                        },
+                                        Token {
+                                            kind: NsSeparator,
+                                            span: Span {
+                                                start: 213,
+                                                end: 214,
+                                            },
+                                        },
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 214,
+                                                end: 220,
+                                            },
+                                        },
+                                        Token {
+                                            kind: NsSeparator,
+                                            span: Span {
+                                                start: 220,
+                                                end: 221,
+                                            },
+                                        },
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 221,
+                                                end: 225,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 210,
+                                        end: 225,
+                                    },
+                                },
+                                alias: None,
+                                span: Span {
+                                    start: 210,
+                                    end: 225,
+                                },
+                            },
+                        ],
+                        kind: Normal,
+                        span: Span {
+                            start: 206,
+                            end: 233,
+                        },
+                    },
+                    Expression {
+                        expr: Assign {
+                            var: Variable {
+                                name: Span {
+                                    start: 231,
+                                    end: 233,
+                                },
+                                span: Span {
+                                    start: 231,
+                                    end: 233,
+                                },
+                            },
+                            expr: New {
+                                class: Call {
+                                    func: Variable {
+                                        name: Span {
+                                            start: 240,
+                                            end: 244,
+                                        },
+                                        span: Span {
+                                            start: 240,
+                                            end: 244,
+                                        },
+                                    },
+                                    args: [],
+                                    span: Span {
+                                        start: 240,
+                                        end: 247,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 236,
+                                    end: 247,
+                                },
+                            },
+                            span: Span {
+                                start: 231,
+                                end: 247,
+                            },
+                        },
+                        span: Span {
+                            start: 231,
+                            end: 249,
+                        },
+                    },
+                ],
+            ),
+            span: Span {
+                start: 190,
+                end: 250,
+            },
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 0,
+    },
+}
