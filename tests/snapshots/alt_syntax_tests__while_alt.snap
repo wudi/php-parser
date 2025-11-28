@@ -1,0 +1,48 @@
+---
+source: tests/alt_syntax_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        While {
+            condition: Variable {
+                name: Span {
+                    start: 13,
+                    end: 15,
+                },
+                span: Span {
+                    start: 13,
+                    end: 15,
+                },
+            },
+            body: [
+                Echo {
+                    exprs: [
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 23,
+                                end: 24,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 18,
+                        end: 34,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 35,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 6,
+        end: 35,
+    },
+}

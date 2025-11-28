@@ -10,8 +10,8 @@ pub struct Token {
 pub enum TokenKind {
     // Keywords
     Function, Class, Interface, Trait, Extends, Implements, Enum,
-    If, Else, ElseIf, Return, Echo, Print,
-    While, Do, For, Foreach, As, Switch, Case, Default, Break, Continue, Goto,
+    If, Else, ElseIf, EndIf, Return, Echo, Print,
+    While, Do, For, Foreach, EndWhile, EndFor, EndForeach, As, Switch, EndSwitch, Case, Default, Break, Continue, Goto,
     Try, Catch, Finally, Throw,
     Public, Protected, Private, Static, Abstract, Final, Readonly,
     Namespace, Use, Global,
@@ -20,7 +20,7 @@ pub enum TokenKind {
     Include, IncludeOnce, Require, RequireOnce, Eval, Exit, Die,
     Empty, Isset, Unset, List,
     Yield, YieldFrom,
-    Declare, Match, Fn,
+    Declare, EndDeclare, Match, Fn,
     HaltCompiler, // __halt_compiler
     Attribute, // #[
 

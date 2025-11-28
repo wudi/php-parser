@@ -1,0 +1,100 @@
+---
+source: tests/alt_syntax_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Switch {
+            condition: Variable {
+                name: Span {
+                    start: 14,
+                    end: 16,
+                },
+                span: Span {
+                    start: 14,
+                    end: 16,
+                },
+            },
+            cases: [
+                Case {
+                    condition: Some(
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 24,
+                                end: 25,
+                            },
+                        },
+                    ),
+                    body: [
+                        Echo {
+                            exprs: [
+                                Integer {
+                                    value: [
+                                        49,
+                                    ],
+                                    span: Span {
+                                        start: 32,
+                                        end: 33,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 27,
+                                end: 40,
+                            },
+                        },
+                        Break {
+                            level: None,
+                            span: Span {
+                                start: 35,
+                                end: 49,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 19,
+                        end: 49,
+                    },
+                },
+                Case {
+                    condition: None,
+                    body: [
+                        Echo {
+                            exprs: [
+                                Integer {
+                                    value: [
+                                        50,
+                                    ],
+                                    span: Span {
+                                        start: 56,
+                                        end: 57,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 51,
+                                end: 68,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 42,
+                        end: 68,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 69,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 6,
+        end: 69,
+    },
+}

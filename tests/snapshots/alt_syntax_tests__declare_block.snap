@@ -1,0 +1,62 @@
+---
+source: tests/alt_syntax_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Declare {
+            declares: [
+                DeclareItem {
+                    key: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 14,
+                            end: 19,
+                        },
+                    },
+                    value: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 20,
+                            end: 21,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 21,
+                    },
+                },
+            ],
+            body: [
+                Echo {
+                    exprs: [
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 31,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 25,
+                        end: 34,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 34,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 6,
+        end: 34,
+    },
+}

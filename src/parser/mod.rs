@@ -130,14 +130,54 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let attributes = self.parse_attributes();
                 match self.current_token.kind {
                     TokenKind::Function => self.parse_function(attributes),
-                    TokenKind::Class => self.parse_class(attributes),
+                    TokenKind::Class => self.parse_class(attributes, &[]),
                     TokenKind::Interface => self.parse_interface(attributes),
                     TokenKind::Trait => self.parse_trait(attributes),
                     TokenKind::Enum => self.parse_enum(attributes),
+                    TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly => {
+                        let mut modifiers = std::vec::Vec::new();
+                        while matches!(self.current_token.kind, TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly) {
+                            modifiers.push(self.current_token);
+                            self.bump();
+                        }
+                        
+                        if self.current_token.kind == TokenKind::Class {
+                            self.parse_class(attributes, self.arena.alloc_slice_copy(&modifiers))
+                        } else {
+                             self.arena.alloc(Stmt::Error { span: self.current_token.span })
+                        }
+                    }
                     _ => {
                         self.arena.alloc(Stmt::Error { span: self.current_token.span })
                     }
                 }
+            }
+            TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly => {
+                let mut modifiers = std::vec::Vec::new();
+                while matches!(self.current_token.kind, TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly) {
+                    modifiers.push(self.current_token);
+                    self.bump();
+                }
+                
+                if self.current_token.kind == TokenKind::Class {
+                    self.parse_class(&[], self.arena.alloc_slice_copy(&modifiers))
+                } else {
+                     self.arena.alloc(Stmt::Error { span: self.current_token.span })
+                }
+            }
+            TokenKind::HaltCompiler => {
+                let start = self.current_token.span.start;
+                self.bump();
+                if self.current_token.kind == TokenKind::OpenParen {
+                    self.bump();
+                }
+                if self.current_token.kind == TokenKind::CloseParen {
+                    self.bump();
+                }
+                self.expect_semicolon();
+                
+                let end = self.current_token.span.end;
+                self.arena.alloc(Stmt::HaltCompiler { span: Span::new(start, end) })
             }
             TokenKind::Echo => self.parse_echo(),
             TokenKind::Return => self.parse_return(),
@@ -147,7 +187,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::For => self.parse_for(),
             TokenKind::Foreach => self.parse_foreach(),
             TokenKind::Function => self.parse_function(&[]),
-            TokenKind::Class => self.parse_class(&[]),
+            TokenKind::Class => self.parse_class(&[], &[]),
             TokenKind::Interface => self.parse_interface(&[]),
             TokenKind::Trait => self.parse_trait(&[]),
             TokenKind::Enum => self.parse_enum(&[]),
@@ -158,10 +198,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Throw => self.parse_throw(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
+            TokenKind::Declare => self.parse_declare(),
             TokenKind::Global => self.parse_global(),
             TokenKind::Static => self.parse_static(),
             TokenKind::Unset => self.parse_unset(),
             TokenKind::OpenBrace => self.parse_block(),
+            TokenKind::SemiColon => {
+                let span = self.current_token.span;
+                self.bump();
+                self.arena.alloc(Stmt::Nop { span })
+            }
+            TokenKind::CloseTag => {
+                let span = self.current_token.span;
+                self.bump();
+                self.arena.alloc(Stmt::Nop { span })
+            }
             TokenKind::OpenTag => {
                 self.bump();
                 self.parse_stmt() // Skip open tag
@@ -272,6 +323,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat if
 
+        self.parse_if_common(start)
+    }
+
+    fn parse_if_common(&mut self, start: usize) -> StmtId<'ast> {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
@@ -280,26 +335,56 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        let then_stmt = self.parse_stmt();
-        let then_block: &'ast [StmtId<'ast>] = match then_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[then_stmt]),
+        let is_alt = self.current_token.kind == TokenKind::Colon;
+        
+        let then_block = if is_alt {
+            self.bump();
+            let mut stmts = std::vec::Vec::new();
+            while self.current_token.kind != TokenKind::EndIf && self.current_token.kind != TokenKind::Else && self.current_token.kind != TokenKind::ElseIf && self.current_token.kind != TokenKind::Eof {
+                stmts.push(self.parse_stmt());
+            }
+            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+        } else {
+            let stmt = self.parse_stmt();
+            match stmt {
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[stmt]) as &'ast [StmtId<'ast>],
+            }
         };
 
-        let else_block = if self.current_token.kind == TokenKind::Else {
+        let else_block = if self.current_token.kind == TokenKind::ElseIf {
+            let start_elseif = self.current_token.span.start;
             self.bump();
-            let else_stmt = self.parse_stmt();
-            match else_stmt {
-                Stmt::Block { statements, .. } => Some(*statements),
-                _ => Some(self.arena.alloc_slice_copy(&[else_stmt]) as &'ast [StmtId<'ast>]),
+            let elseif_stmt = self.parse_if_common(start_elseif);
+            Some(self.arena.alloc_slice_copy(&[elseif_stmt]) as &'ast [StmtId<'ast>])
+        } else if self.current_token.kind == TokenKind::Else {
+            self.bump();
+            if is_alt {
+                if self.current_token.kind == TokenKind::Colon {
+                    self.bump();
+                }
+                let mut stmts = std::vec::Vec::new();
+                while self.current_token.kind != TokenKind::EndIf && self.current_token.kind != TokenKind::Eof {
+                    stmts.push(self.parse_stmt());
+                }
+                Some(self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>])
+            } else {
+                let stmt = self.parse_stmt();
+                match stmt {
+                    Stmt::Block { statements, .. } => Some(*statements),
+                    _ => Some(self.arena.alloc_slice_copy(&[stmt]) as &'ast [StmtId<'ast>]),
+                }
             }
         } else {
             None
         };
 
-        // TODO: Handle elseif
+        if is_alt && self.current_token.kind == TokenKind::EndIf {
+            self.bump();
+            self.expect_semicolon();
+        }
 
-        let end = self.current_token.span.end; // Approximate
+        let end = self.current_token.span.end;
 
         self.arena.alloc(Stmt::If {
             condition,
@@ -321,10 +406,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        let body_stmt = self.parse_stmt();
-        let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+        let body = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            let mut stmts = std::vec::Vec::new();
+            while self.current_token.kind != TokenKind::EndWhile && self.current_token.kind != TokenKind::Eof {
+                stmts.push(self.parse_stmt());
+            }
+            if self.current_token.kind == TokenKind::EndWhile {
+                self.bump();
+            }
+            self.expect_semicolon();
+            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+        } else {
+            let body_stmt = self.parse_stmt();
+            match body_stmt {
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
+            }
         };
 
         let end = self.current_token.span.end;
@@ -342,8 +440,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body_stmt = self.parse_stmt();
         let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+            Stmt::Block { statements, .. } => *statements,
+            _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
         };
 
         if self.current_token.kind == TokenKind::While {
@@ -416,10 +514,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        let body_stmt = self.parse_stmt();
-        let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+        let body = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            let mut stmts = std::vec::Vec::new();
+            while self.current_token.kind != TokenKind::EndFor && self.current_token.kind != TokenKind::Eof {
+                stmts.push(self.parse_stmt());
+            }
+            if self.current_token.kind == TokenKind::EndFor {
+                self.bump();
+            }
+            self.expect_semicolon();
+            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+        } else {
+            let body_stmt = self.parse_stmt();
+            match body_stmt {
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
+            }
         };
 
         let end = self.current_token.span.end;
@@ -460,10 +571,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        let body_stmt = self.parse_stmt();
-        let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+        let body = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            let mut stmts = std::vec::Vec::new();
+            while self.current_token.kind != TokenKind::EndForeach && self.current_token.kind != TokenKind::Eof {
+                stmts.push(self.parse_stmt());
+            }
+            if self.current_token.kind == TokenKind::EndForeach {
+                self.bump();
+            }
+            self.expect_semicolon();
+            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+        } else {
+            let body_stmt = self.parse_stmt();
+            match body_stmt {
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
+            }
         };
 
         let end = self.current_token.span.end;
@@ -477,8 +601,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         })
     }
 
-    fn parse_class(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
+    fn parse_class(&mut self, attributes: &'ast [AttributeGroup<'ast>], modifiers: &'ast [Token]) -> StmtId<'ast> {
         let start = if let Some(first) = attributes.first() {
+            first.span.start
+        } else if let Some(first) = modifiers.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -519,6 +645,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
             return self.arena.alloc(Stmt::Class {
                 attributes,
+                modifiers,
                 name,
                 extends,
                 implements: self.arena.alloc_slice_copy(&implements),
@@ -542,6 +669,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         self.arena.alloc(Stmt::Class {
             attributes,
+            modifiers,
             name,
             extends,
             implements: self.arena.alloc_slice_copy(&implements),
@@ -948,7 +1076,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             let body = if self.current_token.kind == TokenKind::OpenBrace {
                 let body_stmt = self.parse_block();
                 match body_stmt {
-                    Stmt::Block { statements, .. } => statements,
+                    Stmt::Block { statements, .. } => *statements,
                     _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
                 }
             } else {
@@ -1048,12 +1176,20 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
         
-        if self.current_token.kind == TokenKind::OpenBrace {
+        let is_alt = if self.current_token.kind == TokenKind::Colon {
             self.bump();
-        }
+            true
+        } else {
+            if self.current_token.kind == TokenKind::OpenBrace {
+                self.bump();
+            }
+            false
+        };
         
         let mut cases = std::vec::Vec::new();
-        while self.current_token.kind != TokenKind::CloseBrace && self.current_token.kind != TokenKind::Eof {
+        let end_token = if is_alt { TokenKind::EndSwitch } else { TokenKind::CloseBrace };
+
+        while self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
             let case_start = self.current_token.span.start;
             let condition = if self.current_token.kind == TokenKind::Case {
                 self.bump();
@@ -1074,7 +1210,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             };
             
             let mut body_stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::Case && self.current_token.kind != TokenKind::Default && self.current_token.kind != TokenKind::CloseBrace && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::Case && self.current_token.kind != TokenKind::Default && self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
                 body_stmts.push(self.parse_stmt());
             }
             
@@ -1091,8 +1227,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             });
         }
         
-        if self.current_token.kind == TokenKind::CloseBrace {
+        if self.current_token.kind == end_token {
             self.bump();
+        }
+        if is_alt {
+            self.expect_semicolon();
         }
         
         let end = self.current_token.span.end;
@@ -1110,8 +1249,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         let body_stmt = self.parse_block();
         let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+            Stmt::Block { statements, .. } => *statements,
+            _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
         };
         
         let mut catches = std::vec::Vec::new();
@@ -1152,8 +1291,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             
             let catch_body_stmt = self.parse_block();
             let catch_body: &'ast [StmtId<'ast>] = match catch_body_stmt {
-                Stmt::Block { statements, .. } => statements,
-                _ => self.arena.alloc_slice_copy(&[catch_body_stmt]),
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[catch_body_stmt]) as &'ast [StmtId<'ast>],
             };
             
             let catch_end = self.current_token.span.end; // Approximate
@@ -1239,6 +1378,78 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         self.arena.alloc(Stmt::Continue {
             level,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_declare(&mut self) -> StmtId<'ast> {
+        let start = self.current_token.span.start;
+        self.bump(); // Eat declare
+
+        if self.current_token.kind == TokenKind::OpenParen {
+            self.bump();
+        }
+
+        let mut declares = std::vec::Vec::new();
+        loop {
+            let key = if self.current_token.kind == TokenKind::Identifier {
+                let token = self.arena.alloc(self.current_token);
+                self.bump();
+                token
+            } else {
+                self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
+            };
+
+            if self.current_token.kind == TokenKind::Eq {
+                self.bump();
+            }
+
+            let value = self.parse_expr(0);
+
+            declares.push(crate::ast::DeclareItem {
+                key,
+                value,
+                span: Span::new(key.span.start, value.span().end),
+            });
+
+            if self.current_token.kind == TokenKind::Comma {
+                self.bump();
+            } else {
+                break;
+            }
+        }
+
+        if self.current_token.kind == TokenKind::CloseParen {
+            self.bump();
+        }
+
+        let body = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            let mut stmts = std::vec::Vec::new();
+            while self.current_token.kind != TokenKind::EndDeclare && self.current_token.kind != TokenKind::Eof {
+                stmts.push(self.parse_stmt());
+            }
+            if self.current_token.kind == TokenKind::EndDeclare {
+                self.bump();
+            }
+            self.expect_semicolon();
+            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+        } else if self.current_token.kind == TokenKind::SemiColon {
+            self.bump();
+            &[] as &'ast [StmtId<'ast>]
+        } else {
+            let stmt = self.parse_stmt();
+            match stmt {
+                Stmt::Block { statements, .. } => *statements,
+                _ => self.arena.alloc_slice_copy(&[stmt]) as &'ast [StmtId<'ast>],
+            }
+        };
+
+        let end = self.current_token.span.end;
+
+        self.arena.alloc(Stmt::Declare {
+            declares: self.arena.alloc_slice_copy(&declares),
+            body,
             span: Span::new(start, end),
         })
     }
@@ -2233,7 +2444,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
             Param {
                 attributes,
-                modifiers: self.arena.alloc_slice_copy(&modifiers),
+                               modifiers: self.arena.alloc_slice_copy(&modifiers),
                 name: self.arena.alloc(Token { kind: TokenKind::Error, span }),
                 ty: None,
                 default: None,
@@ -2293,8 +2504,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         // Body
         let body_stmt = self.parse_stmt(); // Should be a block
         let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => statements,
-            _ => self.arena.alloc_slice_copy(&[body_stmt]),
+            Stmt::Block { statements, .. } => *statements,
+            _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
         };
 
         let end = self.current_token.span.end;

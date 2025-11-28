@@ -71,6 +71,7 @@ pub enum Stmt<'ast> {
     },
     Class {
         attributes: &'ast [AttributeGroup<'ast>],
+        modifiers: &'ast [Token],
         name: &'ast Token,
         extends: Option<Name<'ast>>,
         implements: &'ast [Name<'ast>],
@@ -149,10 +150,20 @@ pub enum Stmt<'ast> {
         value: &'ast [u8],
         span: Span,
     },
+    Nop {
+        span: Span,
+    },
     Error {
         span: Span,
     },
-    Noop,
+    Declare {
+        declares: &'ast [DeclareItem<'ast>],
+        body: &'ast [StmtId<'ast>],
+        span: Span,
+    },
+    HaltCompiler {
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -420,8 +431,10 @@ impl<'ast> Stmt<'ast> {
             Stmt::Unset { span, .. } => *span,
             Stmt::Expression { span, .. } => *span,
             Stmt::InlineHtml { span, .. } => *span,
+            Stmt::Declare { span, .. } => *span,
+            Stmt::HaltCompiler { span } => *span,
             Stmt::Error { span } => *span,
-            Stmt::Noop => Span::default(),
+            Stmt::Nop { span } => *span,
         }
     }
 }
@@ -568,5 +581,12 @@ pub enum Type<'ast> {
     Union(&'ast [Type<'ast>]),
     Intersection(&'ast [Type<'ast>]),
     Nullable(&'ast Type<'ast>),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DeclareItem<'ast> {
+    pub key: &'ast Token,
+    pub value: ExprId<'ast>,
+    pub span: Span,
 }
 

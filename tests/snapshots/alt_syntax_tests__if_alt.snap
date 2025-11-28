@@ -1,0 +1,108 @@
+---
+source: tests/alt_syntax_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        If {
+            condition: Variable {
+                name: Span {
+                    start: 10,
+                    end: 12,
+                },
+                span: Span {
+                    start: 10,
+                    end: 12,
+                },
+            },
+            then_block: [
+                Echo {
+                    exprs: [
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 20,
+                                end: 21,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 15,
+                        end: 29,
+                    },
+                },
+            ],
+            else_block: Some(
+                [
+                    If {
+                        condition: Variable {
+                            name: Span {
+                                start: 31,
+                                end: 33,
+                            },
+                            span: Span {
+                                start: 31,
+                                end: 33,
+                            },
+                        },
+                        then_block: [
+                            Echo {
+                                exprs: [
+                                    Integer {
+                                        value: [
+                                            50,
+                                        ],
+                                        span: Span {
+                                            start: 41,
+                                            end: 42,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 36,
+                                    end: 48,
+                                },
+                            },
+                        ],
+                        else_block: Some(
+                            [
+                                Echo {
+                                    exprs: [
+                                        Integer {
+                                            value: [
+                                                51,
+                                            ],
+                                            span: Span {
+                                                start: 55,
+                                                end: 56,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 50,
+                                        end: 63,
+                                    },
+                                },
+                            ],
+                        ),
+                        span: Span {
+                            start: 23,
+                            end: 64,
+                        },
+                    },
+                ],
+            ),
+            span: Span {
+                start: 6,
+                end: 64,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 6,
+        end: 64,
+    },
+}
