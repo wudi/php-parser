@@ -303,7 +303,7 @@ fn test_lexer_compliance() {
 
 #[test]
 fn test_run_tests_php() {
-    let path = "/Users/eagle/Sourcecode/php-src/run-tests.php";
+    let path = "~/php-src/run-tests.php";
     println!("Testing file: {}", path);
     
     let php_tokens = get_php_tokens_from_file(path);
