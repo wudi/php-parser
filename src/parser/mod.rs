@@ -655,7 +655,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut extends = None;
         if self.current_token.kind == TokenKind::Extends {
             self.bump();
-            extends = Some(self.parse_name());
+            let parent = self.parse_name();
+            if self.name_eq_token(&parent, name) {
+                self.errors.push(ParseError { span: parent.span, message: "class cannot extend itself" });
+            }
+            extends = Some(parent);
         }
 
         let mut implements = std::vec::Vec::new();
@@ -670,6 +674,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
             }
             for (i, n) in implements.iter().enumerate() {
+                if self.name_eq_token(n, name) {
+                    self.errors.push(ParseError { span: n.span, message: "class cannot implement itself" });
+                }
                 for prev in implements.iter().take(i) {
                     if self.name_eq(prev, n) {
                         self.errors.push(ParseError { span: n.span, message: "duplicate interface in implements list" });
@@ -1054,6 +1061,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
             }
             for (i, n) in implements.iter().enumerate() {
+                if self.name_eq_token(n, name) {
+                    self.errors.push(ParseError { span: n.span, message: "enum cannot implement itself" });
+                }
                 for prev in implements.iter().take(i) {
                     if self.name_eq(prev, n) {
                         self.errors.push(ParseError { span: n.span, message: "duplicate interface in implements list" });
