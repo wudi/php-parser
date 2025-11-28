@@ -849,6 +849,19 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
             }
             Some(self.arena.alloc_slice_copy(&statements) as &'ast [StmtId<'ast>])
+        } else if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            let mut statements = std::vec::Vec::new();
+            while !matches!(self.current_token.kind, TokenKind::EndDeclare | TokenKind::Eof) {
+                statements.push(self.parse_stmt());
+            }
+            if self.current_token.kind == TokenKind::EndDeclare {
+                self.bump();
+                self.expect_semicolon();
+            } else {
+                self.errors.push(ParseError { span: self.current_token.span, message: "Missing enddeclare" });
+            }
+            Some(self.arena.alloc_slice_copy(&statements) as &'ast [StmtId<'ast>])
         } else {
             self.expect_semicolon();
             None
