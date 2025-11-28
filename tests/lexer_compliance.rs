@@ -253,6 +253,7 @@ fn test_lexer_compliance() {
         "<?php enum Status { case Draft; }",
         "<?php __halt_compiler(); data",
         "<?php \n    <<<END\n    content\n    END;",
+        "<?php    $a = <<<EOT\nThis is a heredoc string.\nEOT.'ending';\necho $a;",
     ];
 
     for code in cases {
