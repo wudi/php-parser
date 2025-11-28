@@ -1,29 +1,31 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core library entry points live in `src/lib.rs` and `src/main.rs`; the CLI helpers live in `src/bin/corpus_test.rs`.
-- Parsing components are split into `src/lexer/` (tokenization), `src/parser/` (syntax + recovery), `src/ast/` (arena-backed node definitions), and `src/span.rs` (source mapping).
-- Integration tests sit in `tests/` with snapshots in `tests/snapshots/`. See `ARCHITECTURE.md` for deeper design context before touching parser lifetimes or arena ownership.
+- Core parser pieces live in `src/lexer/`, `src/parser/`, `src/ast/`, and `src/span.rs`, wired together from `src/lib.rs`. The demo entry point is `src/main.rs`, and the corpus runner is `src/bin/corpus_test.rs`.
+- Tests are integration-based under `tests/` with insta snapshots in `tests/snapshots/`. Consult `ARCHITECTURE.md` before touching arenas, spans, or lifetime plumbing.
+- Keep PHP parity in mind: do not invent new syntax or AST kinds. Mirror upstream PHP tokens/AST from `zend_language_scanner.y` and `zend_ast.h`.
 
 ## Build, Test, and Development Commands
 - `cargo build` — compile the library and binaries.
-- `cargo test` — run the full suite, including lexer/parser fixtures and insta snapshots.
-- `cargo test snapshot_tests` — execute only snapshot-based parser expectations.
-- `cargo insta review` / `cargo insta accept` — review or accept updated snapshots after parser changes.
-- `cargo fmt` and `cargo clippy --all-targets --all-features` — format and lint; keep CI noise down by running both before pushing.
+- `cargo test` — run the full suite, including snapshot tests and validation cases.
+- `cargo test snapshot_tests` — focus on parser snapshot expectations when iterating quickly.
+- `cargo insta review` / `cargo insta accept` — review or accept updated snapshots after intentional parser changes.
+- `cargo fmt` and `cargo clippy --all-targets --all-features` — format and lint before pushing.
+- `cargo run --release --bin corpus_test /path/to/php/project` — scan a PHP tree (e.g., `/tmp/wordpress-develop`) to measure real-world compatibility.
 
 ## Coding Style & Naming Conventions
-- Rust 2024 edition, 4-space indent, follow `rustfmt` defaults; prefer small, explicit helper functions over clever macros.
-- Keep arenas zero-copy: no `String`/`Vec` allocations inside AST nodes; store spans and borrow from the arena or source slices.
-- Modules and files use `snake_case`; types and enums use `CamelCase`; functions and variables use `snake_case`; constants use `SCREAMING_SNAKE_CASE`.
-- Maintain clear separation of lifetimes: source (`'src`) and AST/arena (`'ast`) must not mix. Add doc comments when lifetimes or safety contracts are non-obvious.
+- Rust 2024 edition, 4-space indent; follow `rustfmt` defaults and prefer small, explicit helpers.
+- AST nodes are arena-backed; avoid owned `String`/`Vec` in node structs and keep spans cheap.
+- Names: modules/files `snake_case`; types/enums `CamelCase`; locals/functions `snake_case`; constants `SCREAMING_SNAKE_CASE`.
+- Preserve clear lifetimes (`'src` for input, `'ast` for arena) and document any safety or ownership contracts that are not obvious.
 
 ## Testing Guidelines
-- Tests are integration-style (`*_tests.rs`) and rely on `insta` snapshots for parser output. Name new fixtures to describe the PHP feature under test (e.g., `lexer_heredoc.rs`).
-- When parser output changes intentionally, run `cargo insta accept`, then commit the updated files in `tests/snapshots/`.
-- Prefer adding a focused fixture over broad rewrites; include both “happy path” and recovery cases to keep resilience guarantees.
+- Add focused fixtures per PHP feature (e.g., `enum_case_validation.rs`, `declare_alt.rs`) and include both success and recovery cases.
+- When output shifts, run `cargo insta accept` and commit updated files in `tests/snapshots/`.
+- For semantic checks (declare literals, break/continue levels, inheritance rules), prefer targeted rust tests over broad corpus expectations.
+- Compare tricky behaviors against `php -l` or `php -r` to confirm alignment before encoding parser rules.
 
 ## Commit & Pull Request Guidelines
-- Commit messages follow a conventional style seen in history (`feat:`, `fix:`, `chore:`). Use the imperative mood and keep the subject under ~72 chars.
-- PRs should describe scope, rationale, and user-visible changes; link issues when applicable and call out parser or lexer behavior changes explicitly.
-- Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass locally before requesting review; mention any skipped checks and why.
+- Use imperative, concise subjects similar to existing history (`fix: validate break levels`, `chore: refresh snapshots`), ~72 characters.
+- PRs should call out behavior changes, linked issues, and any skipped checks; include repro snippets for parser changes.
+- Ensure `cargo fmt`, `cargo clippy`, and `cargo test` (or a scoped subset with justification) are clean before review; mention any corpus runs like WordPress to show compatibility progress.

@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use crate::lexer::{Lexer, LexerMode, token::{Token, TokenKind}};
-use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, AssignOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type, ParseError, IncludeKind, TraitMethodRef, PropertyHook, PropertyHookBody};
+use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, AssignOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type, ParseError, IncludeKind, TraitMethodRef, PropertyHook, PropertyHookBody, ClassConst};
 
 use crate::span::Span;
 
@@ -90,7 +90,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
         
         loop {
-            if self.current_token.kind == TokenKind::Identifier {
+            if matches!(
+                self.current_token.kind,
+                TokenKind::Identifier | TokenKind::TypeTrue | TokenKind::TypeFalse | TokenKind::TypeNull
+            ) {
                 parts.push(self.current_token);
                 self.bump();
             } else {
@@ -162,6 +165,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     TokenKind::Interface => self.parse_interface(attributes),
                     TokenKind::Trait => self.parse_trait(attributes),
                     TokenKind::Enum => self.parse_enum(attributes),
+                    TokenKind::Const => self.parse_const_stmt(attributes),
                     TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly => {
                         let mut modifiers = std::vec::Vec::new();
                         while matches!(self.current_token.kind, TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly) {
@@ -224,12 +228,31 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Try => self.parse_try(),
             TokenKind::Throw => self.parse_throw(),
+            TokenKind::Const => self.parse_const_stmt(&[]),
             TokenKind::Goto => self.parse_goto(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Declare => self.parse_declare(),
             TokenKind::Global => self.parse_global(),
-            TokenKind::Static => self.parse_static(),
+            TokenKind::Static => {
+                if matches!(
+                    self.next_token.kind,
+                    TokenKind::Variable
+                        | TokenKind::AmpersandFollowedByVarOrVararg
+                        | TokenKind::AmpersandNotFollowedByVarOrVararg
+                ) {
+                    self.parse_static()
+                } else {
+                    let start = self.current_token.span.start;
+                    let expr = self.parse_expr(0);
+                    self.expect_semicolon();
+                    let end = self.current_token.span.end;
+                    self.arena.alloc(Stmt::Expression {
+                        expr,
+                        span: Span::new(start, end),
+                    })
+                }
+            }
             TokenKind::Unset => self.parse_unset(),
             TokenKind::OpenBrace => self.parse_block(),
             TokenKind::SemiColon => {
@@ -727,6 +750,83 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             members: self.arena.alloc_slice_copy(&members),
             span: Span::new(start, end),
         })
+    }
+
+    fn parse_anonymous_class(&mut self) -> (ExprId<'ast>, &'ast [Arg<'ast>]) {
+        let start = self.current_token.span.start; // points at 'class'
+        self.bump(); // eat class
+
+        let (ctor_args, ctor_end) = if self.current_token.kind == TokenKind::OpenParen {
+            let (args, span) = self.parse_call_arguments();
+            (args, span.end)
+        } else {
+            (&[] as &[Arg], self.current_token.span.start)
+        };
+
+        let mut extends = None;
+        if self.current_token.kind == TokenKind::Extends {
+            self.bump();
+            extends = Some(self.parse_name());
+        }
+
+        let mut implements = std::vec::Vec::new();
+        if self.current_token.kind == TokenKind::Implements {
+            self.bump();
+            loop {
+                implements.push(self.parse_name());
+                if self.current_token.kind == TokenKind::Comma {
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+            for i in 0..implements.len() {
+                for prev in implements.iter().take(i) {
+                    if self.name_eq(prev, &implements[i]) {
+                        self.errors.push(ParseError { span: implements[i].span, message: "duplicate interface in implements list" });
+                        break;
+                    }
+                }
+            }
+        }
+
+        if self.current_token.kind == TokenKind::OpenBrace {
+            self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Expected '{'" });
+            let span = Span::new(start, self.current_token.span.end);
+            return (self.arena.alloc(Expr::AnonymousClass {
+                args: ctor_args,
+                extends,
+                implements: self.arena.alloc_slice_copy(&implements),
+                members: &[],
+                span,
+            }), ctor_args);
+        }
+
+        let mut members = std::vec::Vec::new();
+        while self.current_token.kind != TokenKind::CloseBrace && self.current_token.kind != TokenKind::Eof {
+            members.push(self.parse_class_member(ClassMemberCtx::Class { is_abstract: false, is_readonly: false }));
+        }
+
+        if self.current_token.kind == TokenKind::CloseBrace {
+            self.bump();
+        } else {
+            self.errors.push(ParseError { span: self.current_token.span, message: "Missing '}'" });
+        }
+
+        let end = self.current_token.span.end.max(ctor_end);
+
+        (
+            self.arena.alloc(Expr::AnonymousClass {
+                args: ctor_args,
+                extends,
+                implements: self.arena.alloc_slice_copy(&implements),
+                members: self.arena.alloc_slice_copy(&members),
+                span: Span::new(start, end),
+            }),
+            ctor_args,
+        )
     }
 
     fn parse_interface(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
@@ -1822,6 +1922,51 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         })
     }
 
+    fn parse_const_stmt(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
+        let start = if let Some(first) = attributes.first() {
+            first.span.start
+        } else {
+            self.current_token.span.start
+        };
+        self.bump(); // const
+
+        let mut consts = std::vec::Vec::new();
+        loop {
+            let name = if self.current_token.kind == TokenKind::Identifier {
+                let tok = self.arena.alloc(self.current_token);
+                self.bump();
+                tok
+            } else {
+                self.errors.push(ParseError { span: self.current_token.span, message: "Expected identifier" });
+                self.arena.alloc(Token { kind: TokenKind::Error, span: self.current_token.span })
+            };
+
+            if self.current_token.kind == TokenKind::Eq {
+                self.bump();
+            } else {
+                self.errors.push(ParseError { span: self.current_token.span, message: "Expected '='" });
+            }
+            let value = self.parse_expr(0);
+            let span = Span::new(name.span.start, value.span().end);
+            consts.push(ClassConst { name, value, span });
+
+            if self.current_token.kind == TokenKind::Comma {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+
+        self.expect_semicolon();
+        let end = self.current_token.span.end;
+
+        self.arena.alloc(Stmt::Const {
+            attributes,
+            consts: self.arena.alloc_slice_copy(&consts),
+            span: Span::new(start, end),
+        })
+    }
+
     fn parse_break(&mut self) -> StmtId<'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat break
@@ -2477,13 +2622,34 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     }
                     self.bump();
 
-                    let prop_or_method = if self.current_token.kind == TokenKind::OpenBrace {
+                    let prop_or_method = if matches!(self.current_token.kind, TokenKind::OpenBrace | TokenKind::DollarOpenCurlyBraces) {
                         self.bump();
                         let expr = self.parse_expr(0);
                         if self.current_token.kind == TokenKind::CloseBrace {
                             self.bump();
                         }
                         expr
+                    } else if self.current_token.kind == TokenKind::Dollar {
+                        let start = self.current_token.span.start;
+                        self.bump();
+                        if self.current_token.kind == TokenKind::OpenBrace {
+                            self.bump();
+                            let expr = self.parse_expr(0);
+                            if self.current_token.kind == TokenKind::CloseBrace {
+                                self.bump();
+                            }
+                            expr
+                        } else if self.current_token.kind == TokenKind::Variable {
+                            let token = self.current_token;
+                            self.bump();
+                            let span = Span::new(start, token.span.end);
+                            self.arena.alloc(Expr::Variable {
+                                name: span,
+                                span,
+                            })
+                        } else {
+                            self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
+                        }
                     } else if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Variable) {
                         let token = self.current_token;
                         self.bump();
@@ -2524,13 +2690,34 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     
                     // Expect identifier or variable (for dynamic property)
                     // For now assume identifier
-                    let prop_or_method = if self.current_token.kind == TokenKind::OpenBrace {
+                    let prop_or_method = if matches!(self.current_token.kind, TokenKind::OpenBrace | TokenKind::DollarOpenCurlyBraces) {
                         self.bump();
                         let expr = self.parse_expr(0);
                         if self.current_token.kind == TokenKind::CloseBrace {
                             self.bump();
                         }
                         expr
+                    } else if self.current_token.kind == TokenKind::Dollar {
+                        let start = self.current_token.span.start;
+                        self.bump();
+                        if self.current_token.kind == TokenKind::OpenBrace {
+                            self.bump();
+                            let expr = self.parse_expr(0);
+                            if self.current_token.kind == TokenKind::CloseBrace {
+                                self.bump();
+                            }
+                            expr
+                        } else if self.current_token.kind == TokenKind::Variable {
+                            let token = self.current_token;
+                            self.bump();
+                            let span = Span::new(start, token.span.end);
+                            self.arena.alloc(Expr::Variable {
+                                name: span,
+                                span,
+                            })
+                        } else {
+                            self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
+                        }
                     } else if matches!(self.current_token.kind, 
                         TokenKind::Identifier | 
                         TokenKind::Variable | 
@@ -2639,7 +2826,54 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     }
                     self.bump();
                     
-                    let member = if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Variable | TokenKind::Const | TokenKind::Class) {
+                    let member = if matches!(self.current_token.kind, TokenKind::OpenBrace | TokenKind::DollarOpenCurlyBraces) {
+                        self.bump();
+                        let expr = self.parse_expr(0);
+                        if self.current_token.kind == TokenKind::CloseBrace {
+                            self.bump();
+                        }
+                        expr
+                    } else if self.current_token.kind == TokenKind::Dollar {
+                        let start = self.current_token.span.start;
+                        self.bump();
+                        if self.current_token.kind == TokenKind::OpenBrace {
+                            self.bump();
+                            let expr = self.parse_expr(0);
+                            if self.current_token.kind == TokenKind::CloseBrace {
+                                self.bump();
+                            }
+                            expr
+                        } else if self.current_token.kind == TokenKind::Variable {
+                            let token = self.current_token;
+                            self.bump();
+                            let span = Span::new(start, token.span.end);
+                            self.arena.alloc(Expr::Variable {
+                                name: span,
+                                span,
+                            })
+                        } else {
+                            self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
+                        }
+                    } else if matches!(
+                        self.current_token.kind,
+                        TokenKind::Identifier
+                            | TokenKind::Variable
+                            | TokenKind::Const
+                            | TokenKind::Class
+                            | TokenKind::TypeInt
+                            | TokenKind::TypeFloat
+                            | TokenKind::TypeBool
+                            | TokenKind::TypeString
+                            | TokenKind::TypeVoid
+                            | TokenKind::TypeNever
+                            | TokenKind::TypeNull
+                            | TokenKind::TypeFalse
+                            | TokenKind::TypeTrue
+                            | TokenKind::TypeMixed
+                            | TokenKind::TypeIterable
+                            | TokenKind::TypeObject
+                            | TokenKind::TypeCallable
+                    ) {
                         let token = self.current_token;
                         self.bump();
                         self.arena.alloc(Expr::Variable { 
@@ -3088,9 +3322,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     key,
                     value: Some(value),
                     from: false,
-                    span,
-                })
-            }
+            span,
+        })
+    }
+
             TokenKind::Function => {
                 let start = if let Some(first) = attributes.first() {
                     first.span.start
@@ -3125,32 +3360,44 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         self.bump();
                         self.parse_arrow_function(attributes, true, start)
                     }
+                    TokenKind::DoubleColon => {
+                        // static scope resolution (e.g., static::CONST)
+                        self.arena.alloc(Expr::Variable {
+                            name: token.span,
+                            span: token.span,
+                        })
+                    }
                     _ => {
-                        let span = self.current_token.span;
-                        self.errors.push(ParseError { span, message: "Expected function after static" });
-                        self.arena.alloc(Expr::Error { span })
+                        self.arena.alloc(Expr::Variable {
+                            name: token.span,
+                            span: token.span,
+                        })
                     }
                 }
             }
             TokenKind::New => {
                 self.bump();
-                // Expect class name (Identifier or Variable or complex expr)
-                // For now assume Identifier
-                let class = self.parse_expr(200); // High binding power to grab the class name
-                
-                let (args, end_pos) = if self.current_token.kind == TokenKind::OpenParen {
-                    let (a, s) = self.parse_call_arguments();
-                    (a, s.end)
+                if self.current_token.kind == TokenKind::Class {
+                    let (class, args) = self.parse_anonymous_class();
+                    let span = Span::new(token.span.start, class.span().end);
+                    self.arena.alloc(Expr::New { class, args, span })
                 } else {
-                    (&[] as &[Arg], class.span().end)
-                };
-                
-                let span = Span::new(token.span.start, end_pos);
-                self.arena.alloc(Expr::New {
-                    class,
-                    args,
-                    span,
-                })
+                    let class = self.parse_expr(200); // High binding power to grab the class name
+                    
+                    let (args, end_pos) = if self.current_token.kind == TokenKind::OpenParen {
+                        let (a, s) = self.parse_call_arguments();
+                        (a, s.end)
+                    } else {
+                        (&[] as &[Arg], class.span().end)
+                    };
+                    
+                    let span = Span::new(token.span.start, end_pos);
+                    self.arena.alloc(Expr::New {
+                        class,
+                        args,
+                        span,
+                    })
+                }
             }
             TokenKind::Clone => {
                 self.bump();
@@ -3281,19 +3528,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: token.span,
                 })
             }
-            TokenKind::Identifier => {
-                // For now, treat identifier as a "bare word" string or potential constant/function name
-                // In PHP, `foo()` parses `foo` as a name.
-                // We need an Expr variant for Identifier/Name.
-                // For now, let's reuse Variable but maybe add a flag or new variant?
-                // Or just use String? No, String is quoted.
-                // Let's add Expr::Variable
-                self.bump();
-                // Temporary hack: reuse Variable but it's not quite right.
-                // Better: Add Expr::Identifier
-                self.arena.alloc(Expr::Variable { 
-                    name: token.span,
-                    span: token.span,
+            TokenKind::Identifier | TokenKind::Namespace | TokenKind::NsSeparator => {
+                let name = self.parse_name();
+                self.arena.alloc(Expr::Variable {
+                    name: name.span,
+                    span: name.span,
                 })
             }
             TokenKind::Bang => {

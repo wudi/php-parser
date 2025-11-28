@@ -124,6 +124,11 @@ pub enum Stmt<'ast> {
         expr: ExprId<'ast>,
         span: Span,
     },
+    Const {
+        attributes: &'ast [AttributeGroup<'ast>],
+        consts: &'ast [ClassConst<'ast>],
+        span: Span,
+    },
     Break {
         level: Option<ExprId<'ast>>,
         span: Span,
@@ -323,6 +328,13 @@ pub enum Expr<'ast> {
         arms: &'ast [MatchArm<'ast>],
         span: Span,
     },
+    AnonymousClass {
+        args: &'ast [Arg<'ast>],
+        extends: Option<Name<'ast>>,
+        implements: &'ast [Name<'ast>],
+        members: &'ast [ClassMember<'ast>],
+        span: Span,
+    },
     Print {
         expr: ExprId<'ast>,
         span: Span,
@@ -420,6 +432,15 @@ pub struct MatchArm<'ast> {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct AnonymousClass<'ast> {
+    pub args: &'ast [Arg<'ast>],
+    pub extends: Option<Name<'ast>>,
+    pub implements: &'ast [Name<'ast>],
+    pub members: &'ast [ClassMember<'ast>],
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Plus,
@@ -462,6 +483,7 @@ impl<'ast> Expr<'ast> {
             Expr::PostDec { span, .. } => *span,
             Expr::Ternary { span, .. } => *span,
             Expr::Match { span, .. } => *span,
+            Expr::AnonymousClass { span, .. } => *span,
             Expr::Yield { span, .. } => *span,
             Expr::Cast { span, .. } => *span,
             Expr::Empty { span, .. } => *span,
@@ -501,6 +523,7 @@ impl<'ast> Stmt<'ast> {
             Stmt::Switch { span, .. } => *span,
             Stmt::Try { span, .. } => *span,
             Stmt::Throw { span, .. } => *span,
+            Stmt::Const { span, .. } => *span,
             Stmt::Break { span, .. } => *span,
             Stmt::Continue { span, .. } => *span,
             Stmt::Global { span, .. } => *span,
