@@ -83,3 +83,31 @@ fn parses_intersection_with_leading_separator() {
     }
     assert!(program.errors.is_empty());
 }
+
+#[test]
+fn parses_static_return_type() {
+    let code = "<?php class A { public function foo(): static {} }";
+    let arena = Bump::new();
+    let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
+    let program = parser.parse_program();
+
+    assert!(program.errors.is_empty(), "unexpected errors: {:?}", program.errors);
+
+    let return_type = program
+        .statements
+        .iter()
+        .find_map(|s| match **s {
+            Stmt::Class { members, .. } => members.iter().find_map(|m| match m {
+                php_parser_rs::ast::ClassMember::Method { return_type, .. } => *return_type,
+                _ => None,
+            }),
+            _ => None,
+        })
+        .expect("expected class method return type");
+
+    if let Type::Simple(tok) = return_type {
+        assert_eq!(tok.kind, php_parser_rs::lexer::token::TokenKind::Static);
+    } else {
+        panic!("expected static return type, got {:?}", return_type);
+    }
+}

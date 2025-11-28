@@ -3955,6 +3955,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             Some(Type::Name(name))
         } else if matches!(self.current_token.kind, 
             TokenKind::Array | 
+            TokenKind::Static |
             TokenKind::TypeInt | 
             TokenKind::TypeString | 
             TokenKind::TypeBool | 
@@ -3984,6 +3985,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
              if !matches!(self.next_token.kind, 
                 TokenKind::Identifier | 
                 TokenKind::Array | 
+                TokenKind::Static |
                 TokenKind::TypeInt | 
                 TokenKind::TypeString | 
                 TokenKind::TypeBool | 
@@ -4010,6 +4012,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                  if !matches!(self.next_token.kind, 
                     TokenKind::Identifier | 
                     TokenKind::Array | 
+                    TokenKind::Static |
                     TokenKind::TypeInt | 
                     TokenKind::TypeString | 
                     TokenKind::TypeBool | 
