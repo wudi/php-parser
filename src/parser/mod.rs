@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use crate::lexer::{Lexer, LexerMode, token::{Token, TokenKind}};
-use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type};
+use crate::ast::{Program, Stmt, StmtId, Expr, ExprId, BinaryOp, UnaryOp, Param, Arg, ArrayItem, ClassMember, Case, Catch, StaticVar, MatchArm, CastKind, ClosureUse, UseKind, UseItem, Name, Attribute, AttributeGroup, Type, ParseError};
 
 
 
@@ -18,6 +18,7 @@ pub struct Parser<'src, 'ast> {
     arena: &'ast Bump,
     current_token: Token,
     next_token: Token,
+    errors: std::vec::Vec<ParseError>,
 }
 
 impl<'src, 'ast> Parser<'src, 'ast> {
@@ -36,6 +37,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             arena,
             current_token,
             next_token,
+            errors: std::vec::Vec::new(),
         }
     }
 
@@ -45,6 +47,24 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             kind: TokenKind::Eof,
             span: Span::default(),
         });
+    }
+
+    fn expect_semicolon(&mut self) {
+        if self.current_token.kind == TokenKind::SemiColon {
+            self.bump();
+        } else if self.current_token.kind == TokenKind::CloseTag {
+            // Implicit semicolon at close tag
+        } else if self.current_token.kind == TokenKind::Eof {
+            // Implicit semicolon at EOF
+        } else {
+            // Error: Missing semicolon
+            self.errors.push(ParseError {
+                span: self.current_token.span,
+                message: "Missing semicolon",
+            });
+            // Recovery: Assume it was there and continue.
+            // We do NOT bump the current token because it belongs to the next statement.
+        }
     }
 
     fn parse_name(&mut self) -> Name<'ast> {
@@ -91,9 +111,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             statements.push(self.parse_stmt());
         }
 
+        let span = if let (Some(first), Some(last)) = (statements.first(), statements.last()) {
+            Span::new(first.span().start, last.span().end)
+        } else {
+            Span::default()
+        };
+
         Program {
             statements: self.arena.alloc_slice_copy(&statements),
-            span: Span::default(), // TODO: Calculate full span
+            errors: self.arena.alloc_slice_copy(&self.errors),
+            span,
         }
     }
 
@@ -139,13 +166,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
                 self.parse_stmt() // Skip open tag
             }
+            TokenKind::InlineHtml => {
+                let start = self.current_token.span.start;
+                let value = self.arena.alloc_slice_copy(self.lexer.slice(self.current_token.span));
+                self.bump();
+                let end = self.current_token.span.end;
+                self.arena.alloc(Stmt::InlineHtml {
+                    value,
+                    span: Span::new(start, end),
+                })
+            }
             _ => {
                 // Assume expression statement
                 let start = self.current_token.span.start;
                 let expr = self.parse_expr(0);
-                if self.current_token.kind == TokenKind::SemiColon {
-                    self.bump();
-                }
+                self.expect_semicolon();
                 let end = self.current_token.span.end; // Approximate
                 
                 self.arena.alloc(Stmt::Expression {
@@ -168,9 +203,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
              exprs.push(self.parse_expr(0));
         }
 
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
 
         let end = self.current_token.span.end;
 
@@ -184,15 +217,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump();
         
-        let expr = if self.current_token.kind == TokenKind::SemiColon {
+        let expr = if matches!(self.current_token.kind, TokenKind::SemiColon | TokenKind::CloseTag | TokenKind::Eof | TokenKind::CloseBrace) {
             None
         } else {
             Some(self.parse_expr(0))
         };
 
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
 
@@ -313,9 +344,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
 
         let end = self.current_token.span.end;
 
@@ -711,9 +740,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         }
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -800,9 +827,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 None
             };
             
-            if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-            }
+            self.expect_semicolon();
             
             let end = self.current_token.span.end;
             return ClassMember::Case {
@@ -825,9 +850,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
             }
             
-            if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-            }
+            self.expect_semicolon();
             
             let end = self.current_token.span.end;
             return ClassMember::TraitUse {
@@ -863,15 +886,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
             }
             
-            let body = if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-                &[] as &'ast [StmtId<'ast>]
-            } else {
+            let body = if self.current_token.kind == TokenKind::OpenBrace {
                 let body_stmt = self.parse_block();
                 match body_stmt {
                     Stmt::Block { statements, .. } => statements,
                     _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
                 }
+            } else {
+                self.expect_semicolon();
+                &[] as &'ast [StmtId<'ast>]
             };
             
             let end = if body.is_empty() {
@@ -904,9 +927,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             
             let value = self.parse_expr(0);
             
-            if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-            }
+            self.expect_semicolon();
             
             let end = self.current_token.span.end;
             
@@ -941,9 +962,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 None
             };
             
-            if self.current_token.kind == TokenKind::SemiColon {
-                self.bump();
-            }
+            self.expect_semicolon();
             
             let end = self.current_token.span.end;
             
@@ -1115,9 +1134,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         
         let expr = self.parse_expr(0);
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -1131,15 +1148,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat break
         
-        let level = if self.current_token.kind != TokenKind::SemiColon {
+        let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
             Some(self.parse_expr(0))
         } else {
             None
         };
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -1153,15 +1168,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat continue
         
-        let level = if self.current_token.kind != TokenKind::SemiColon {
+        let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
             Some(self.parse_expr(0))
         } else {
             None
         };
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -1185,9 +1198,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         }
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -1226,9 +1237,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         }
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         
@@ -1260,9 +1269,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
         
-        if self.current_token.kind == TokenKind::SemiColon {
-            self.bump();
-        }
+        self.expect_semicolon();
         
         let end = self.current_token.span.end;
         

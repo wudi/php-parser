@@ -5,13 +5,10 @@ expression: program
 ---
 Program {
     statements: [
-        Expression {
-            expr: Error {
-                span: Span {
-                    start: 0,
-                    end: 1,
-                },
-            },
+        InlineHtml {
+            value: [
+                10,
+            ],
             span: Span {
                 start: 0,
                 end: 7,
@@ -354,6 +351,7 @@ Program {
             },
         },
     ],
+    errors: [],
     span: Span {
         start: 0,
         end: 0,

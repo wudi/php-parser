@@ -388,6 +388,7 @@ Program {
             },
         },
     ],
+    errors: [],
     span: Span {
         start: 0,
         end: 0,

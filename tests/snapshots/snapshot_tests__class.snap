@@ -167,8 +167,9 @@ Program {
             },
         },
     ],
+    errors: [],
     span: Span {
-        start: 0,
-        end: 0,
+        start: 10,
+        end: 193,
     },
 }

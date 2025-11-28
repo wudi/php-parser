@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 27
 expression: program
 ---
 Program {
@@ -72,7 +73,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
-        end: 25,
+        start: 0,
+        end: 0,
     },
 }

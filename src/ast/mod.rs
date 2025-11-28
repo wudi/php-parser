@@ -4,9 +4,16 @@ use crate::lexer::token::Token;
 pub type ExprId<'ast> = &'ast Expr<'ast>;
 pub type StmtId<'ast> = &'ast Stmt<'ast>;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ParseError {
+    pub span: Span,
+    pub message: &'static str,
+}
+
 #[derive(Debug)]
 pub struct Program<'ast> {
     pub statements: &'ast [StmtId<'ast>],
+    pub errors: &'ast [ParseError],
     pub span: Span,
 }
 
@@ -136,6 +143,10 @@ pub enum Stmt<'ast> {
     },
     Expression {
         expr: ExprId<'ast>,
+        span: Span,
+    },
+    InlineHtml {
+        value: &'ast [u8],
         span: Span,
     },
     Error {
@@ -408,6 +419,7 @@ impl<'ast> Stmt<'ast> {
             Stmt::Static { span, .. } => *span,
             Stmt::Unset { span, .. } => *span,
             Stmt::Expression { span, .. } => *span,
+            Stmt::InlineHtml { span, .. } => *span,
             Stmt::Error { span } => *span,
             Stmt::Noop => Span::default(),
         }
