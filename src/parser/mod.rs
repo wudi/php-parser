@@ -3010,10 +3010,20 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 };
                 self.bump();
                 
-                if self.current_token.kind == TokenKind::Ampersand {
+                let is_static = if self.current_token.kind == TokenKind::Static {
                     self.bump();
-                }
-                
+                    true
+                } else {
+                    false
+                };
+
+                let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
+                    self.bump();
+                    true
+                } else {
+                    false
+                };
+
                 if self.current_token.kind == TokenKind::Identifier {
                     self.bump();
                 }
@@ -3089,7 +3099,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Closure {
                     attributes,
-                    is_static: false,
+                    is_static,
                     params: self.arena.alloc_slice_copy(&params),
                     uses: self.arena.alloc_slice_copy(&uses),
                     return_type,
@@ -3105,9 +3115,19 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 };
                 self.bump();
                 
-                if self.current_token.kind == TokenKind::Ampersand {
+                let is_static = if self.current_token.kind == TokenKind::Static {
                     self.bump();
-                }
+                    true
+                } else {
+                    false
+                };
+
+                let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
+                    self.bump();
+                    true
+                } else {
+                    false
+                };
 
                 if self.current_token.kind == TokenKind::OpenParen {
                     self.bump();
@@ -3142,7 +3162,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let end = expr.span().end;
                 self.arena.alloc(Expr::ArrowFunction {
                     attributes,
-                    is_static: false,
+                    is_static,
                     params: self.arena.alloc_slice_copy(&params),
                     return_type,
                     expr,
