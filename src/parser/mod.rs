@@ -123,6 +123,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     }
 
     fn parse_stmt(&mut self) -> StmtId<'ast> {
+        self.lexer.set_mode(LexerMode::Standard);
+        
         match self.current_token.kind {
             TokenKind::Attribute => {
                 let attributes = self.parse_attributes();
@@ -351,10 +353,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         };
 
+        let mut consumed_endif = false;
         let else_block = if self.current_token.kind == TokenKind::ElseIf {
             let start_elseif = self.current_token.span.start;
             self.bump();
             let elseif_stmt = self.parse_if_common(start_elseif);
+            consumed_endif = true;
             Some(self.arena.alloc_slice_copy(&[elseif_stmt]) as &'ast [StmtId<'ast>])
         } else if self.current_token.kind == TokenKind::Else {
             self.bump();
@@ -378,7 +382,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             None
         };
 
-        if is_alt && self.current_token.kind == TokenKind::EndIf {
+        if is_alt && !consumed_endif && self.current_token.kind == TokenKind::EndIf {
             self.bump();
             self.expect_semicolon();
         }
@@ -1627,7 +1631,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 TokenKind::GtEq => BinaryOp::GtEq,
                 TokenKind::AmpersandAmpersand => BinaryOp::And,
                 TokenKind::PipePipe => BinaryOp::Or,
-                TokenKind::Ampersand => BinaryOp::BitAnd,
+                TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg | TokenKind::AmpersandNotFollowedByVarOrVararg => BinaryOp::BitAnd,
                 TokenKind::Pipe => BinaryOp::BitOr,
                 TokenKind::Caret => BinaryOp::BitXor,
                 TokenKind::LogicalAnd => BinaryOp::LogicalAnd,
@@ -1759,7 +1763,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     
                     // Expect identifier or variable (for dynamic property)
                     // For now assume identifier
-                    let prop_or_method = if matches!(self.current_token.kind, 
+                    let prop_or_method = if self.current_token.kind == TokenKind::OpenBrace {
+                        self.bump();
+                        let expr = self.parse_expr(0);
+                        if self.current_token.kind == TokenKind::CloseBrace {
+                            self.bump();
+                        }
+                        expr
+                    } else if matches!(self.current_token.kind, 
                         TokenKind::Identifier | 
                         TokenKind::Variable | 
                         TokenKind::Default | 
@@ -2391,6 +2402,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span,
                 })
             }
+            TokenKind::Clone => {
+                self.bump();
+                let expr = self.parse_expr(200);
+                let span = Span::new(token.span.start, expr.span().end);
+                self.arena.alloc(Expr::Clone {
+                    expr,
+                    span,
+                })
+            }
             TokenKind::Match => {
                 let start = token.span.start;
                 self.bump(); // Eat match
@@ -2536,7 +2556,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span,
                 })
             }
-            TokenKind::Minus | TokenKind::Plus | TokenKind::BitNot | TokenKind::At | TokenKind::Inc | TokenKind::Dec => {
+            TokenKind::Minus | TokenKind::Plus | TokenKind::BitNot | TokenKind::At | TokenKind::Inc | TokenKind::Dec | TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg | TokenKind::AmpersandNotFollowedByVarOrVararg => {
                 let op = match token.kind {
                     TokenKind::Minus => UnaryOp::Minus,
                     TokenKind::Plus => UnaryOp::Plus,
@@ -2544,6 +2564,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     TokenKind::At => UnaryOp::ErrorSuppress,
                     TokenKind::Inc => UnaryOp::PreInc,
                     TokenKind::Dec => UnaryOp::PreDec,
+                    TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg | TokenKind::AmpersandNotFollowedByVarOrVararg => UnaryOp::Reference,
                     _ => unreachable!(),
                 };
                 self.bump();
