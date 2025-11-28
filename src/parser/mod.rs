@@ -2091,6 +2091,148 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         (self.arena.alloc_slice_copy(&args), Span::new(start, end))
     }
 
+    fn parse_closure_expr(&mut self, attributes: &'ast [AttributeGroup<'ast>], is_static: bool, start: usize) -> ExprId<'ast> {
+        let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
+            self.bump();
+            true
+        } else {
+            false
+        };
+
+        // Anonymous functions should not have a name, but allow an identifier for recovery
+        if self.current_token.kind == TokenKind::Identifier {
+            self.bump();
+        }
+
+        if self.current_token.kind == TokenKind::OpenParen {
+            self.bump();
+        }
+        let mut params = std::vec::Vec::new();
+        while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
+            params.push(self.parse_param());
+            if self.current_token.kind == TokenKind::Comma {
+                self.bump();
+            }
+        }
+        if self.current_token.kind == TokenKind::CloseParen {
+            self.bump();
+        }
+
+        let mut uses = std::vec::Vec::new();
+        if self.current_token.kind == TokenKind::Use {
+            self.bump();
+            if self.current_token.kind == TokenKind::OpenParen {
+                self.bump();
+            }
+            while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
+                let by_ref = if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg) {
+                    self.bump();
+                    true
+                } else {
+                    false
+                };
+                
+                let var = if self.current_token.kind == TokenKind::Variable {
+                    let t = self.arena.alloc(self.current_token);
+                    self.bump();
+                    t
+                } else {
+                    self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
+                };
+                
+                uses.push(ClosureUse {
+                    var,
+                    by_ref,
+                    span: var.span,
+                });
+                
+                if self.current_token.kind == TokenKind::Comma {
+                    self.bump();
+                }
+            }
+            if self.current_token.kind == TokenKind::CloseParen {
+                self.bump();
+            }
+        }
+
+        let return_type = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            if let Some(t) = self.parse_type() {
+                Some(self.arena.alloc(t) as &'ast Type<'ast>)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let body_stmt = self.parse_block();
+        let body: &'ast [StmtId<'ast>] = match body_stmt {
+            Stmt::Block { statements, .. } => *statements,
+            _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
+        };
+        
+        let end = self.current_token.span.end;
+        self.arena.alloc(Expr::Closure {
+            attributes,
+            is_static,
+            params: self.arena.alloc_slice_copy(&params),
+            uses: self.arena.alloc_slice_copy(&uses),
+            return_type,
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_arrow_function(&mut self, attributes: &'ast [AttributeGroup<'ast>], is_static: bool, start: usize) -> ExprId<'ast> {
+        let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
+            self.bump();
+            true
+        } else {
+            false
+        };
+
+        if self.current_token.kind == TokenKind::OpenParen {
+            self.bump();
+        }
+        let mut params = std::vec::Vec::new();
+        while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
+            params.push(self.parse_param());
+            if self.current_token.kind == TokenKind::Comma {
+                self.bump();
+            }
+        }
+        if self.current_token.kind == TokenKind::CloseParen {
+            self.bump();
+        }
+
+        let return_type = if self.current_token.kind == TokenKind::Colon {
+            self.bump();
+            if let Some(t) = self.parse_type() {
+                Some(self.arena.alloc(t) as &'ast Type<'ast>)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if self.current_token.kind == TokenKind::DoubleArrow {
+            self.bump();
+        }
+        let expr = self.parse_expr(0);
+        
+        let end = expr.span().end;
+        self.arena.alloc(Expr::ArrowFunction {
+            attributes,
+            is_static,
+            params: self.arena.alloc_slice_copy(&params),
+            return_type,
+            expr,
+            span: Span::new(start, end),
+        })
+    }
+
     fn parse_expr(&mut self, min_bp: u8) -> ExprId<'ast> {
         let mut left = self.parse_nud();
 
@@ -2852,156 +2994,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span,
                 })
             }
-            TokenKind::Static => {
-                let start = if let Some(first) = attributes.first() {
-                    first.span.start
-                } else {
-                    token.span.start
-                };
-                self.bump();
-
-                if self.current_token.kind == TokenKind::Function {
-                    self.bump();
-                    
-                    if self.current_token.kind == TokenKind::Ampersand {
-                        self.bump();
-                    }
-                    
-                    if self.current_token.kind == TokenKind::Identifier {
-                        self.bump();
-                    }
-
-                    if self.current_token.kind == TokenKind::OpenParen {
-                        self.bump();
-                    }
-                    let mut params = std::vec::Vec::new();
-                    while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                        params.push(self.parse_param());
-                        if self.current_token.kind == TokenKind::Comma {
-                            self.bump();
-                        }
-                    }
-                    if self.current_token.kind == TokenKind::CloseParen {
-                        self.bump();
-                    }
-
-                    let mut uses = std::vec::Vec::new();
-                    if self.current_token.kind == TokenKind::Use {
-                        self.bump();
-                        if self.current_token.kind == TokenKind::OpenParen {
-                            self.bump();
-                        }
-                        while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                            let by_ref = if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg) {
-                                self.bump();
-                                true
-                            } else {
-                                false
-                            };
-                            
-                            let var = if self.current_token.kind == TokenKind::Variable {
-                                let t = self.arena.alloc(self.current_token);
-                                self.bump();
-                                t
-                            } else {
-                                self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
-                            };
-                            
-                            uses.push(ClosureUse {
-                                var,
-                                by_ref,
-                                span: var.span,
-                            });
-                            
-                            if self.current_token.kind == TokenKind::Comma {
-                                self.bump();
-                            }
-                        }
-                        if self.current_token.kind == TokenKind::CloseParen {
-                            self.bump();
-                        }
-                    }
-
-                    let return_type = if self.current_token.kind == TokenKind::Colon {
-                        self.bump();
-                        if let Some(t) = self.parse_type() {
-                            Some(self.arena.alloc(t) as &'ast Type<'ast>)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    let body_stmt = self.parse_block();
-                    let body: &'ast [StmtId<'ast>] = match body_stmt {
-                        Stmt::Block { statements, .. } => *statements,
-                        _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
-                    };
-                    
-                    let end = self.current_token.span.end;
-                    self.arena.alloc(Expr::Closure {
-                        attributes,
-                        is_static: true,
-                        params: self.arena.alloc_slice_copy(&params),
-                        uses: self.arena.alloc_slice_copy(&uses),
-                        return_type,
-                        body,
-                        span: Span::new(start, end),
-                    })
-                } else if self.current_token.kind == TokenKind::Fn {
-                    self.bump();
-                    
-                    if self.current_token.kind == TokenKind::Ampersand {
-                        self.bump();
-                    }
-
-                    if self.current_token.kind == TokenKind::OpenParen {
-                        self.bump();
-                    }
-                    let mut params = std::vec::Vec::new();
-                    while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                        params.push(self.parse_param());
-                        if self.current_token.kind == TokenKind::Comma {
-                            self.bump();
-                        }
-                    }
-                    if self.current_token.kind == TokenKind::CloseParen {
-                        self.bump();
-                    }
-
-                    let return_type = if self.current_token.kind == TokenKind::Colon {
-                        self.bump();
-                        if let Some(t) = self.parse_type() {
-                            Some(self.arena.alloc(t) as &'ast Type<'ast>)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    if self.current_token.kind == TokenKind::DoubleArrow {
-                        self.bump();
-                    }
-                    let expr = self.parse_expr(0);
-                    
-                    let end = expr.span().end;
-                    self.arena.alloc(Expr::ArrowFunction {
-                        attributes,
-                        is_static: true,
-                        params: self.arena.alloc_slice_copy(&params),
-                        return_type,
-                        expr,
-                        span: Span::new(start, end),
-                    })
-                } else {
-                    self.arena.alloc(Expr::Variable {
-                        name: token.span,
-                        span: token.span,
-                    })
-                }
-            }
             TokenKind::Function => {
                 let start = if let Some(first) = attributes.first() {
                     first.span.start
@@ -3009,103 +3001,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     token.span.start
                 };
                 self.bump();
-                
-                let is_static = if self.current_token.kind == TokenKind::Static {
-                    self.bump();
-                    true
-                } else {
-                    false
-                };
-
-                let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
-                    self.bump();
-                    true
-                } else {
-                    false
-                };
-
-                if self.current_token.kind == TokenKind::Identifier {
-                    self.bump();
-                }
-
-                if self.current_token.kind == TokenKind::OpenParen {
-                    self.bump();
-                }
-                let mut params = std::vec::Vec::new();
-                while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                    params.push(self.parse_param());
-                    if self.current_token.kind == TokenKind::Comma {
-                        self.bump();
-                    }
-                }
-                if self.current_token.kind == TokenKind::CloseParen {
-                    self.bump();
-                }
-
-                let mut uses = std::vec::Vec::new();
-                if self.current_token.kind == TokenKind::Use {
-                    self.bump();
-                    if self.current_token.kind == TokenKind::OpenParen {
-                        self.bump();
-                    }
-                    while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                        let by_ref = if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandFollowedByVarOrVararg) {
-                            self.bump();
-                            true
-                        } else {
-                            false
-                        };
-                        
-                        let var = if self.current_token.kind == TokenKind::Variable {
-                            let t = self.arena.alloc(self.current_token);
-                            self.bump();
-                            t
-                        } else {
-                            self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
-                        };
-                        
-                        uses.push(ClosureUse {
-                            var,
-                            by_ref,
-                            span: var.span,
-                        });
-                        
-                        if self.current_token.kind == TokenKind::Comma {
-                            self.bump();
-                        }
- }
-                    if self.current_token.kind == TokenKind::CloseParen {
-                        self.bump();
-                    }
-                }
-
-                let return_type = if self.current_token.kind == TokenKind::Colon {
-                    self.bump();
-                    if let Some(t) = self.parse_type() {
-                        Some(self.arena.alloc(t) as &'ast Type<'ast>)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                let body_stmt = self.parse_block();
-                let body: &'ast [StmtId<'ast>] = match body_stmt {
-                    Stmt::Block { statements, .. } => *statements,
-                    _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
-                };
-                
-                let end = self.current_token.span.end;
-                self.arena.alloc(Expr::Closure {
-                    attributes,
-                    is_static,
-                    params: self.arena.alloc_slice_copy(&params),
-                    uses: self.arena.alloc_slice_copy(&uses),
-                    return_type,
-                    body,
-                    span: Span::new(start, end),
-                })
+                self.parse_closure_expr(attributes, false, start)
             }
             TokenKind::Fn => {
                 let start = if let Some(first) = attributes.first() {
@@ -3114,60 +3010,30 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     token.span.start
                 };
                 self.bump();
-                
-                let is_static = if self.current_token.kind == TokenKind::Static {
-                    self.bump();
-                    true
+                self.parse_arrow_function(attributes, false, start)
+            }
+            TokenKind::Static => {
+                let start = if let Some(first) = attributes.first() {
+                    first.span.start
                 } else {
-                    false
+                    token.span.start
                 };
-
-                let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
-                    self.bump();
-                    true
-                } else {
-                    false
-                };
-
-                if self.current_token.kind == TokenKind::OpenParen {
-                    self.bump();
-                }
-                let mut params = std::vec::Vec::new();
-                while self.current_token.kind != TokenKind::CloseParen && self.current_token.kind != TokenKind::Eof {
-                    params.push(self.parse_param());
-                    if self.current_token.kind == TokenKind::Comma {
+                self.bump();
+                match self.current_token.kind {
+                    TokenKind::Function => {
                         self.bump();
+                        self.parse_closure_expr(attributes, true, start)
+                    }
+                    TokenKind::Fn => {
+                        self.bump();
+                        self.parse_arrow_function(attributes, true, start)
+                    }
+                    _ => {
+                        let span = self.current_token.span;
+                        self.errors.push(ParseError { span, message: "Expected function after static" });
+                        self.arena.alloc(Expr::Error { span })
                     }
                 }
-                if self.current_token.kind == TokenKind::CloseParen {
-                    self.bump();
-                }
-
-                let return_type = if self.current_token.kind == TokenKind::Colon {
-                    self.bump();
-                    if let Some(t) = self.parse_type() {
-                        Some(self.arena.alloc(t) as &'ast Type<'ast>)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                if self.current_token.kind == TokenKind::DoubleArrow {
-                    self.bump();
-                }
-                let expr = self.parse_expr(0);
-                
-                let end = expr.span().end;
-                self.arena.alloc(Expr::ArrowFunction {
-                    attributes,
-                    is_static,
-                    params: self.arena.alloc_slice_copy(&params),
-                    return_type,
-                    expr,
-                    span: Span::new(start, end),
-                })
             }
             TokenKind::New => {
                 self.bump();
