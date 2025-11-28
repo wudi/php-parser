@@ -92,7 +92,78 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         loop {
             if matches!(
                 self.current_token.kind,
-                TokenKind::Identifier | TokenKind::TypeTrue | TokenKind::TypeFalse | TokenKind::TypeNull
+                TokenKind::Identifier
+                    | TokenKind::New
+                    | TokenKind::Static
+                    | TokenKind::Class
+                    | TokenKind::Trait
+                    | TokenKind::Interface
+                    | TokenKind::Enum
+                    | TokenKind::Namespace
+                    | TokenKind::TypeInt
+                    | TokenKind::TypeFloat
+                    | TokenKind::TypeBool
+                    | TokenKind::TypeString
+                    | TokenKind::TypeVoid
+                    | TokenKind::TypeNever
+                    | TokenKind::TypeNull
+                    | TokenKind::TypeFalse
+                    | TokenKind::TypeTrue
+                    | TokenKind::TypeMixed
+                    | TokenKind::TypeIterable
+                    | TokenKind::TypeObject
+                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
+                    | TokenKind::As
+                    | TokenKind::Empty
+                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
+                    | TokenKind::Default
+                    | TokenKind::Switch
+                    | TokenKind::Case
+                    | TokenKind::For
+                    | TokenKind::Foreach
+                    | TokenKind::While
+                    | TokenKind::Do
+                    | TokenKind::If
+                    | TokenKind::Else
+                    | TokenKind::ElseIf
+                    | TokenKind::Try
+                    | TokenKind::Catch
+                    | TokenKind::Finally
+                    | TokenKind::Throw
+                    | TokenKind::Return
+                    | TokenKind::Break
+                    | TokenKind::Continue
+                    | TokenKind::Goto
+                    | TokenKind::Echo
+                    | TokenKind::Print
+                    | TokenKind::List
+                    | TokenKind::Clone
+                    | TokenKind::Include
+                    | TokenKind::IncludeOnce
+                    | TokenKind::Require
+                    | TokenKind::RequireOnce
+                    | TokenKind::Global
+                    | TokenKind::Unset
+                    | TokenKind::Exit
+                    | TokenKind::Die
+                    | TokenKind::Eval
+                    | TokenKind::Yield
+                    | TokenKind::YieldFrom
+                    | TokenKind::Declare
+                    | TokenKind::Match
+                    | TokenKind::Fn
+                    | TokenKind::Const
+                    | TokenKind::Use
+                    | TokenKind::Public
+                    | TokenKind::Protected
+                    | TokenKind::Private
+                    | TokenKind::Abstract
+                    | TokenKind::Final
+                    | TokenKind::Readonly
+                    | TokenKind::Array
+                    | TokenKind::LogicalAnd
+                    | TokenKind::LogicalOr | TokenKind::Insteadof
+                    | TokenKind::LogicalXor
             ) {
                 parts.push(self.current_token);
                 self.bump();
@@ -211,7 +282,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let end = self.current_token.span.end;
                 self.arena.alloc(Stmt::HaltCompiler { span: Span::new(start, end) })
             }
-            TokenKind::Echo => self.parse_echo(),
+            TokenKind::Echo | TokenKind::OpenTagEcho => self.parse_echo(),
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
@@ -666,7 +737,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
         self.bump(); // Eat class
         
-        let name = if self.current_token.kind == TokenKind::Identifier {
+        let name = if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Enum) {
             let token = self.arena.alloc(self.current_token);
             self.bump();
             token
@@ -1232,7 +1303,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.validate_modifiers(&modifiers, ModifierContext::Other);
         if self.current_token.kind == TokenKind::Case {
              self.bump();
-             let name = if self.current_token.kind == TokenKind::Identifier {
+             let name = if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Default | TokenKind::Class | TokenKind::Function | TokenKind::Trait | TokenKind::Interface | TokenKind::Enum | TokenKind::TypeInt | TokenKind::TypeFloat | TokenKind::TypeBool | TokenKind::TypeString | TokenKind::TypeVoid | TokenKind::TypeNever | TokenKind::TypeNull | TokenKind::TypeFalse | TokenKind::TypeTrue | TokenKind::TypeMixed | TokenKind::TypeIterable | TokenKind::TypeObject | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor | TokenKind::As | TokenKind::Empty | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor | TokenKind::Switch | TokenKind::Case | TokenKind::For | TokenKind::Foreach | TokenKind::While | TokenKind::Do | TokenKind::Try | TokenKind::Catch | TokenKind::Finally | TokenKind::Throw | TokenKind::If | TokenKind::Else | TokenKind::ElseIf | TokenKind::EndIf | TokenKind::Return | TokenKind::Echo | TokenKind::Print | TokenKind::Global | TokenKind::Static | TokenKind::Abstract | TokenKind::Final | TokenKind::Readonly | TokenKind::Public | TokenKind::Protected | TokenKind::Private | TokenKind::Const | TokenKind::List | TokenKind::Array | TokenKind::Exit | TokenKind::Die | TokenKind::Clone | TokenKind::New | TokenKind::InstanceOf | TokenKind::Yield | TokenKind::YieldFrom | TokenKind::Declare | TokenKind::EndDeclare | TokenKind::Match | TokenKind::Fn | TokenKind::HaltCompiler | TokenKind::Include | TokenKind::IncludeOnce | TokenKind::Require | TokenKind::RequireOnce | TokenKind::Eval | TokenKind::Unset | TokenKind::Use | TokenKind::Namespace | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor) {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
                 token
@@ -1373,13 +1444,61 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     | TokenKind::TypeNull
                     | TokenKind::TypeFalse
                     | TokenKind::TypeTrue
-                            | TokenKind::TypeMixed
-                            | TokenKind::TypeIterable
-                            | TokenKind::TypeObject
-                            | TokenKind::TypeCallable
-                            | TokenKind::As
-                            | TokenKind::Empty
-                            | TokenKind::Isset
+                    | TokenKind::TypeMixed
+                    | TokenKind::TypeIterable
+                    | TokenKind::TypeObject
+                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
+                    | TokenKind::As
+                    | TokenKind::Empty
+                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
+                    | TokenKind::Default
+                    | TokenKind::Switch
+                    | TokenKind::Case
+                    | TokenKind::For
+                    | TokenKind::Foreach
+                    | TokenKind::While
+                    | TokenKind::Do
+                    | TokenKind::If
+                    | TokenKind::Else
+                    | TokenKind::ElseIf
+                    | TokenKind::Try
+                    | TokenKind::Catch
+                    | TokenKind::Finally
+                    | TokenKind::Throw
+                    | TokenKind::Return
+                    | TokenKind::Break
+                    | TokenKind::Continue
+                    | TokenKind::Goto
+                    | TokenKind::Echo
+                    | TokenKind::Print
+                    | TokenKind::List
+                    | TokenKind::Clone
+                    | TokenKind::Include
+                    | TokenKind::IncludeOnce
+                    | TokenKind::Require
+                    | TokenKind::RequireOnce
+                    | TokenKind::Global
+                    | TokenKind::Unset
+                    | TokenKind::Exit
+                    | TokenKind::Die
+                    | TokenKind::Eval
+                    | TokenKind::Yield
+                    | TokenKind::YieldFrom
+                    | TokenKind::Declare
+                    | TokenKind::Match
+                    | TokenKind::Fn
+                    | TokenKind::Const
+                    | TokenKind::Use
+                    | TokenKind::Public
+                    | TokenKind::Protected
+                    | TokenKind::Private
+                    | TokenKind::Abstract
+                    | TokenKind::Final
+                    | TokenKind::Readonly
+                    | TokenKind::Array
+                    | TokenKind::LogicalAnd
+                    | TokenKind::LogicalOr | TokenKind::Insteadof
+                    | TokenKind::LogicalXor
                     ) {
                 let token = self.arena.alloc(self.current_token);
                 self.bump();
@@ -1474,7 +1593,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     let vis_count = param.modifiers.iter().filter(|m| matches!(m.kind, TokenKind::Public | TokenKind::Protected | TokenKind::Private)).count();
                     let has_readonly = param.modifiers.iter().any(|m| m.kind == TokenKind::Readonly);
                     let readonly_count = param.modifiers.iter().filter(|m| m.kind == TokenKind::Readonly).count();
-                    let by_ref = param.by_ref;
+                    let _by_ref = param.by_ref;
 
                     if matches!(ctx, ClassMemberCtx::Interface) {
                         self.errors.push(ParseError { span: param.span, message: "property promotion not allowed in interfaces/traits" });
@@ -1499,9 +1618,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     if readonly_count > 1 {
                         self.errors.push(ParseError { span: param.span, message: "Duplicate readonly modifier" });
                     }
-                    if by_ref {
-                        self.errors.push(ParseError { span: param.span, message: "promoted parameter cannot be by-reference" });
-                    }
+                    // if by_ref {
+                    //     self.errors.push(ParseError { span: param.span, message: "promoted parameter cannot be by-reference" });
+                    // }
                 }
             }
             
@@ -1516,15 +1635,51 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         } else if self.current_token.kind == TokenKind::Const {
             self.bump();
-            let mut consts = std::vec::Vec::new();
-            loop {
-                let name = if self.current_token.kind == TokenKind::Identifier {
-                    let token = self.arena.alloc(self.current_token);
-                    self.bump();
-                    token
+            
+            let ty = self.parse_type();
+            let mut const_type = None;
+            let mut first_name = None;
+
+            if let Some(t) = ty {
+                if matches!(self.current_token.kind, TokenKind::Identifier | TokenKind::Default | TokenKind::Switch | TokenKind::Case | TokenKind::For | TokenKind::Foreach | TokenKind::While | TokenKind::Do | TokenKind::If | TokenKind::Else | TokenKind::ElseIf | TokenKind::Try | TokenKind::Catch | TokenKind::Finally | TokenKind::Throw | TokenKind::Return | TokenKind::Break | TokenKind::Continue | TokenKind::Goto | TokenKind::Echo | TokenKind::Print | TokenKind::List | TokenKind::Clone | TokenKind::Include | TokenKind::IncludeOnce | TokenKind::Require | TokenKind::RequireOnce | TokenKind::Global | TokenKind::Unset | TokenKind::Exit | TokenKind::Die | TokenKind::Eval | TokenKind::Yield | TokenKind::YieldFrom | TokenKind::Declare | TokenKind::Match | TokenKind::Fn | TokenKind::Const | TokenKind::Use | TokenKind::Public | TokenKind::Protected | TokenKind::Private | TokenKind::Abstract | TokenKind::Final | TokenKind::Readonly | TokenKind::Array | TokenKind::LogicalAnd | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalXor) {
+                    const_type = Some(self.arena.alloc(t) as &'ast Type<'ast>);
                 } else {
-                    self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
+                    match t {
+                        Type::Simple(token) => {
+                            first_name = Some(token);
+                        },
+                        Type::Name(name) => {
+                             if name.parts.len() == 1 {
+                                 first_name = Some(&name.parts[0]);
+                             } else {
+                                 self.errors.push(ParseError { span: name.span, message: "Class constant must be an identifier" });
+                                 first_name = Some(&name.parts[0]);
+                             }
+                        },
+                        _ => {
+                             self.errors.push(ParseError { span: self.current_token.span, message: "Expected identifier" });
+                             first_name = Some(self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() }));
+                        }
+                    }
+                }
+            }
+            
+            let mut consts = std::vec::Vec::new();
+            let mut first = true;
+            
+            loop {
+                let name = if first && first_name.is_some() {
+                    first_name.unwrap()
+                } else {
+                    if self.current_token.kind == TokenKind::Identifier {
+                        let token = self.arena.alloc(self.current_token);
+                        self.bump();
+                        token
+                    } else {
+                        self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
+                    }
                 };
+                first = false;
                 
                 if self.current_token.kind == TokenKind::Eq {
                     self.bump();
@@ -1553,6 +1708,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             ClassMember::Const {
                 attributes,
                 modifiers: self.arena.alloc_slice_copy(&modifiers),
+                ty: const_type,
                 consts: self.arena.alloc_slice_copy(&consts),
                 span: Span::new(start, end),
             }
@@ -2353,7 +2509,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     | TokenKind::Extends
                     | TokenKind::List
                     | TokenKind::Array
-                    | TokenKind::Isset
+                    | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                     | TokenKind::Empty
                     | TokenKind::TypeInt
                     | TokenKind::TypeFloat
@@ -2367,13 +2523,25 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     | TokenKind::TypeMixed
                     | TokenKind::TypeIterable
                     | TokenKind::TypeObject
-                    | TokenKind::TypeCallable
+                    | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                     | TokenKind::As
             ) && self.next_token.kind == TokenKind::Colon {
                 name = Some(self.arena.alloc(self.current_token.clone()));
                 self.bump(); // Identifier
                 self.bump(); // Colon
             } else if self.current_token.kind == TokenKind::Ellipsis {
+                if self.next_token.kind == TokenKind::CloseParen {
+                    let span = self.current_token.span;
+                    self.bump(); // Eat ...
+                    let value = self.arena.alloc(Expr::VariadicPlaceholder { span });
+                    args.push(Arg {
+                        name: None,
+                        value,
+                        unpack: false,
+                        span,
+                    });
+                    continue;
+                }
                 unpack = true;
                 self.bump();
             }
@@ -2571,7 +2739,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 TokenKind::Pipe => BinaryOp::BitOr,
                 TokenKind::Caret => BinaryOp::BitXor,
                 TokenKind::LogicalAnd => BinaryOp::LogicalAnd,
-                TokenKind::LogicalOr => BinaryOp::LogicalOr,
+                TokenKind::LogicalOr | TokenKind::Insteadof => BinaryOp::LogicalOr,
                 TokenKind::LogicalXor => BinaryOp::LogicalXor,
                 TokenKind::Coalesce => BinaryOp::Coalesce,
                 TokenKind::Spaceship => BinaryOp::Spaceship,
@@ -2738,11 +2906,77 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             self.arena.alloc(Expr::Error { span: Span::new(start, self.current_token.span.end) })
                         }
                     } else if matches!(self.current_token.kind, 
-                        TokenKind::Identifier |
-                        TokenKind::Variable |
+                        TokenKind::Identifier | 
+                        TokenKind::Variable | 
+                        TokenKind::Default | 
+                        TokenKind::Class | 
+                        TokenKind::Function | 
+                        TokenKind::Fn | 
+                        TokenKind::Match | 
+                        TokenKind::Switch | 
+                        TokenKind::Case | 
+                        TokenKind::Break | 
+                        TokenKind::Continue | 
+                        TokenKind::Echo | 
+                        TokenKind::Print | 
+                        TokenKind::If | 
+                        TokenKind::Else | 
+                        TokenKind::ElseIf | 
+                        TokenKind::While | 
+                        TokenKind::Do | 
+                        TokenKind::For | 
+                        TokenKind::Foreach | 
+                        TokenKind::Declare | 
+                        TokenKind::EndDeclare | 
+                        TokenKind::Try | 
+                        TokenKind::Catch | 
+                        TokenKind::Finally | 
+                        TokenKind::Throw | 
+                        TokenKind::Use | 
+                        TokenKind::Global | 
+                        TokenKind::Static | 
+                        TokenKind::Abstract | 
+                        TokenKind::Final | 
+                        TokenKind::Private | 
+                        TokenKind::Protected | 
+                        TokenKind::Public | TokenKind::Readonly | 
+                        TokenKind::Const | 
+                        TokenKind::Return | 
+                        TokenKind::New | 
+                        TokenKind::Clone | 
+                        TokenKind::Include | 
+                        TokenKind::IncludeOnce | 
+                        TokenKind::Require | 
+                        TokenKind::RequireOnce | 
+                        TokenKind::Namespace | 
+                        TokenKind::Implements | 
+                        TokenKind::Extends | 
+                        TokenKind::Interface | 
+                        TokenKind::Trait | 
+                        TokenKind::Enum | 
+                        TokenKind::Goto |
+                        TokenKind::List | 
+                        TokenKind::Array | 
                         TokenKind::As |
                         TokenKind::Empty |
-                        TokenKind::Isset
+                        TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
+                        TokenKind::Unset |
+                        TokenKind::Eval |
+                        TokenKind::Exit |
+                        TokenKind::Die |
+                        TokenKind::TypeInt |
+                        TokenKind::TypeFloat |
+                        TokenKind::TypeBool |
+                        TokenKind::TypeString |
+                        TokenKind::TypeVoid |
+                        TokenKind::TypeNever |
+                        TokenKind::TypeNull |
+                        TokenKind::TypeTrue |
+                        TokenKind::TypeFalse |
+                        TokenKind::TypeMixed |
+                        TokenKind::TypeIterable |
+                        TokenKind::TypeObject |
+                        TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                     ) {
                         let token = self.current_token;
                         self.bump();
@@ -2845,7 +3079,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         TokenKind::Final | 
                         TokenKind::Private | 
                         TokenKind::Protected | 
-                        TokenKind::Public | 
+                        TokenKind::Public | TokenKind::Readonly | 
                         TokenKind::Const | 
                         TokenKind::Return | 
                         TokenKind::New | 
@@ -2860,11 +3094,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         TokenKind::Interface | 
                         TokenKind::Trait | 
                         TokenKind::Enum | 
+                        TokenKind::Goto |
                         TokenKind::List | 
                         TokenKind::Array | 
                         TokenKind::As |
                         TokenKind::Empty |
-                        TokenKind::Isset |
+                        TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
+                        TokenKind::Unset |
+                        TokenKind::Eval |
+                        TokenKind::Exit |
+                        TokenKind::Die |
                         TokenKind::TypeInt |
                         TokenKind::TypeFloat |
                         TokenKind::TypeBool |
@@ -2877,7 +3116,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         TokenKind::TypeMixed |
                         TokenKind::TypeIterable |
                         TokenKind::TypeObject |
-                        TokenKind::TypeCallable
+                        TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                     ) {
                         // We need to wrap this token in an Expr
                         // Reusing Variable/Identifier logic from parse_nud would be good but we need to call it explicitly or just handle it here
@@ -2968,7 +3207,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             | TokenKind::TypeMixed
                             | TokenKind::TypeIterable
                             | TokenKind::TypeObject
-                            | TokenKind::TypeCallable
+                            | TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                             | TokenKind::Default
                             | TokenKind::Function
                             | TokenKind::Fn
@@ -3000,6 +3239,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             | TokenKind::Private
                             | TokenKind::Protected
                             | TokenKind::Public
+                            | TokenKind::Readonly
                             | TokenKind::Return
                             | TokenKind::New
                             | TokenKind::Clone
@@ -3013,11 +3253,29 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             | TokenKind::Interface
                             | TokenKind::Trait
                             | TokenKind::Enum
+                            | TokenKind::Goto
+                            | TokenKind::List
+                            | TokenKind::Array
+                            
+                            | TokenKind::Exit
+                            | TokenKind::Die
+                            | TokenKind::Eval
+                            | TokenKind::Yield
+                            | TokenKind::YieldFrom
+                            | TokenKind::HaltCompiler
+                            | TokenKind::As
+                            | TokenKind::Empty
+                            | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
+                            | TokenKind::Unset
+                            | TokenKind::Extends
+                            | TokenKind::Interface
+                            | TokenKind::Trait
+                            | TokenKind::Enum
                             | TokenKind::List
                             | TokenKind::Array
                             | TokenKind::As
                             | TokenKind::Empty
-                            | TokenKind::Isset
+                            | TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor
                     ) {
                         let token = self.current_token;
                         self.bump();
@@ -3322,7 +3580,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: Span::new(start, end),
                 })
             }
-            TokenKind::Isset => {
+            TokenKind::Isset | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor => {
                 let start = token.span.start;
                 self.bump();
                 if self.current_token.kind == TokenKind::OpenParen {
@@ -3629,6 +3887,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     condition,
                     arms: self.arena.alloc_slice_copy(&arms),
                     span: Span::new(start, end),
+                })
+            }
+            TokenKind::Dollar => {
+                let start = self.current_token.span.start;
+                self.bump();
+                let expr = self.parse_expr(200);
+                let span = Span::new(start, expr.span().end);
+                self.arena.alloc(Expr::Variable {
+                    name: expr.span(),
+                    span,
                 })
             }
             TokenKind::Variable => {
@@ -4122,7 +4390,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::TypeFalse | 
             TokenKind::TypeTrue | 
             TokenKind::TypeIterable | 
-            TokenKind::TypeCallable) {
+            TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor) {
              let t = self.arena.alloc(self.current_token);
              self.bump();
              Some(Type::Simple(t))
@@ -4152,7 +4420,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 TokenKind::TypeFalse | 
                 TokenKind::TypeTrue | 
                 TokenKind::TypeIterable | 
-                TokenKind::TypeCallable |
+                TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
                 TokenKind::Question |
                 TokenKind::OpenParen |
                 TokenKind::Namespace |
@@ -4179,7 +4447,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     TokenKind::TypeFalse | 
                     TokenKind::TypeTrue | 
                     TokenKind::TypeIterable | 
-                    TokenKind::TypeCallable |
+                    TokenKind::TypeCallable | TokenKind::LogicalOr | TokenKind::Insteadof | TokenKind::LogicalAnd | TokenKind::LogicalXor |
                     TokenKind::Question |
                     TokenKind::OpenParen |
                     TokenKind::Namespace |

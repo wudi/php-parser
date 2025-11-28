@@ -402,6 +402,9 @@ pub enum Expr<'ast> {
         args: &'ast [Arg<'ast>],
         span: Span,
     },
+    VariadicPlaceholder {
+        span: Span,
+    },
     Error {
         span: Span,
     },
@@ -497,6 +500,7 @@ impl<'ast> Expr<'ast> {
             Expr::Print { span, .. } => *span,
             Expr::NullsafePropertyFetch { span, .. } => *span,
             Expr::NullsafeMethodCall { span, .. } => *span,
+            Expr::VariadicPlaceholder { span } => *span,
             Expr::Error { span } => *span,
         }
     }
@@ -640,6 +644,7 @@ pub enum ClassMember<'ast> {
     Const {
         attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
+        ty: Option<&'ast Type<'ast>>,
         consts: &'ast [ClassConst<'ast>],
         span: Span,
     },
