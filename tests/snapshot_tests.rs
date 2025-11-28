@@ -438,3 +438,67 @@ fn test_attributes() {
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
+
+#[test]
+fn test_constructor_property_promotion() {
+    let source = b"<?php
+    class User {
+        public function __construct(
+            public string $name,
+            private int $age = 0,
+            protected readonly float $score,
+        ) {}
+    }
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_complex_types() {
+    let source = b"<?php
+    function test(int|string $a, Foo&Bar $b, (A&B)|C $c): ?float {
+        return null;
+    }
+    ";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_intersection_vs_reference() {
+    let source = b"<?php function foo(A&B $intersection, A &$reference, A&B &$intersection_ref) {}";
+    let arena = Bump::new();
+    
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}
+
+#[test]
+fn test_named_arguments() {
+    let source = b"<?php
+    foo(a: 1, b: 2);
+    $obj->method(name: $val, ...$args);
+    new Foo(param: 10);
+    #[Attr(name: 'value')]
+    class C {}
+    ";
+    let arena = Bump::new();
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}

@@ -169,6 +169,7 @@ Program {
             },
         },
         Class {
+            attributes: [],
             name: Token {
                 kind: Identifier,
                 span: Span {
@@ -255,6 +256,7 @@ Program {
             ],
             members: [
                 Method {
+                    attributes: [],
                     modifiers: [
                         Token {
                             kind: Public,
@@ -360,32 +362,25 @@ Program {
                                 },
                             },
                             expr: New {
-                                class: Call {
-                                    func: Variable {
-                                        name: Span {
-                                            start: 240,
-                                            end: 244,
-                                        },
-                                        span: Span {
-                                            start: 240,
-                                            end: 244,
-                                        },
+                                class: Variable {
+                                    name: Span {
+                                        start: 240,
+                                        end: 244,
                                     },
-                                    args: [],
                                     span: Span {
                                         start: 240,
-                                        end: 247,
+                                        end: 244,
                                     },
                                 },
                                 args: [],
                                 span: Span {
                                     start: 236,
-                                    end: 247,
+                                    end: 246,
                                 },
                             },
                             span: Span {
                                 start: 231,
-                                end: 247,
+                                end: 246,
                             },
                         },
                         span: Span {

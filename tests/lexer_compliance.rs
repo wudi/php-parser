@@ -99,6 +99,7 @@ fn map_kind_to_php(kind: TokenKind, _text: &str) -> &'static str {
         TokenKind::RequireOnce => "T_REQUIRE_ONCE",
         TokenKind::Eval => "T_EVAL",
         TokenKind::Exit => "T_EXIT",
+        TokenKind::Die => "T_EXIT",
         TokenKind::Empty => "T_EMPTY",
         TokenKind::Isset => "T_ISSET",
         TokenKind::Unset => "T_UNSET",

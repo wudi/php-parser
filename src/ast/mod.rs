@@ -58,6 +58,7 @@ pub enum Stmt<'ast> {
         attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token, 
         params: &'ast [Param<'ast>],
+        return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
         span: Span,
     },
@@ -153,9 +154,11 @@ pub struct StaticVar<'ast> {
 #[derive(Debug, Clone, Copy)]
 pub struct Param<'ast> {
     pub attributes: &'ast [AttributeGroup<'ast>],
+    pub modifiers: &'ast [Token],
     pub name: &'ast Token,
-    pub ty: Option<&'ast Token>, // Simplified type hint
+    pub ty: Option<&'ast Type<'ast>>,
     pub default: Option<ExprId<'ast>>,
+    pub by_ref: bool,
     pub span: Span,
 }
 
@@ -290,14 +293,14 @@ pub enum Expr<'ast> {
         attributes: &'ast [AttributeGroup<'ast>],
         params: &'ast [Param<'ast>],
         uses: &'ast [ClosureUse<'ast>],
-        return_type: Option<&'ast Token>,
+        return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
         span: Span,
     },
     ArrowFunction {
         attributes: &'ast [AttributeGroup<'ast>],
         params: &'ast [Param<'ast>],
-        return_type: Option<&'ast Token>,
+        return_type: Option<&'ast Type<'ast>>,
         expr: ExprId<'ast>,
         span: Span,
     },
@@ -447,7 +450,9 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Arg<'ast> {
+    pub name: Option<&'ast Token>,
     pub value: ExprId<'ast>,
+    pub unpack: bool,
     pub span: Span,
 }
 
@@ -465,7 +470,7 @@ pub enum ClassMember<'ast> {
     Property {
         attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
-        ty: Option<&'ast Token>,
+        ty: Option<&'ast Type<'ast>>,
         name: &'ast Token,
         default: Option<ExprId<'ast>>,
         span: Span,
@@ -543,5 +548,13 @@ pub struct Attribute<'ast> {
 pub struct AttributeGroup<'ast> {
     pub attributes: &'ast [Attribute<'ast>],
     pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Type<'ast> {
+    Simple(&'ast Token),
+    Union(&'ast [Type<'ast>]),
+    Intersection(&'ast [Type<'ast>]),
+    Nullable(&'ast Type<'ast>),
 }
 

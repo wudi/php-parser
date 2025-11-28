@@ -56,6 +56,7 @@ Program {
                             },
                             args: [
                                 Arg {
+                                    name: None,
                                     value: Integer {
                                         value: [
                                             49,
@@ -65,12 +66,14 @@ Program {
                                             end: 42,
                                         },
                                     },
+                                    unpack: false,
                                     span: Span {
                                         start: 41,
                                         end: 42,
                                     },
                                 },
                                 Arg {
+                                    name: None,
                                     value: String {
                                         value: [
                                             39,
@@ -84,6 +87,7 @@ Program {
                                             end: 49,
                                         },
                                     },
+                                    unpack: false,
                                     span: Span {
                                         start: 44,
                                         end: 49,
@@ -305,6 +309,7 @@ Program {
                                     },
                                 },
                             ],
+                            modifiers: [],
                             name: Token {
                                 kind: Variable,
                                 span: Span {
@@ -314,6 +319,7 @@ Program {
                             },
                             ty: None,
                             default: None,
+                            by_ref: false,
                             span: Span {
                                 start: 220,
                                 end: 239,
@@ -373,6 +379,7 @@ Program {
                 },
             },
             params: [],
+            return_type: None,
             body: [],
             span: Span {
                 start: 264,
