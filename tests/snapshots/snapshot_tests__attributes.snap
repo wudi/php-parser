@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 439
 expression: program
 ---
 Program {
@@ -213,6 +214,7 @@ Program {
                         },
                     ],
                     modifiers: [],
+                    ty: None,
                     consts: [
                         ClassConst {
                             name: Token {
@@ -336,6 +338,7 @@ Program {
                             ty: None,
                             default: None,
                             by_ref: false,
+                            variadic: false,
                             span: Span {
                                 start: 220,
                                 end: 239,

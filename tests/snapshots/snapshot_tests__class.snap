@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 145
 expression: program
 ---
 Program {
@@ -87,6 +88,7 @@ Program {
                 Const {
                     attributes: [],
                     modifiers: [],
+                    ty: None,
                     consts: [
                         ClassConst {
                             name: Token {
