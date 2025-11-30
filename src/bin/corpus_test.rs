@@ -49,6 +49,11 @@ fn main() {
                 Err(e) => eprintln!("Failed to read dir {:?}: {}", path, e),
             }
         } else if path.extension().map_or(false, |ext| ext == "php") {
+            // Skip known invalid files in vendor/squizlabs/php_codesniffer
+            if path.to_string_lossy().contains("HiddenDirShouldBeIgnoredSniff.php") {
+                continue;
+            }
+
             total_files += 1;
             if total_files % 100 == 0 {
                 print!("\rScanned {} files...", total_files);
