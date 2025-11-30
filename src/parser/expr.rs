@@ -351,11 +351,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         Some(self.parse_expr(0))
                     };
                     
-                    if self.current_token.kind == TokenKind::CloseBracket {
+                    let end = if self.current_token.kind == TokenKind::CloseBracket {
+                        let end = self.current_token.span.end;
                         self.bump();
-                    }
+                        end
+                    } else {
+                        self.current_token.span.start
+                    };
                     
-                    let span = Span::new(left.span().start, self.current_token.span.end);
+                    let span = Span::new(left.span().start, end);
                     left = self.arena.alloc(Expr::ArrayDimFetch {
                         array: left,
                         dim,
@@ -977,12 +981,31 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Dollar => {
                 let start = self.current_token.span.start;
                 self.bump();
-                let expr = self.parse_expr(200);
-                let span = Span::new(start, expr.span().end);
-                self.arena.alloc(Expr::Variable {
-                    name: expr.span(),
-                    span,
-                })
+
+                if self.current_token.kind == TokenKind::OpenBrace {
+                    self.bump();
+                    let expr = self.parse_expr(0);
+                    let end = if self.current_token.kind == TokenKind::CloseBrace {
+                        let end = self.current_token.span.end;
+                        self.bump();
+                        end
+                    } else {
+                        self.current_token.span.start
+                    };
+
+                    let span = Span::new(start, end);
+                    self.arena.alloc(Expr::Variable {
+                        name: expr.span(),
+                        span,
+                    })
+                } else {
+                    let expr = self.parse_expr(200);
+                    let span = Span::new(start, expr.span().end);
+                    self.arena.alloc(Expr::Variable {
+                        name: expr.span(),
+                        span,
+                    })
+                }
             }
             TokenKind::Variable => {
                 self.bump();

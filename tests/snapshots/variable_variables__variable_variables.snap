@@ -1,0 +1,144 @@
+---
+source: tests/variable_variables.rs
+assertion_line: 20
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 11,
+                        end: 13,
+                    },
+                    span: Span {
+                        start: 10,
+                        end: 13,
+                    },
+                },
+                expr: Integer {
+                    value: [
+                        49,
+                    ],
+                    span: Span {
+                        start: 16,
+                        end: 17,
+                    },
+                },
+                span: Span {
+                    start: 10,
+                    end: 17,
+                },
+            },
+            span: Span {
+                start: 10,
+                end: 24,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 25,
+                        end: 27,
+                    },
+                    span: Span {
+                        start: 23,
+                        end: 28,
+                    },
+                },
+                expr: Integer {
+                    value: [
+                        50,
+                    ],
+                    span: Span {
+                        start: 31,
+                        end: 32,
+                    },
+                },
+                span: Span {
+                    start: 23,
+                    end: 32,
+                },
+            },
+            span: Span {
+                start: 23,
+                end: 39,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 40,
+                        end: 43,
+                    },
+                    span: Span {
+                        start: 38,
+                        end: 44,
+                    },
+                },
+                expr: Integer {
+                    value: [
+                        51,
+                    ],
+                    span: Span {
+                        start: 47,
+                        end: 48,
+                    },
+                },
+                span: Span {
+                    start: 38,
+                    end: 48,
+                },
+            },
+            span: Span {
+                start: 38,
+                end: 55,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 56,
+                        end: 63,
+                    },
+                    span: Span {
+                        start: 54,
+                        end: 64,
+                    },
+                },
+                expr: Integer {
+                    value: [
+                        52,
+                    ],
+                    span: Span {
+                        start: 67,
+                        end: 68,
+                    },
+                },
+                span: Span {
+                    start: 54,
+                    end: 68,
+                },
+            },
+            span: Span {
+                start: 54,
+                end: 74,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 74,
+    },
+}
