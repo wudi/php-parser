@@ -66,7 +66,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     }
 
     pub(super) fn parse_closure_expr(&mut self, attributes: &'ast [AttributeGroup<'ast>], is_static: bool, start: usize) -> ExprId<'ast> {
-        let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
+        let _returns_by_ref = if matches!(self.current_token.kind, TokenKind::Ampersand | TokenKind::AmpersandNotFollowedByVarOrVararg) {
             self.bump();
             true
         } else {

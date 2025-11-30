@@ -15,9 +15,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
             }
             Some(ty)
-        } else if matches!(self.current_token.kind, TokenKind::Namespace | TokenKind::NsSeparator | TokenKind::Identifier) {
-            let name = self.parse_name();
-            Some(Type::Name(name))
         } else if matches!(self.current_token.kind, 
             TokenKind::Array | 
             TokenKind::Static |
@@ -37,6 +34,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
              let t = self.arena.alloc(self.current_token);
              self.bump();
              Some(Type::Simple(t))
+        } else if matches!(self.current_token.kind, TokenKind::Namespace | TokenKind::NsSeparator | TokenKind::Identifier) || self.current_token.kind.is_semi_reserved() {
+            let name = self.parse_name();
+            Some(Type::Name(name))
         } else {
             None
         }

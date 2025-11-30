@@ -716,7 +716,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let name = if first && first_name.is_some() {
                     first_name.unwrap()
                 } else {
-                    if self.current_token.kind == TokenKind::Identifier {
+                    if self.current_token.kind == TokenKind::Identifier || self.current_token.kind.is_semi_reserved() {
                         let token = self.arena.alloc(self.current_token);
                         self.bump();
                         token
