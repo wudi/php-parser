@@ -1148,7 +1148,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
                 self.arena.alloc(Expr::Null { span: token.span })
             }
-            TokenKind::Identifier | TokenKind::Namespace | TokenKind::NsSeparator | TokenKind::Enum => {
+            TokenKind::Identifier
+            | TokenKind::Namespace
+            | TokenKind::NsSeparator
+            | TokenKind::Enum
+            | TokenKind::TypeInt
+            | TokenKind::TypeFloat
+            | TokenKind::TypeBool
+            | TokenKind::TypeString
+            | TokenKind::TypeVoid
+            | TokenKind::TypeNever
+            | TokenKind::TypeMixed
+            | TokenKind::TypeIterable
+            | TokenKind::TypeObject
+            | TokenKind::TypeCallable
+            | TokenKind::Readonly => {
                 let name = self.parse_name();
                 self.arena.alloc(Expr::Variable {
                     name: name.span,
