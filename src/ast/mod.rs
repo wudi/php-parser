@@ -2,6 +2,8 @@ use crate::lexer::token::Token;
 use crate::span::Span;
 use serde::Serialize;
 
+pub mod visitor;
+
 pub type ExprId<'ast> = &'ast Expr<'ast>;
 pub type StmtId<'ast> = &'ast Stmt<'ast>;
 
