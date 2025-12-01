@@ -303,7 +303,9 @@ fn test_lexer_compliance() {
 
 #[test]
 fn test_run_tests_php() {
-    let path = "/home/debian/php-src/run-tests.php";
+    let php_src_path = std::env::var("PHP_SRC_PATH")
+        .expect("PHP_SRC_PATH environment variable not set");
+    let path = format!("{}/run-tests.php", php_src_path);
     println!("Testing file: {}", path);
     
     let php_tokens = get_php_tokens_from_file(path);
