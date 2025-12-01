@@ -1,5 +1,6 @@
 use std::fmt;
 use std::cell::RefCell;
+use serde::Serialize;
 
 thread_local! {
     static DEBUG_SOURCE: RefCell<Option<&'static [u8]>> = RefCell::new(None);
@@ -26,7 +27,7 @@ where
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Hash, Serialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

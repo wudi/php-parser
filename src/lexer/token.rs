@@ -1,6 +1,7 @@
 use crate::span::Span;
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
@@ -16,7 +17,7 @@ impl Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize)]
 pub enum TokenKind {
     // Keywords
     Function, Class, Interface, Trait, Extends, Implements, Enum,
@@ -49,6 +50,7 @@ pub enum TokenKind {
     DNumber, 
     StringLiteral, 
     NumString, // For array offset in string
+    StringVarname, // For ${var} in string
     Variable,
     InlineHtml,
     EncapsedAndWhitespace,

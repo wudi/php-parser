@@ -21,6 +21,8 @@ enum LexerState {
     HaltCompiler,
     RawData,
     VarOffset,
+    LookingForProperty,
+    LookingForVarName,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +198,62 @@ impl<'src> Lexer<'src> {
 
 
 
+    fn next_in_looking_for_property(&mut self) -> Option<Token> {
+        let start = self.cursor;
+        if self.cursor >= self.input.len() {
+             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+        }
+        
+        let c = self.input[self.cursor];
+        
+        if c == b'-' {
+            if self.input.get(self.cursor + 1) == Some(&b'>') {
+                self.advance_n(2);
+                return Some(Token { kind: TokenKind::Arrow, span: Span::new(start, self.cursor) });
+            }
+        }
+        
+        if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
+            self.read_identifier();
+            self.state_stack.pop(); // Done with property
+            return Some(Token { kind: TokenKind::Identifier, span: Span::new(start, self.cursor) });
+        }
+        
+        // Fallback: if we are here, it means we expected -> or identifier but got something else.
+        // This shouldn't happen if we only push state when we see ->.
+        // But if we just returned Arrow, next call expects Identifier.
+        // If we don't see identifier, we should probably pop state and let double quotes handle it?
+        // But double quotes expects string content.
+        
+        self.state_stack.pop();
+        // Return empty token? No.
+        // Let's return Error for now if it's unexpected.
+        Some(Token { kind: TokenKind::Error, span: Span::new(start, self.cursor) })
+    }
+
+    fn next_in_looking_for_var_name(&mut self) -> Option<Token> {
+        let start = self.cursor;
+        if self.cursor >= self.input.len() {
+             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+        }
+        
+        let c = self.input[self.cursor];
+        
+        if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
+            self.read_identifier();
+            return Some(Token { kind: TokenKind::StringVarname, span: Span::new(start, self.cursor) });
+        }
+        
+        if c == b'}' {
+            self.advance();
+            self.state_stack.pop();
+            return Some(Token { kind: TokenKind::CloseBrace, span: Span::new(start, self.cursor) });
+        }
+        
+        self.advance();
+        Some(Token { kind: TokenKind::Error, span: Span::new(start, self.cursor) })
+    }
+
     fn next_in_var_offset(&mut self) -> Option<Token> {
         let start = self.cursor;
         if self.cursor >= self.input.len() {
@@ -316,11 +374,20 @@ impl<'src> Lexer<'src> {
                         // Check for array offset [
                         if self.peek() == Some(b'[') {
                             self.state_stack.push(LexerState::VarOffset);
+                        } else if self.peek() == Some(b'-') {
+                             if self.input.get(self.cursor + 1) == Some(&b'>') {
+                                 if let Some(next_next) = self.input.get(self.cursor + 2) {
+                                     if next_next.is_ascii_alphabetic() || *next_next == b'_' {
+                                         self.state_stack.push(LexerState::LookingForProperty);
+                                     }
+                                 }
+                             }
                         }
                         
                         return Some(Token { kind: TokenKind::Variable, span: Span::new(var_start, self.cursor) });
                     } else if c == b'{' {
                         self.advance(); // Eat {
+                        self.state_stack.push(LexerState::LookingForVarName);
                         return Some(Token { kind: TokenKind::DollarOpenCurlyBraces, span: Span::new(start, self.cursor) });
                     }
                 }
@@ -656,9 +723,24 @@ impl<'src> Lexer<'src> {
                     if next.is_ascii_alphabetic() || next == b'_' {
                         let var_start = self.cursor - 1;
                         self.read_identifier();
+
+                        // Check for array offset [
+                        if self.peek() == Some(b'[') {
+                            self.state_stack.push(LexerState::VarOffset);
+                        } else if self.peek() == Some(b'-') {
+                             if self.input.get(self.cursor + 1) == Some(&b'>') {
+                                 if let Some(next_next) = self.input.get(self.cursor + 2) {
+                                     if next_next.is_ascii_alphabetic() || *next_next == b'_' {
+                                         self.state_stack.push(LexerState::LookingForProperty);
+                                     }
+                                 }
+                             }
+                        }
+
                         return Some(Token { kind: TokenKind::Variable, span: Span::new(var_start, self.cursor) });
                     } else if next == b'{' {
                         self.advance();
+                        self.state_stack.push(LexerState::LookingForVarName);
                         return Some(Token { kind: TokenKind::DollarOpenCurlyBraces, span: Span::new(start, self.cursor) });
                     }
                 }
@@ -841,6 +923,14 @@ impl<'src> Iterator for Lexer<'src> {
             return self.next_in_var_offset();
         }
 
+        if let Some(LexerState::LookingForProperty) = self.state_stack.last() {
+            return self.next_in_looking_for_property();
+        }
+
+        if let Some(LexerState::LookingForVarName) = self.state_stack.last() {
+            return self.next_in_looking_for_var_name();
+        }
+
         if let Some(LexerState::RawData) = self.state_stack.last() {
              if self.cursor >= self.input.len() {
                  return Some(Token {
@@ -885,7 +975,10 @@ impl<'src> Iterator for Lexer<'src> {
             b'\\' => TokenKind::NsSeparator,
             b'\'' => self.read_single_quoted(),
             b'"' => self.read_double_quoted(b'"', start),
-            b'`' => self.read_double_quoted(b'`', start),
+            b'`' => {
+                self.state_stack.push(LexerState::Backquote);
+                TokenKind::Backtick
+            },
             b'#' => {
                 if self.peek() == Some(b'[') {
                     self.advance();

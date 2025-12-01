@@ -1,23 +1,24 @@
 use crate::span::Span;
 use crate::lexer::token::Token;
+use serde::Serialize;
 
 pub type ExprId<'ast> = &'ast Expr<'ast>;
 pub type StmtId<'ast> = &'ast Stmt<'ast>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct ParseError {
     pub span: Span,
     pub message: &'static str,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Program<'ast> {
     pub statements: &'ast [StmtId<'ast>],
     pub errors: &'ast [ParseError],
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Stmt<'ast> {
     Echo {
         exprs: &'ast [ExprId<'ast>],
@@ -181,14 +182,14 @@ pub enum Stmt<'ast> {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct StaticVar<'ast> {
     pub var: ExprId<'ast>,
     pub default: Option<ExprId<'ast>>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Param<'ast> {
     pub attributes: &'ast [AttributeGroup<'ast>],
     pub modifiers: &'ast [Token],
@@ -200,7 +201,7 @@ pub struct Param<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Expr<'ast> {
     Assign {
         var: ExprId<'ast>,
@@ -411,14 +412,14 @@ pub enum Expr<'ast> {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct ClosureUse<'ast> {
     pub var: &'ast Token,
     pub by_ref: bool,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum CastKind {
     Int,
     Bool,
@@ -429,14 +430,14 @@ pub enum CastKind {
     Unset,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct MatchArm<'ast> {
     pub conditions: Option<&'ast [ExprId<'ast>]>, // None for default
     pub body: ExprId<'ast>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct AnonymousClass<'ast> {
     pub args: &'ast [Arg<'ast>],
     pub extends: Option<Name<'ast>>,
@@ -445,7 +446,7 @@ pub struct AnonymousClass<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum UnaryOp {
     Plus,
     Minus,
@@ -547,7 +548,7 @@ impl<'ast> Stmt<'ast> {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum BinaryOp {
     Plus,
     Minus,
@@ -580,7 +581,7 @@ pub enum BinaryOp {
     Instanceof,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignOp {
     Plus, // +=
     Minus, // -=
@@ -597,7 +598,7 @@ pub enum AssignOp {
     Coalesce, // ??=
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Arg<'ast> {
     pub name: Option<&'ast Token>,
     pub value: ExprId<'ast>,
@@ -605,7 +606,7 @@ pub struct Arg<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct ArrayItem<'ast> {
     pub key: Option<ExprId<'ast>>,
     pub value: ExprId<'ast>,
@@ -614,7 +615,7 @@ pub struct ArrayItem<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum ClassMember<'ast> {
     Property {
         attributes: &'ast [AttributeGroup<'ast>],
@@ -663,28 +664,28 @@ pub enum ClassMember<'ast> {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Case<'ast> {
     pub condition: Option<ExprId<'ast>>, // None for default
     pub body: &'ast [StmtId<'ast>],
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct ClassConst<'ast> {
     pub name: &'ast Token,
     pub value: ExprId<'ast>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum PropertyHookBody<'ast> {
     None,
     Statements(&'ast [StmtId<'ast>]),
     Expr(ExprId<'ast>),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct PropertyHook<'ast> {
     pub attributes: &'ast [AttributeGroup<'ast>],
     pub modifiers: &'ast [Token],
@@ -695,14 +696,14 @@ pub struct PropertyHook<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct TraitMethodRef<'ast> {
     pub trait_name: Option<Name<'ast>>,
     pub method: &'ast Token,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum TraitAdaptation<'ast> {
     Precedence {
         method: TraitMethodRef<'ast>,
@@ -717,7 +718,7 @@ pub enum TraitAdaptation<'ast> {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Catch<'ast> {
     pub types: &'ast [Name<'ast>], // Multi-catch: TryCatch|Exception
     pub var: Option<&'ast Token>, // Variable may be omitted in PHP 8+
@@ -725,13 +726,13 @@ pub struct Catch<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Name<'ast> {
     pub parts: &'ast [Token],
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct UseItem<'ast> {
     pub name: Name<'ast>,
     pub alias: Option<&'ast Token>,
@@ -739,27 +740,27 @@ pub struct UseItem<'ast> {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum UseKind {
     Normal,
     Function,
     Const,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Attribute<'ast> {
     pub name: Name<'ast>,
     pub args: &'ast [Arg<'ast>],
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct AttributeGroup<'ast> {
     pub attributes: &'ast [Attribute<'ast>],
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum Type<'ast> {
     Simple(&'ast Token),
     Name(Name<'ast>),
@@ -768,14 +769,14 @@ pub enum Type<'ast> {
     Nullable(&'ast Type<'ast>),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct DeclareItem<'ast> {
     pub key: &'ast Token,
     pub value: ExprId<'ast>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum IncludeKind {
     Include,
     IncludeOnce,
@@ -783,7 +784,7 @@ pub enum IncludeKind {
     RequireOnce,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum MagicConstKind {
     Dir,
     File,
