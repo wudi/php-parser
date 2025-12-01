@@ -697,6 +697,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             vars.push(self.parse_expr(0));
             if self.current_token.kind == TokenKind::Comma {
                 self.bump();
+                if self.current_token.kind == TokenKind::CloseParen {
+                    break;
+                }
             } else {
                 break;
             }

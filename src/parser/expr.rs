@@ -1032,6 +1032,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         conds.push(self.parse_expr(0));
                         while self.current_token.kind == TokenKind::Comma {
                             self.bump();
+                            if self.current_token.kind == TokenKind::DoubleArrow {
+                                break;
+                            }
                             conds.push(self.parse_expr(0));
                         }
                         Some(conds.into_bump_slice() as &'ast [ExprId<'ast>])
@@ -1145,7 +1148,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
                 self.arena.alloc(Expr::Null { span: token.span })
             }
-            TokenKind::Identifier | TokenKind::Namespace | TokenKind::NsSeparator => {
+            TokenKind::Identifier | TokenKind::Namespace | TokenKind::NsSeparator | TokenKind::Enum => {
                 let name = self.parse_name();
                 self.arena.alloc(Expr::Variable {
                     name: name.span,
