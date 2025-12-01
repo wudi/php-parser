@@ -1,5 +1,5 @@
 use crate::lexer::token::Token;
-use crate::span::Span;
+use crate::span::{LineInfo, Span};
 use serde::Serialize;
 
 pub mod visitor;
@@ -11,6 +11,51 @@ pub type StmtId<'ast> = &'ast Stmt<'ast>;
 pub struct ParseError {
     pub span: Span,
     pub message: &'static str,
+}
+
+impl ParseError {
+    pub fn to_human_readable(&self, source: &[u8]) -> String {
+        self.to_human_readable_with_path(source, None)
+    }
+
+    pub fn to_human_readable_with_path(&self, source: &[u8], path: Option<&str>) -> String {
+        let Some(LineInfo {
+            line,
+            column,
+            line_text,
+        }) = self.span.line_info(source)
+        else {
+            return format!("error: {}", self.message);
+        };
+
+        let line_str = String::from_utf8_lossy(line_text);
+        let gutter_width = line.to_string().len();
+        let padding = std::cmp::min(line_text.len(), column.saturating_sub(1));
+        let highlight_len = std::cmp::max(
+            1,
+            std::cmp::min(self.span.len(), line_text.len().saturating_sub(padding)),
+        );
+
+        let mut marker = String::new();
+        marker.push_str(&" ".repeat(padding));
+        marker.push_str(&"^".repeat(highlight_len));
+
+        let location = match path {
+            Some(path) => format!("{path}:{line}:{column}"),
+            None => format!("line {line}, column {column}"),
+        };
+
+        format!(
+            "error: {}\n --> {}\n{gutter}|\n{line_no:>width$} | {line_src}\n{gutter}| {marker}",
+            self.message,
+            location,
+            gutter = " ".repeat(gutter_width + 1),
+            line_no = line,
+            width = gutter_width,
+            line_src = line_str,
+            marker = marker,
+        )
+    }
 }
 
 #[derive(Debug, Serialize)]

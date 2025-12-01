@@ -6,6 +6,13 @@ thread_local! {
     static DEBUG_SOURCE: RefCell<Option<&'static [u8]>> = const { RefCell::new(None) };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineInfo<'src> {
+    pub line: usize,
+    pub column: usize,
+    pub line_text: &'src [u8],
+}
+
 /// Execute a closure with a source code context for Span debugging.
 /// This allows Spans to print their line number and text content when Debug formatted.
 pub fn with_session_globals<F, R>(source: &[u8], f: F) -> R
@@ -41,14 +48,16 @@ impl fmt::Debug for Span {
 
         DEBUG_SOURCE.with(|source_cell| {
             if let Some(source) = *source_cell.borrow()
-                && self.start <= self.end && self.end <= source.len() {
-                    let line = source[..self.start].iter().filter(|&&b| b == b'\n').count() + 1;
-                    builder.field("line", &line);
+                && self.start <= self.end
+                && self.end <= source.len()
+            {
+                let line = source[..self.start].iter().filter(|&&b| b == b'\n').count() + 1;
+                builder.field("line", &line);
 
-                    let text = &source[self.start..self.end];
-                    let text_str = String::from_utf8_lossy(text);
-                    builder.field("text", &text_str);
-                }
+                let text = &source[self.start..self.end];
+                let text_str = String::from_utf8_lossy(text);
+                builder.field("text", &text_str);
+            }
         });
 
         builder.finish()
@@ -66,6 +75,32 @@ impl Span {
 
     pub fn is_empty(&self) -> bool {
         self.start == self.end
+    }
+
+    pub fn line_info<'src>(&self, source: &'src [u8]) -> Option<LineInfo<'src>> {
+        if self.start > self.end || self.end > source.len() {
+            return None;
+        }
+
+        let line = source[..self.start].iter().filter(|&&b| b == b'\n').count() + 1;
+        let line_start = source[..self.start]
+            .iter()
+            .rposition(|b| *b == b'\n')
+            .map(|pos| pos + 1)
+            .unwrap_or(0);
+        let column = self.start - line_start + 1;
+
+        let line_end = source[self.start..]
+            .iter()
+            .position(|b| *b == b'\n')
+            .map(|pos| self.start + pos)
+            .unwrap_or(source.len());
+
+        Some(LineInfo {
+            line,
+            column,
+            line_text: &source[line_start..line_end],
+        })
     }
 
     /// Safely slice the source. Returns None if indices are out of bounds.
