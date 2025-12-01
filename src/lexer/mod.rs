@@ -470,6 +470,14 @@ impl<'src> Lexer<'src> {
             });
         }
 
+        if c == b'-' {
+            self.advance();
+            return Some(Token {
+                kind: TokenKind::Minus,
+                span: Span::new(start, self.cursor),
+            });
+        }
+
         // Any other char is just returned as is (e.g. - . etc)
         self.advance();
 

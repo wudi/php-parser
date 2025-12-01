@@ -1442,16 +1442,22 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             }
                             TokenKind::Minus => {
                                 // Handle negative number?
+                                let minus = self.current_token;
                                 self.bump();
                                 if self.current_token.kind == TokenKind::NumString {
                                     let t = self.current_token;
                                     self.bump();
-                                    // TODO: Combine minus and number
+                                    
+                                    let mut value = bumpalo::collections::Vec::with_capacity_in(
+                                        (minus.span.end - minus.span.start) + (t.span.end - t.span.start),
+                                        self.arena
+                                    );
+                                    value.extend_from_slice(self.lexer.slice(minus.span));
+                                    value.extend_from_slice(self.lexer.slice(t.span));
+
                                     self.arena.alloc(Expr::Integer {
-                                        value: self
-                                            .arena
-                                            .alloc_slice_copy(self.lexer.slice(t.span)),
-                                        span: t.span,
+                                        value: value.into_bump_slice(),
+                                        span: Span::new(minus.span.start, t.span.end),
                                     }) as &'ast Expr<'ast>
                                 } else {
                                     self.arena.alloc(Expr::Error {

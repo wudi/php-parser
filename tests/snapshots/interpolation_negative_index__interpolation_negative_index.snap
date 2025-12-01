@@ -1,0 +1,62 @@
+---
+source: tests/interpolation_negative_index.rs
+assertion_line: 15
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: InterpolatedString {
+                parts: [
+                    ArrayDimFetch {
+                        array: Variable {
+                            name: Span {
+                                start: 7,
+                                end: 11,
+                            },
+                            span: Span {
+                                start: 7,
+                                end: 11,
+                            },
+                        },
+                        dim: Some(
+                            Integer {
+                                value: [
+                                    45,
+                                    49,
+                                ],
+                                span: Span {
+                                    start: 12,
+                                    end: 14,
+                                },
+                            },
+                        ),
+                        span: Span {
+                            start: 7,
+                            end: 16,
+                        },
+                    },
+                ],
+                span: Span {
+                    start: 6,
+                    end: 16,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 17,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 17,
+    },
+}
