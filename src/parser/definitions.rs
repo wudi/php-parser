@@ -126,6 +126,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut members = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseTag
         {
             members.push(self.parse_class_member(ClassMemberCtx::Class {
                 is_abstract: class_is_abstract,
@@ -227,6 +228,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut members = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseTag
         {
             members.push(self.parse_class_member(ClassMemberCtx::Class {
                 is_abstract: false,
@@ -329,6 +331,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut members = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseTag
         {
             members.push(self.parse_class_member(ClassMemberCtx::Interface));
         }
@@ -390,6 +393,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut members = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseTag
         {
             members.push(self.parse_class_member(ClassMemberCtx::Trait));
         }
@@ -490,6 +494,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut members = std::vec::Vec::new();
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseTag
         {
             members.push(self.parse_class_member(ClassMemberCtx::Enum {
                 backed: backed_type.is_some(),
