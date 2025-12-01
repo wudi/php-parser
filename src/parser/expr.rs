@@ -1259,6 +1259,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 while self.current_token.kind != TokenKind::CloseBracket
                     && self.current_token.kind != TokenKind::Eof
                 {
+                    if self.current_token.kind == TokenKind::Comma {
+                        // Empty slot in short array destructuring [a, , b]
+                        items.push(ArrayItem {
+                            key: None,
+                            value: self.arena.alloc(Expr::Error {
+                                span: self.current_token.span,
+                            }),
+                            by_ref: false,
+                            unpack: false,
+                            span: self.current_token.span,
+                        });
+                        self.bump();
+                        continue;
+                    }
+
                     items.push(self.parse_array_item());
                     if self.current_token.kind == TokenKind::Comma {
                         self.bump();
