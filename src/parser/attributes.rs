@@ -5,12 +5,12 @@ use crate::span::Span;
 
 impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_attributes(&mut self) -> &'ast [AttributeGroup<'ast>] {
-        let mut groups = std::vec::Vec::new();
+        let mut groups = bumpalo::collections::Vec::new_in(self.arena);
         while self.current_token.kind == TokenKind::Attribute {
             let start = self.current_token.span.start;
             self.bump(); // Eat #[
 
-            let mut attributes = std::vec::Vec::new();
+            let mut attributes = bumpalo::collections::Vec::new_in(self.arena);
             loop {
                 let name = self.parse_name();
 
@@ -39,10 +39,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
             let end = self.current_token.span.end;
             groups.push(AttributeGroup {
-                attributes: self.arena.alloc_slice_copy(&attributes),
+                attributes: attributes.into_bump_slice(),
                 span: Span::new(start, end),
             });
         }
-        self.arena.alloc_slice_copy(&groups)
+        groups.into_bump_slice()
     }
 }

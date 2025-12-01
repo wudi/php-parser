@@ -69,7 +69,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 return Some(left);
             }
 
-            let mut types = std::vec::Vec::new();
+            let mut types = bumpalo::collections::Vec::new_in(self.arena);
             types.push(left);
             while matches!(
                 self.current_token.kind,
@@ -91,7 +91,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     break;
                 }
             }
-            left = Type::Intersection(self.arena.alloc_slice_copy(&types));
+            left = Type::Intersection(types.into_bump_slice());
         }
         Some(left)
     }
@@ -100,7 +100,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut left = self.parse_type_intersection()?;
 
         if self.current_token.kind == TokenKind::Pipe {
-            let mut types = std::vec::Vec::new();
+            let mut types = bumpalo::collections::Vec::new_in(self.arena);
             types.push(left);
             while self.current_token.kind == TokenKind::Pipe {
                 self.bump();
@@ -110,7 +110,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     break;
                 }
             }
-            left = Type::Union(self.arena.alloc_slice_copy(&types));
+            left = Type::Union(types.into_bump_slice());
         }
         Some(left)
     }

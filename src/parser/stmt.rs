@@ -235,7 +235,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             });
         }
 
-        let mut statements = std::vec::Vec::new();
+        let mut statements = bumpalo::collections::Vec::new_in(self.arena);
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
         {
@@ -254,7 +254,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let end = self.current_token.span.end;
 
         self.arena.alloc(Stmt::Block {
-            statements: self.arena.alloc_slice_copy(&statements),
+            statements: statements.into_bump_slice(),
             span: Span::new(start, end),
         })
     }
@@ -274,7 +274,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body = if self.current_token.kind == TokenKind::OpenBrace {
             self.bump();
-            let mut statements = std::vec::Vec::new();
+            let mut statements = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::CloseBrace
                 && self.current_token.kind != TokenKind::Eof
             {
@@ -288,10 +288,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     message: "Missing '}'",
                 });
             }
-            Some(self.arena.alloc_slice_copy(&statements) as &'ast [StmtId<'ast>])
+            Some(statements.into_bump_slice() as &'ast [StmtId<'ast>])
         } else if self.current_token.kind == TokenKind::Colon {
             self.bump();
-            let mut statements = std::vec::Vec::new();
+            let mut statements = bumpalo::collections::Vec::new_in(self.arena);
             while !matches!(
                 self.current_token.kind,
                 TokenKind::EndDeclare | TokenKind::Eof
@@ -307,7 +307,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     message: "Missing enddeclare",
                 });
             }
-            Some(self.arena.alloc_slice_copy(&statements) as &'ast [StmtId<'ast>])
+            Some(statements.into_bump_slice() as &'ast [StmtId<'ast>])
         } else {
             self.expect_semicolon();
             None

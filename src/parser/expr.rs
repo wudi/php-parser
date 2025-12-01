@@ -100,7 +100,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
-        let mut params = std::vec::Vec::new();
+        let mut params = bumpalo::collections::Vec::new_in(self.arena);
         while self.current_token.kind != TokenKind::CloseParen
             && self.current_token.kind != TokenKind::Eof
         {
@@ -113,7 +113,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
-        let mut uses = std::vec::Vec::new();
+        let mut uses = bumpalo::collections::Vec::new_in(self.arena);
         if self.current_token.kind == TokenKind::Use {
             self.bump();
             if self.current_token.kind == TokenKind::OpenParen {
@@ -179,8 +179,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::Closure {
             attributes,
             is_static,
-            params: self.arena.alloc_slice_copy(&params),
-            uses: self.arena.alloc_slice_copy(&uses),
+            params: params.into_bump_slice(),
+            uses: uses.into_bump_slice(),
             return_type,
             body,
             span: Span::new(start, end),
@@ -203,7 +203,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
-        let mut params = std::vec::Vec::new();
+        let mut params = bumpalo::collections::Vec::new_in(self.arena);
         while self.current_token.kind != TokenKind::CloseParen
             && self.current_token.kind != TokenKind::Eof
         {
@@ -236,7 +236,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::ArrowFunction {
             attributes,
             is_static,
-            params: self.arena.alloc_slice_copy(&params),
+            params: params.into_bump_slice(),
             return_type,
             expr,
             span: Span::new(start, end),
@@ -747,7 +747,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 if self.current_token.kind == TokenKind::OpenParen {
                     self.bump();
                 }
-                let mut vars = std::vec::Vec::new();
+                let mut vars = bumpalo::collections::Vec::new_in(self.arena);
                 vars.push(self.parse_expr(0));
                 while self.current_token.kind == TokenKind::Comma {
                     self.bump();
@@ -758,7 +758,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Isset {
-                    vars: self.arena.alloc_slice_copy(&vars),
+                    vars: vars.into_bump_slice(),
                     span: Span::new(start, end),
                 })
             }
@@ -1015,7 +1015,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     self.bump();
                 }
 
-                let mut arms = std::vec::Vec::new();
+                let mut arms = bumpalo::collections::Vec::new_in(self.arena);
                 while self.current_token.kind != TokenKind::CloseBrace
                     && self.current_token.kind != TokenKind::Eof
                 {
@@ -1025,7 +1025,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         self.bump();
                         None
                     } else {
-                        let mut conds = std::vec::Vec::new();
+                        let mut conds = bumpalo::collections::Vec::new_in(self.arena);
                         conds.push(self.parse_expr(0));
                         while self.current_token.kind == TokenKind::Comma {
                             // Lookahead for double arrow
@@ -1040,7 +1040,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             self.bump();
                             conds.push(self.parse_expr(0));
                         }
-                        Some(self.arena.alloc_slice_copy(&conds) as &'ast [ExprId<'ast>])
+                        Some(conds.into_bump_slice() as &'ast [ExprId<'ast>])
                     };
 
                     if self.current_token.kind == TokenKind::DoubleArrow {
@@ -1069,7 +1069,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Match {
                     condition,
-                    arms: self.arena.alloc_slice_copy(&arms),
+                    arms: arms.into_bump_slice(),
                     span: Span::new(start, end),
                 })
             }

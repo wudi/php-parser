@@ -24,7 +24,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let then_block = if is_alt {
             self.bump();
-            let mut stmts = std::vec::Vec::new();
+            let mut stmts = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::EndIf
                 && self.current_token.kind != TokenKind::Else
                 && self.current_token.kind != TokenKind::ElseIf
@@ -32,7 +32,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             {
                 stmts.push(self.parse_stmt());
             }
-            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+            stmts.into_bump_slice() as &'ast [StmtId<'ast>]
         } else {
             let stmt = self.parse_stmt();
             match stmt {
@@ -54,13 +54,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 if self.current_token.kind == TokenKind::Colon {
                     self.bump();
                 }
-                let mut stmts = std::vec::Vec::new();
+                let mut stmts = bumpalo::collections::Vec::new_in(self.arena);
                 while self.current_token.kind != TokenKind::EndIf
                     && self.current_token.kind != TokenKind::Eof
                 {
                     stmts.push(self.parse_stmt());
                 }
-                Some(self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>])
+                Some(stmts.into_bump_slice() as &'ast [StmtId<'ast>])
             } else {
                 let stmt = self.parse_stmt();
                 match stmt {
@@ -101,7 +101,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
-            let mut stmts = std::vec::Vec::new();
+            let mut stmts = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::EndWhile
                 && self.current_token.kind != TokenKind::Eof
             {
@@ -111,7 +111,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
             }
             self.expect_semicolon();
-            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+            stmts.into_bump_slice() as &'ast [StmtId<'ast>]
         } else {
             let body_stmt = self.parse_stmt();
             match body_stmt {
@@ -171,7 +171,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
 
         // Init expressions
-        let mut init = std::vec::Vec::new();
+        let mut init = bumpalo::collections::Vec::new_in(self.arena);
         if self.current_token.kind != TokenKind::SemiColon {
             init.push(self.parse_expr(0));
             while self.current_token.kind == TokenKind::Comma {
@@ -184,7 +184,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
 
         // Condition expressions
-        let mut condition = std::vec::Vec::new();
+        let mut condition = bumpalo::collections::Vec::new_in(self.arena);
         if self.current_token.kind != TokenKind::SemiColon {
             condition.push(self.parse_expr(0));
             while self.current_token.kind == TokenKind::Comma {
@@ -197,7 +197,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
 
         // Loop expressions
-        let mut loop_expr = std::vec::Vec::new();
+        let mut loop_expr = bumpalo::collections::Vec::new_in(self.arena);
         if self.current_token.kind != TokenKind::CloseParen {
             loop_expr.push(self.parse_expr(0));
             while self.current_token.kind == TokenKind::Comma {
@@ -211,7 +211,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
-            let mut stmts = std::vec::Vec::new();
+            let mut stmts = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::EndFor
                 && self.current_token.kind != TokenKind::Eof
             {
@@ -221,7 +221,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
             }
             self.expect_semicolon();
-            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+            stmts.into_bump_slice() as &'ast [StmtId<'ast>]
         } else {
             let body_stmt = self.parse_stmt();
             match body_stmt {
@@ -233,9 +233,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let end = self.current_token.span.end;
 
         self.arena.alloc(Stmt::For {
-            init: self.arena.alloc_slice_copy(&init),
-            condition: self.arena.alloc_slice_copy(&condition),
-            loop_expr: self.arena.alloc_slice_copy(&loop_expr),
+            init: init.into_bump_slice(),
+            condition: condition.into_bump_slice(),
+            loop_expr: loop_expr.into_bump_slice(),
             body,
             span: Span::new(start, end),
         })
@@ -270,7 +270,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
-            let mut stmts = std::vec::Vec::new();
+            let mut stmts = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::EndForeach
                 && self.current_token.kind != TokenKind::Eof
             {
@@ -280,7 +280,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
             }
             self.expect_semicolon();
-            self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
+            stmts.into_bump_slice() as &'ast [StmtId<'ast>]
         } else {
             let body_stmt = self.parse_stmt();
             match body_stmt {
@@ -322,7 +322,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             false
         };
 
-        let mut cases = std::vec::Vec::new();
+        let mut cases = bumpalo::collections::Vec::new_in(self.arena);
         let end_token = if is_alt {
             TokenKind::EndSwitch
         } else {
@@ -353,7 +353,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 break;
             };
 
-            let mut body_stmts = std::vec::Vec::new();
+            let mut body_stmts = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::Case
                 && self.current_token.kind != TokenKind::Default
                 && self.current_token.kind != end_token
@@ -370,7 +370,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
             cases.push(Case {
                 condition,
-                body: self.arena.alloc_slice_copy(&body_stmts),
+                body: body_stmts.into_bump_slice(),
                 span: Span::new(case_start, case_end),
             });
         }
@@ -386,7 +386,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         self.arena.alloc(Stmt::Switch {
             condition,
-            cases: self.arena.alloc_slice_copy(&cases),
+            cases: cases.into_bump_slice(),
             span: Span::new(start, end),
         })
     }
