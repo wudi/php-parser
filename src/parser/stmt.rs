@@ -1,4 +1,4 @@
-use crate::ast::{AttributeGroup, Catch, ClassConst, StaticVar, Stmt, StmtId, UseItem, UseKind};
+use crate::ast::{AttributeGroup, Catch, ClassConst, ParseError, StaticVar, Stmt, StmtId, UseItem, UseKind};
 use crate::lexer::token::TokenKind;
 use crate::parser::{LexerMode, Parser, Token};
 use crate::span::Span;
@@ -137,6 +137,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 let span = self.current_token.span;
                 self.bump();
                 self.arena.alloc(Stmt::Nop { span })
+            }
+            TokenKind::CloseBrace => {
+                self.errors.push(ParseError {
+                    span: self.current_token.span,
+                    message: "Unexpected '}'",
+                });
+                let span = self.current_token.span;
+                self.bump();
+                self.arena.alloc(Stmt::Error { span })
             }
             TokenKind::CloseTag => {
                 let span = self.current_token.span;

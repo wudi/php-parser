@@ -1006,15 +1006,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         let mut conds = bumpalo::collections::Vec::new_in(self.arena);
                         conds.push(self.parse_expr(0));
                         while self.current_token.kind == TokenKind::Comma {
-                            // Lookahead for double arrow
-                            let mut lookahead_lexer = self.lexer.clone();
-                            let next_token = lookahead_lexer.next().unwrap_or(Token {
-                                kind: TokenKind::Eof,
-                                span: Span::default(),
-                            });
-                            if next_token.kind == TokenKind::DoubleArrow {
-                                break;
-                            }
                             self.bump();
                             conds.push(self.parse_expr(0));
                         }
@@ -1291,9 +1282,26 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 expr
             }
             _ => {
-                // Error recovery: consume token and return Error expr
-                self.bump();
-                self.arena.alloc(Expr::Error { span: token.span })
+                // Error recovery
+                let is_terminator = matches!(
+                    token.kind,
+                    TokenKind::SemiColon | TokenKind::CloseBrace | TokenKind::CloseTag | TokenKind::Eof
+                );
+
+                self.errors.push(ParseError {
+                    span: token.span,
+                    message: "Syntax error",
+                });
+
+                if is_terminator {
+                    // Do not consume terminator, let the statement parser handle it
+                    self.arena.alloc(Expr::Error {
+                        span: Span::new(token.span.start, token.span.start),
+                    })
+                } else {
+                    self.bump();
+                    self.arena.alloc(Expr::Error { span: token.span })
+                }
             }
         }
     }

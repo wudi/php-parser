@@ -1023,7 +1023,20 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
                 token
             } else {
-                self.bump(); // Skip bad token
+                self.errors.push(ParseError {
+                    span: self.current_token.span,
+                    message: "Expected variable",
+                });
+
+                let is_terminator = matches!(
+                    self.current_token.kind,
+                    TokenKind::SemiColon | TokenKind::CloseBrace | TokenKind::CloseTag | TokenKind::Eof
+                );
+
+                if !is_terminator {
+                    self.bump();
+                }
+
                 self.arena.alloc(Token {
                     kind: TokenKind::Error,
                     span: Span::default(),

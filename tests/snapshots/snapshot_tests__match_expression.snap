@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 262
 expression: program
 ---
 Program {
@@ -82,22 +83,6 @@ Program {
                                             end: 71,
                                         },
                                     },
-                                ],
-                            ),
-                            body: Error {
-                                span: Span {
-                                    start: 71,
-                                    end: 72,
-                                },
-                            },
-                            span: Span {
-                                start: 70,
-                                end: 72,
-                            },
-                        },
-                        MatchArm {
-                            conditions: Some(
-                                [
                                     Integer {
                                         value: [
                                             51,
@@ -126,7 +111,7 @@ Program {
                                 },
                             },
                             span: Span {
-                                start: 73,
+                                start: 70,
                                 end: 86,
                             },
                         },

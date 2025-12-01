@@ -44,15 +44,26 @@ Program {
                 end: 49,
             },
         },
-        Expression {
-            expr: Error {
-                span: Span {
-                    start: 48,
-                    end: 49,
-                },
-            },
+        Error {
             span: Span {
                 start: 48,
+                end: 49,
+            },
+        },
+        Echo {
+            exprs: [
+                Integer {
+                    value: [
+                        50,
+                    ],
+                    span: Span {
+                        start: 59,
+                        end: 60,
+                    },
+                },
+            ],
+            span: Span {
+                start: 54,
                 end: 66,
             },
         },
@@ -60,10 +71,10 @@ Program {
     errors: [
         ParseError {
             span: Span {
-                start: 54,
-                end: 58,
+                start: 48,
+                end: 49,
             },
-            message: "Missing semicolon",
+            message: "Unexpected '}'",
         },
     ],
     span: Span {
