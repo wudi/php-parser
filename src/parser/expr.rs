@@ -397,6 +397,36 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     });
                     continue;
                 }
+                TokenKind::OpenBrace => {
+                    let l_bp = 210;
+                    if l_bp < min_bp {
+                        break;
+                    }
+
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "syntax error, unexpected '{'",
+                    });
+
+                    self.bump(); // {
+
+                    if self.current_token.kind != TokenKind::CloseBrace {
+                        self.parse_expr(0);
+                    }
+
+                    if self.current_token.kind == TokenKind::CloseBrace {
+                        self.bump(); // }
+                    } else {
+                        self.errors.push(ParseError {
+                            span: self.current_token.span,
+                            message: "Expected '}'",
+                        });
+                    }
+
+                    let span = Span::new(left.span().start, self.current_token.span.end);
+                    left = self.arena.alloc(Expr::Error { span });
+                    continue;
+                }
                 TokenKind::NullSafeArrow => {
                     let l_bp = 210;
                     if l_bp < min_bp {
