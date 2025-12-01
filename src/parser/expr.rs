@@ -257,7 +257,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 TokenKind::InstanceOf => BinaryOp::Instanceof,
                 TokenKind::Question => {
                     // Ternary: a ? b : c
-                    let (l_bp, r_bp) = (40, 41);
+                    // PHP allows any expression in both branches, including low-precedence ones
+                    let l_bp = 40;
                     if l_bp < min_bp {
                         break;
                     }
@@ -273,7 +274,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         self.bump();
                     }
 
-                    let if_false = self.parse_expr(r_bp);
+                    let if_false = self.parse_expr(min_bp);
 
                     let span = Span::new(left.span().start, if_false.span().end);
                     left = self.arena.alloc(Expr::Ternary {

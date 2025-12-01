@@ -1,0 +1,79 @@
+---
+source: tests/ternary_false_branch.rs
+assertion_line: 17
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Ternary {
+                condition: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 8,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 8,
+                    },
+                },
+                if_true: Some(
+                    Integer {
+                        value: [
+                            49,
+                            48,
+                        ],
+                        span: Span {
+                            start: 11,
+                            end: 13,
+                        },
+                    },
+                ),
+                if_false: Assign {
+                    var: Variable {
+                        name: Span {
+                            start: 16,
+                            end: 18,
+                        },
+                        span: Span {
+                            start: 16,
+                            end: 18,
+                        },
+                    },
+                    expr: Integer {
+                        value: [
+                            53,
+                        ],
+                        span: Span {
+                            start: 21,
+                            end: 22,
+                        },
+                    },
+                    span: Span {
+                        start: 16,
+                        end: 22,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 22,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 23,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 23,
+    },
+}

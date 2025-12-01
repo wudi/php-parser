@@ -1,0 +1,95 @@
+---
+source: tests/ternary_false_branch.rs
+assertion_line: 75
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Binary {
+                left: Assign {
+                    var: Variable {
+                        name: Span {
+                            start: 6,
+                            end: 10,
+                        },
+                        span: Span {
+                            start: 6,
+                            end: 10,
+                        },
+                    },
+                    expr: Ternary {
+                        condition: Variable {
+                            name: Span {
+                                start: 13,
+                                end: 15,
+                            },
+                            span: Span {
+                                start: 13,
+                                end: 15,
+                            },
+                        },
+                        if_true: Some(
+                            Integer {
+                                value: [
+                                    49,
+                                    48,
+                                ],
+                                span: Span {
+                                    start: 18,
+                                    end: 20,
+                                },
+                            },
+                        ),
+                        if_false: Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 23,
+                                end: 24,
+                            },
+                        },
+                        span: Span {
+                            start: 13,
+                            end: 24,
+                        },
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 24,
+                    },
+                },
+                op: LogicalAnd,
+                right: Integer {
+                    value: [
+                        48,
+                    ],
+                    span: Span {
+                        start: 29,
+                        end: 30,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 30,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 31,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 31,
+    },
+}
