@@ -1,6 +1,6 @@
 use crate::ast::{
     Arg, ArrayItem, AssignOp, AttributeGroup, BinaryOp, CastKind, ClosureUse, Expr, ExprId,
-    IncludeKind, MatchArm, ParseError, Stmt, StmtId, Type, UnaryOp,
+    IncludeKind, MatchArm, Param, ParseError, Stmt, StmtId, Type, UnaryOp,
 };
 use crate::lexer::token::{Token, TokenKind};
 use crate::parser::Parser;
@@ -76,19 +76,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         (args.into_bump_slice(), Span::new(start, end))
     }
 
-    pub(super) fn parse_closure_expr(
-        &mut self,
-        attributes: &'ast [AttributeGroup<'ast>],
-        is_static: bool,
-        start: usize,
-    ) -> ExprId<'ast> {
-     
-
-        // Anonymous functions should not have a name, but allow an identifier for recovery
-        if self.current_token.kind == TokenKind::Identifier {
-            self.bump();
-        }
-
+    fn parse_closure_parameter_list(&mut self) -> &'ast [Param<'ast>] {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
@@ -104,6 +92,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::CloseParen {
             self.bump();
         }
+        params.into_bump_slice()
+    }
+
+    pub(super) fn parse_closure_expr(
+        &mut self,
+        attributes: &'ast [AttributeGroup<'ast>],
+        is_static: bool,
+        start: usize,
+    ) -> ExprId<'ast> {
+     
+
+        // Anonymous functions should not have a name, but allow an identifier for recovery
+        if self.current_token.kind == TokenKind::Identifier {
+            self.bump();
+        }
+
+        let params = self.parse_closure_parameter_list();
 
         let mut uses = bumpalo::collections::Vec::new_in(self.arena);
         if self.current_token.kind == TokenKind::Use {
@@ -171,7 +176,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::Closure {
             attributes,
             is_static,
-            params: params.into_bump_slice(),
+            params,
             uses: uses.into_bump_slice(),
             return_type,
             body,
@@ -186,21 +191,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         start: usize,
     ) -> ExprId<'ast> {
 
-        if self.current_token.kind == TokenKind::OpenParen {
-            self.bump();
-        }
-        let mut params = bumpalo::collections::Vec::new_in(self.arena);
-        while self.current_token.kind != TokenKind::CloseParen
-            && self.current_token.kind != TokenKind::Eof
-        {
-            params.push(self.parse_param());
-            if self.current_token.kind == TokenKind::Comma {
-                self.bump();
-            }
-        }
-        if self.current_token.kind == TokenKind::CloseParen {
-            self.bump();
-        }
+        let params = self.parse_closure_parameter_list();
 
         let return_type = if self.current_token.kind == TokenKind::Colon {
             self.bump();
@@ -222,7 +213,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::ArrowFunction {
             attributes,
             is_static,
-            params: params.into_bump_slice(),
+            params,
             return_type,
             expr,
             span: Span::new(start, end),
