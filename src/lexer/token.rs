@@ -6,6 +6,16 @@ pub struct Token {
     pub span: Span,
 }
 
+impl Token {
+    pub fn text<'a>(&self, source: &'a [u8]) -> &'a [u8] {
+        self.span.as_str(source)
+    }
+
+    pub fn line(&self, source: &[u8]) -> usize {
+        source.get(..self.span.start).unwrap_or_default().iter().filter(|&&b| b == b'\n').count() + 1
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum TokenKind {
     // Keywords
