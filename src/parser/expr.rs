@@ -1,6 +1,6 @@
 use crate::ast::{
     Arg, ArrayItem, AssignOp, AttributeGroup, BinaryOp, CastKind, ClosureUse, Expr, ExprId,
-    IncludeKind, MatchArm, Param, ParseError, Stmt, StmtId, Type, UnaryOp,
+    IncludeKind, MagicConstKind, MatchArm, Param, ParseError, Stmt, StmtId, Type, UnaryOp,
 };
 use crate::lexer::token::{Token, TokenKind};
 use crate::parser::Parser;
@@ -781,6 +781,31 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 } else {
                     self.arena.alloc(Expr::Exit { expr, span })
                 }
+            }
+            TokenKind::Dir
+            | TokenKind::File
+            | TokenKind::Line
+            | TokenKind::FuncC
+            | TokenKind::ClassC
+            | TokenKind::TraitC
+            | TokenKind::MethodC
+            | TokenKind::NsC => {
+                let span = token.span;
+                self.bump();
+                self.arena.alloc(Expr::MagicConst {
+                    kind: match token.kind {
+                        TokenKind::Dir => MagicConstKind::Dir,
+                        TokenKind::File => MagicConstKind::File,
+                        TokenKind::Line => MagicConstKind::Line,
+                        TokenKind::FuncC => MagicConstKind::Function,
+                        TokenKind::ClassC => MagicConstKind::Class,
+                        TokenKind::TraitC => MagicConstKind::Trait,
+                        TokenKind::MethodC => MagicConstKind::Method,
+                        TokenKind::NsC => MagicConstKind::Namespace,
+                        _ => unreachable!(),
+                    },
+                    span,
+                })
             }
             TokenKind::Include
             | TokenKind::IncludeOnce

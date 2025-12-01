@@ -838,7 +838,7 @@ pub enum IncludeKind {
     RequireOnce,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum MagicConstKind {
     Dir,
     File,
