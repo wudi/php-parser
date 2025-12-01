@@ -1,5 +1,5 @@
-use crate::span::Span;
 use crate::lexer::token::Token;
+use crate::span::Span;
 use serde::Serialize;
 
 pub type ExprId<'ast> = &'ast Expr<'ast>;
@@ -64,7 +64,7 @@ pub enum Stmt<'ast> {
     },
     Function {
         attributes: &'ast [AttributeGroup<'ast>],
-        name: &'ast Token, 
+        name: &'ast Token,
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
@@ -198,6 +198,7 @@ pub struct Param<'ast> {
     pub default: Option<ExprId<'ast>>,
     pub by_ref: bool,
     pub variadic: bool,
+    pub hooks: Option<&'ast [PropertyHook<'ast>]>,
     pub span: Span,
 }
 
@@ -276,7 +277,7 @@ pub enum Expr<'ast> {
         span: Span,
     },
     Integer {
-        value: &'ast [u8], 
+        value: &'ast [u8],
         span: Span,
     },
     Float {
@@ -331,6 +332,7 @@ pub enum Expr<'ast> {
         span: Span,
     },
     AnonymousClass {
+        attributes: &'ast [AttributeGroup<'ast>],
         args: &'ast [Arg<'ast>],
         extends: Option<Name<'ast>>,
         implements: &'ast [Name<'ast>],
@@ -547,7 +549,6 @@ impl<'ast> Stmt<'ast> {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum BinaryOp {
     Plus,
@@ -583,19 +584,19 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignOp {
-    Plus, // +=
-    Minus, // -=
-    Mul, // *=
-    Div, // /=
-    Mod, // %=
-    Concat, // .=
-    BitAnd, // &=
-    BitOr, // |=
-    BitXor, // ^=
-    ShiftLeft, // <<=
+    Plus,       // +=
+    Minus,      // -=
+    Mul,        // *=
+    Div,        // /=
+    Mod,        // %=
+    Concat,     // .=
+    BitAnd,     // &=
+    BitOr,      // |=
+    BitXor,     // ^=
+    ShiftLeft,  // <<=
     ShiftRight, // >>=
-    Pow, // **=
-    Coalesce, // ??=
+    Pow,        // **=
+    Coalesce,   // ??=
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -616,13 +617,19 @@ pub struct ArrayItem<'ast> {
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
+pub struct PropertyEntry<'ast> {
+    pub name: &'ast Token,
+    pub default: Option<ExprId<'ast>>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum ClassMember<'ast> {
     Property {
         attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
         ty: Option<&'ast Type<'ast>>,
-        name: &'ast Token,
-        default: Option<ExprId<'ast>>,
+        entries: &'ast [PropertyEntry<'ast>],
         span: Span,
     },
     PropertyHook {
@@ -721,7 +728,7 @@ pub enum TraitAdaptation<'ast> {
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Catch<'ast> {
     pub types: &'ast [Name<'ast>], // Multi-catch: TryCatch|Exception
-    pub var: Option<&'ast Token>, // Variable may be omitted in PHP 8+
+    pub var: Option<&'ast Token>,  // Variable may be omitted in PHP 8+
     pub body: &'ast [StmtId<'ast>],
     pub span: Span,
 }

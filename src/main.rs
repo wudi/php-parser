@@ -14,11 +14,12 @@ fn main() {
     echo fib(10);
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
-    let program = parser.parse_program();
-    println!("{:#?}", program);
-}
 
+    let program = parser.parse_program();
+    php_parser_rs::span::with_session_globals(source, || {
+        println!("{:#?}", program);
+    });
+}

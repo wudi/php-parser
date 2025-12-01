@@ -1,16 +1,16 @@
 use bumpalo::Bump;
+use insta::assert_debug_snapshot;
 use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;
-use insta::assert_debug_snapshot;
 
 #[test]
 fn test_basic_parse() {
     let source = b"<?php echo 1 + 2;";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -19,10 +19,10 @@ fn test_basic_parse() {
 fn test_complex_expression() {
     let source = b"<?php echo 1 + 2 * 3 . 4;";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -31,10 +31,10 @@ fn test_complex_expression() {
 fn test_unary_and_strings() {
     let source = b"<?php echo -1 . 'hello' . !true;";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -55,10 +55,10 @@ fn test_control_structures() {
     return 0;
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -73,10 +73,10 @@ fn test_functions() {
     echo add(1, 2);
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -97,10 +97,10 @@ fn test_arrays_and_objects() {
     $x = $y = 1;
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -120,7 +120,7 @@ fn test_foreach() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     assert_debug_snapshot!("foreach", program);
 }
 
@@ -141,7 +141,7 @@ fn test_class() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     assert_debug_snapshot!("class", program);
 }
 
@@ -163,7 +163,7 @@ fn test_switch() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     assert_debug_snapshot!("switch", program);
 }
 
@@ -182,7 +182,7 @@ fn test_try_catch() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     assert_debug_snapshot!("try_catch", program);
 }
 
@@ -198,10 +198,10 @@ fn test_loops() {
     }
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -218,10 +218,10 @@ fn test_control_flow_statements() {
     unset($a, $b);
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -236,10 +236,10 @@ fn test_ternary_and_coalesce() {
     $a = $b ** $c;
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -254,10 +254,10 @@ fn test_match_expression() {
     };
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -271,10 +271,10 @@ fn test_instanceof() {
     $a = $b instanceof A && $c; // ($b instanceof A) && $c
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -292,10 +292,10 @@ fn test_casts() {
     $a = (int) $b + 1; // ((int) $b) + 1
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -346,10 +346,10 @@ fn test_break_continue() {
     }
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -364,10 +364,10 @@ fn test_global_static_unset() {
     }
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -431,10 +431,10 @@ fn test_attributes() {
     function myFunc() {}
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -451,10 +451,10 @@ fn test_constructor_property_promotion() {
     }
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -467,10 +467,10 @@ fn test_complex_types() {
     }
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -479,10 +479,10 @@ fn test_complex_types() {
 fn test_intersection_vs_reference() {
     let source = b"<?php function foo(A&B $intersection, A &$reference, A&B &$intersection_ref) {}";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
@@ -510,10 +510,10 @@ fn test_static_closures() {
     $b = static fn() => 1;
     ";
     let arena = Bump::new();
-    
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }

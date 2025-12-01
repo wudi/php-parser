@@ -8,7 +8,10 @@ fn readonly_property_needs_type() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for untyped readonly property");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for untyped readonly property"
+    );
 }
 
 #[test]
@@ -17,7 +20,10 @@ fn readonly_promoted_needs_type() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for untyped readonly promotion");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for untyped readonly promotion"
+    );
 }
 
 #[test]
@@ -26,7 +32,10 @@ fn readonly_class_requires_typed_properties() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for untyped property in readonly class");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for untyped property in readonly class"
+    );
 }
 
 #[test]
@@ -35,7 +44,10 @@ fn readonly_class_requires_typed_static_properties() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for untyped static property in readonly class");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for untyped static property in readonly class"
+    );
 }
 
 #[test]
@@ -44,5 +56,8 @@ fn readonly_class_requires_typed_promotions() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for untyped promoted property in readonly class");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for untyped promoted property in readonly class"
+    );
 }

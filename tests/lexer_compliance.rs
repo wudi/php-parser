@@ -18,7 +18,10 @@ fn get_php_tokens(code: &str) -> Vec<(String, String)> {
         .expect("Failed to execute PHP");
 
     if !output.status.success() {
-        panic!("PHP execution failed: {}", String::from_utf8_lossy(&output.stderr));
+        panic!(
+            "PHP execution failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let json = String::from_utf8(output.stdout).unwrap();
@@ -40,7 +43,10 @@ fn get_php_tokens_from_file(path: &str) -> Vec<(String, String)> {
         .expect("Failed to execute PHP");
 
     if !output.status.success() {
-        panic!("PHP execution failed: {}", String::from_utf8_lossy(&output.stderr));
+        panic!(
+            "PHP execution failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let json = String::from_utf8(output.stdout).unwrap();
@@ -129,7 +135,7 @@ fn map_kind_to_php(kind: TokenKind, _text: &str) -> &'static str {
         TokenKind::DollarOpenCurlyBraces => "T_DOLLAR_OPEN_CURLY_BRACES",
         TokenKind::CurlyOpen => "T_CURLY_OPEN",
         TokenKind::DoubleQuote => "CHAR", // " is a char in PHP token_get_all unless part of string
-        TokenKind::Backtick => "CHAR", // ` is a char
+        TokenKind::Backtick => "CHAR",    // ` is a char
         TokenKind::StartHeredoc => "T_START_HEREDOC",
         TokenKind::EndHeredoc => "T_END_HEREDOC",
         TokenKind::Dollar => "CHAR", // $ is char if not variable
@@ -180,7 +186,7 @@ fn map_kind_to_php(kind: TokenKind, _text: &str) -> &'static str {
         TokenKind::BoolCast => "T_BOOL_CAST",
         TokenKind::UnsetCast => "T_UNSET_CAST",
         TokenKind::At => "CHAR",
-        
+
         // Type hints
         TokenKind::TypeBool => "T_STRING",
         TokenKind::TypeInt => "T_STRING",
@@ -189,21 +195,20 @@ fn map_kind_to_php(kind: TokenKind, _text: &str) -> &'static str {
         TokenKind::TypeObject => "T_STRING",
         TokenKind::TypeCallable => "T_CALLABLE",
         TokenKind::TypeIterable => "T_ITERABLE", // PHP 7.1+
-        TokenKind::TypeVoid => "T_STRING", // void is not a token in PHP lexer?
+        TokenKind::TypeVoid => "T_STRING",       // void is not a token in PHP lexer?
         // Actually void, bool, int etc are T_STRING in lexer, but parser handles them.
         // But callable IS a token T_CALLABLE.
-        
         TokenKind::TypeMixed => "T_STRING",
         TokenKind::TypeNever => "T_STRING",
         TokenKind::TypeNull => "T_STRING",
         TokenKind::TypeFalse => "T_STRING",
         TokenKind::TypeTrue => "T_STRING",
-        
+
         // Single chars
         TokenKind::SemiColon => "CHAR",
         TokenKind::Colon => "CHAR",
         TokenKind::Comma => "CHAR",
-        TokenKind::OpenBrace => "CHAR", // { or T_CURLY_OPEN?
+        TokenKind::OpenBrace => "CHAR",  // { or T_CURLY_OPEN?
         TokenKind::CloseBrace => "CHAR", // }
         TokenKind::OpenParen => "CHAR",
         TokenKind::CloseParen => "CHAR",
@@ -226,12 +231,12 @@ fn map_kind_to_php(kind: TokenKind, _text: &str) -> &'static str {
         TokenKind::Caret => "CHAR",
         TokenKind::BitNot => "CHAR",
         TokenKind::Question => "CHAR",
-        
+
         // Tags
         TokenKind::OpenTag => "T_OPEN_TAG",
         TokenKind::OpenTagEcho => "T_OPEN_TAG_WITH_ECHO",
         TokenKind::CloseTag => "T_CLOSE_TAG",
-        
+
         _ => "UNKNOWN",
     }
 }
@@ -260,44 +265,50 @@ fn test_lexer_compliance() {
     for code in cases {
         println!("Testing: {}", code);
         let php_tokens = get_php_tokens(code);
-        
+
         let lexer = Lexer::new(code.as_bytes());
         let mut rust_tokens = Vec::new();
-        
+
         for token in lexer {
             if token.kind == TokenKind::Eof {
                 break;
             }
             let text = &code[token.span.start..token.span.end];
             let php_name = map_kind_to_php(token.kind, text);
-            
+
             // Special handling for chars
             let name = if php_name == "CHAR" {
                 "CHAR".to_string()
             } else {
                 php_name.to_string()
             };
-            
+
             rust_tokens.push((name, text.to_string()));
         }
-        
+
         // Compare
         // Note: PHP token_get_all might return whitespace tokens which we skip?
         // My lexer skips whitespace in `next()` unless it's EncapsedAndWhitespace or InlineHtml.
         // PHP returns T_WHITESPACE.
-        
-        let php_tokens_filtered: Vec<(String, String)> = php_tokens.into_iter()
+
+        let php_tokens_filtered: Vec<(String, String)> = php_tokens
+            .into_iter()
             .filter(|(name, _)| name != "T_WHITESPACE")
             .collect();
-            
+
         // Also my lexer might produce different tokens for some things.
         // e.g. OpenBrace vs T_CURLY_OPEN.
-        
+
         // Let's just print them for now to see.
         println!("PHP: {:?}", php_tokens_filtered);
         println!("Rust: {:?}", rust_tokens);
-        
-        assert_eq!(rust_tokens.len(), php_tokens_filtered.len(), "Token count mismatch for: {}", code);
+
+        assert_eq!(
+            rust_tokens.len(),
+            php_tokens_filtered.len(),
+            "Token count mismatch for: {}",
+            code
+        );
     }
 }
 
@@ -312,13 +323,13 @@ fn test_run_tests_php() {
     };
     let path = format!("{}/run-tests.php", php_src_path);
     println!("Testing file: {}", path);
-    
+
     let php_tokens = get_php_tokens_from_file(&path);
     let code = std::fs::read_to_string(&path).expect("Failed to read file");
-    
+
     let lexer = Lexer::new(code.as_bytes());
     let mut rust_tokens = Vec::new();
-    
+
     let mut count = 0;
     for token in lexer {
         count += 1;
@@ -329,31 +340,40 @@ fn test_run_tests_php() {
             break;
         }
         if token.span.end <= token.span.start && token.kind != TokenKind::Eof {
-             println!("Last tokens:");
-             let start_idx = if rust_tokens.len() > 20 { rust_tokens.len() - 20 } else { 0 };
-             for t in &rust_tokens[start_idx..] {
-                 println!("{:?}", t);
-             }
-             panic!("Lexer stuck or empty token at {}: {:?}", token.span.start, token.kind);
+            println!("Last tokens:");
+            let start_idx = if rust_tokens.len() > 20 {
+                rust_tokens.len() - 20
+            } else {
+                0
+            };
+            for t in &rust_tokens[start_idx..] {
+                println!("{:?}", t);
+            }
+            panic!(
+                "Lexer stuck or empty token at {}: {:?}",
+                token.span.start, token.kind
+            );
         }
         let text = &code[token.span.start..token.span.end];
         let php_name = map_kind_to_php(token.kind, text);
-        
+
         let name = if php_name == "CHAR" {
             "CHAR".to_string()
         } else {
             php_name.to_string()
         };
-        
+
         rust_tokens.push((name, text.to_string()));
     }
-    
-    let php_tokens_filtered: Vec<(String, String)> = php_tokens.into_iter()
+
+    let php_tokens_filtered: Vec<(String, String)> = php_tokens
+        .into_iter()
         .filter(|(name, _)| name != "T_WHITESPACE")
         .collect();
 
-    let rust_tokens_filtered: Vec<(String, String)> = rust_tokens.into_iter()
-        // Rust lexer skips whitespace, so we don't need to filter it out, 
+    let rust_tokens_filtered: Vec<(String, String)> = rust_tokens
+        .into_iter()
+        // Rust lexer skips whitespace, so we don't need to filter it out,
         // but we should ensure we don't produce any "UNKNOWN" that maps to whitespace?
         // map_kind_to_php doesn't produce T_WHITESPACE.
         .collect();
@@ -365,16 +385,20 @@ fn test_run_tests_php() {
             println!("Mismatch at index {}:", i);
             println!("PHP: {:?}", php_tokens_filtered[i]);
             println!("Rust: {:?}", rust_tokens_filtered[i]);
-            
+
             // Print context
-            let start = if i > 5 { i - 5 } else { 0 };
+            let start = i.saturating_sub(5);
             let end = if i + 5 < min_len { i + 5 } else { min_len };
             println!("Context PHP: {:?}", &php_tokens_filtered[start..end]);
             println!("Context Rust: {:?}", &rust_tokens_filtered[start..end]);
-            
+
             panic!("Token mismatch");
         }
     }
-    
-    assert_eq!(php_tokens_filtered.len(), rust_tokens_filtered.len(), "Token count mismatch");
+
+    assert_eq!(
+        php_tokens_filtered.len(),
+        rust_tokens_filtered.len(),
+        "Token count mismatch"
+    );
 }

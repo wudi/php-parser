@@ -1,9 +1,9 @@
+use bumpalo::Bump;
+use php_parser_rs::lexer::Lexer;
+use php_parser_rs::parser::Parser;
 use std::env;
 use std::fs;
 use std::time::Instant;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
-use bumpalo::Bump;
 
 use std::io::Write;
 
@@ -40,17 +40,18 @@ fn main() {
         if path.is_dir() {
             match fs::read_dir(&path) {
                 Ok(entries) => {
-                    for entry in entries {
-                        if let Ok(entry) = entry {
-                            stack.push(entry.path());
-                        }
+                    for entry in entries.flatten() {
+                        stack.push(entry.path());
                     }
                 }
                 Err(e) => eprintln!("Failed to read dir {:?}: {}", path, e),
             }
-        } else if path.extension().map_or(false, |ext| ext == "php") {
+        } else if path.extension().is_some_and(|ext| ext == "php") {
             // Skip known invalid files in vendor/squizlabs/php_codesniffer
-            if path.to_string_lossy().contains("HiddenDirShouldBeIgnoredSniff.php") {
+            if path
+                .to_string_lossy()
+                .contains("HiddenDirShouldBeIgnoredSniff.php")
+            {
                 continue;
             }
 
@@ -75,9 +76,15 @@ fn main() {
                         Ok(program) => {
                             if !program.errors.is_empty() {
                                 failed_files += 1;
-                                writeln!(log_file, "FAIL: {:?} - {} errors", path, program.errors.len()).unwrap();
+                                writeln!(
+                                    log_file,
+                                    "FAIL: {:?} - {} errors",
+                                    path,
+                                    program.errors.len()
+                                )
+                                .unwrap();
                                 if let Some(err) = program.errors.first() {
-                                     writeln!(log_file, "  First error: {:?}", err).unwrap();
+                                    writeln!(log_file, "  First error: {:?}", err).unwrap();
                                 }
                             }
                         }
@@ -86,7 +93,7 @@ fn main() {
                             writeln!(log_file, "PANIC: {:?}", path).unwrap();
                         }
                     }
-                },
+                }
                 Err(_) => {
                     // Ignore read errors
                 }
@@ -100,6 +107,9 @@ fn main() {
     println!("Failed: {}", failed_files);
     println!("Panics: {}", panic_files);
     if total_files > 0 {
-        println!("Success Rate: {:.2}%", ((total_files - failed_files - panic_files) as f64 / total_files as f64) * 100.0);
+        println!(
+            "Success Rate: {:.2}%",
+            ((total_files - failed_files - panic_files) as f64 / total_files as f64) * 100.0
+        );
     }
 }

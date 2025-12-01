@@ -13,7 +13,12 @@ fn flags_invalid_modifiers() {
     assert!(program.errors.len() >= 2, "expected modifier errors");
 
     // Ensure class parsed
-    assert!(program.statements.iter().any(|s| matches!(**s, Stmt::Class { .. })));
+    assert!(
+        program
+            .statements
+            .iter()
+            .any(|s| matches!(**s, Stmt::Class { .. }))
+    );
 }
 
 #[test]
@@ -23,8 +28,18 @@ fn detects_class_modifier_conflicts_and_duplicates() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.iter().any(|e| e.message.contains("abstract and final")));
-    assert!(program.errors.iter().any(|e| e.message.contains("Duplicate abstract")));
+    assert!(
+        program
+            .errors
+            .iter()
+            .any(|e| e.message.contains("abstract and final"))
+    );
+    assert!(
+        program
+            .errors
+            .iter()
+            .any(|e| e.message.contains("Duplicate abstract"))
+    );
 }
 
 #[test]
@@ -34,7 +49,10 @@ fn detects_duplicate_modifiers_on_members_and_promotions() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.len() >= 3, "expected duplicate modifier errors");
+    assert!(
+        program.errors.len() >= 3,
+        "expected duplicate modifier errors"
+    );
 }
 
 #[test]
@@ -47,5 +65,8 @@ fn validates_class_const_modifiers() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.len() >= 4, "expected constant modifier errors");
+    assert!(
+        program.errors.len() >= 4,
+        "expected constant modifier errors"
+    );
 }

@@ -8,7 +8,10 @@ fn interface_method_body_is_error() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for interface method body");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for interface method body"
+    );
 }
 
 #[test]
@@ -17,5 +20,8 @@ fn interface_property_is_error() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for interface property");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for interface property"
+    );
 }

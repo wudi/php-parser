@@ -24,13 +24,15 @@ $x?->method(1);
         .filter(|stmt| !matches!(***stmt, Stmt::Nop { .. }));
 
     let func_body: &[&Stmt] = match non_nop.next().expect("expected function statement") {
-        Stmt::Function { body, .. } => *body,
+        Stmt::Function { body, .. } => body,
         other => panic!("expected function first, got {:?}", other),
     };
 
     match func_body[0] {
         Stmt::Expression { expr, .. } => match *expr {
-            Expr::Yield { from, key, value, .. } => {
+            Expr::Yield {
+                from, key, value, ..
+            } => {
                 assert!(!from);
                 assert!(key.is_none());
                 assert!(value.is_some());
@@ -42,7 +44,9 @@ $x?->method(1);
 
     match func_body[1] {
         Stmt::Expression { expr, .. } => match *expr {
-            Expr::Yield { from, key, value, .. } => {
+            Expr::Yield {
+                from, key, value, ..
+            } => {
                 assert!(from);
                 assert!(key.is_none());
                 assert!(value.is_some());
@@ -54,7 +58,9 @@ $x?->method(1);
 
     match func_body[2] {
         Stmt::Expression { expr, .. } => match *expr {
-            Expr::Yield { from, key, value, .. } => {
+            Expr::Yield {
+                from, key, value, ..
+            } => {
                 assert!(!from);
                 assert!(key.is_some());
                 assert!(value.is_some());

@@ -1,7 +1,7 @@
 use bumpalo::Bump;
+use php_parser_rs::ast::Stmt;
 use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;
-use php_parser_rs::ast::Stmt;
 
 #[test]
 fn parses_union_catch_and_optional_variable() {

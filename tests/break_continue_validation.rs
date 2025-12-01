@@ -8,7 +8,10 @@ fn non_numeric_break_continue_levels_error() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(program.errors.len() >= 2, "expected errors for non-numeric levels");
+    assert!(
+        program.errors.len() >= 2,
+        "expected errors for non-numeric levels"
+    );
 }
 
 #[test]
@@ -26,5 +29,8 @@ fn positive_integer_levels_allowed() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(program.errors.is_empty(), "no errors expected for positive integer levels");
+    assert!(
+        program.errors.is_empty(),
+        "no errors expected for positive integer levels"
+    );
 }

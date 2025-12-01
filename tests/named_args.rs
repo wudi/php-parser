@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use php_parser_rs::ast::{Arg, Expr, Stmt};
-use php_parser_rs::lexer::token::TokenKind;
 use php_parser_rs::lexer::Lexer;
+use php_parser_rs::lexer::token::TokenKind;
 use php_parser_rs::parser::Parser;
 
 #[test]
@@ -23,7 +23,10 @@ fn parses_named_and_unpack_args() {
                 // func should be variable/identifier 'foo'
                 if let Expr::Variable { .. } = *func {
                 } else {
-                    panic!("expected call target to be variable/identifier, got {:?}", func);
+                    panic!(
+                        "expected call target to be variable/identifier, got {:?}",
+                        func
+                    );
                 }
                 args
             }
@@ -35,7 +38,11 @@ fn parses_named_and_unpack_args() {
     assert_eq!(call.len(), 3);
 
     match call[0] {
-        Arg { name: Some(n), unpack, .. } => {
+        Arg {
+            name: Some(n),
+            unpack,
+            ..
+        } => {
             assert_eq!(n.kind, TokenKind::Identifier);
             assert!(!unpack);
         }
@@ -43,12 +50,20 @@ fn parses_named_and_unpack_args() {
     }
 
     match call[1] {
-        Arg { name: None, unpack: true, .. } => {}
+        Arg {
+            name: None,
+            unpack: true,
+            ..
+        } => {}
         other => panic!("expected unpacked arg, got {:?}", other),
     }
 
     match call[2] {
-        Arg { name: Some(n), unpack, .. } => {
+        Arg {
+            name: Some(n),
+            unpack,
+            ..
+        } => {
             assert_eq!(n.kind, TokenKind::Identifier);
             assert!(!unpack);
         }
@@ -62,5 +77,8 @@ fn arrow_function_supports_by_ref_and_attributes() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(program.errors.is_empty(), "Expected arrow function with attributes and by-ref to parse");
+    assert!(
+        program.errors.is_empty(),
+        "Expected arrow function with attributes and by-ref to parse"
+    );
 }

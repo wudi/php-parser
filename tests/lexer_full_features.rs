@@ -26,17 +26,17 @@ fn test_variable_variables() {
 fn test_inline_html() {
     let code = b"Hello <?php echo 1; ?> World";
     let mut lexer = Lexer::new(code);
-    
+
     let token = lexer.next().unwrap();
     assert_eq!(token.kind, TokenKind::InlineHtml);
     assert_eq!(lexer.input_slice(token.span), b"Hello ");
-    
+
     assert_eq!(lexer.next().unwrap().kind, TokenKind::OpenTag);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Echo);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::LNumber);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::SemiColon);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::CloseTag);
-    
+
     let token = lexer.next().unwrap();
     assert_eq!(token.kind, TokenKind::InlineHtml);
     assert_eq!(lexer.input_slice(token.span), b" World");
@@ -63,11 +63,11 @@ fn test_heredoc_indentation() {
     let mut lexer = Lexer::new(code);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::OpenTag);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::StartHeredoc);
-    
+
     let token = lexer.next().unwrap();
     assert_eq!(token.kind, TokenKind::EncapsedAndWhitespace);
     assert_eq!(lexer.input_slice(token.span), b"    hello\n");
-    
+
     assert_eq!(lexer.next().unwrap().kind, TokenKind::EndHeredoc);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::SemiColon);
 }
@@ -79,10 +79,10 @@ fn test_property_access_keyword() {
     assert_eq!(lexer.next().unwrap().kind, TokenKind::OpenTag);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Variable);
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Arrow);
-    
+
     // Manually set mode as parser would
     lexer.set_mode(php_parser_rs::lexer::LexerMode::LookingForProperty);
-    
+
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Identifier); // class
     assert_eq!(lexer.next().unwrap().kind, TokenKind::SemiColon);
 }

@@ -35,14 +35,22 @@ Program {
                         },
                     ],
                     ty: None,
-                    name: Token {
-                        kind: Variable,
-                        span: Span {
-                            start: 37,
-                            end: 39,
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 37,
+                                    end: 39,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 37,
+                                end: 39,
+                            },
                         },
-                    },
-                    default: None,
+                    ],
                     span: Span {
                         start: 30,
                         end: 62,

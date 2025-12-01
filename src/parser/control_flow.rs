@@ -1,6 +1,6 @@
-use crate::parser::{Parser, Token};
-use crate::ast::{Stmt, StmtId, Expr, ExprId, Case};
+use crate::ast::{Case, Expr, ExprId, Stmt, StmtId};
 use crate::lexer::token::TokenKind;
+use crate::parser::{Parser, Token};
 use crate::span::Span;
 
 impl<'src, 'ast> Parser<'src, 'ast> {
@@ -21,11 +21,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
 
         let is_alt = self.current_token.kind == TokenKind::Colon;
-        
+
         let then_block = if is_alt {
             self.bump();
             let mut stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::EndIf && self.current_token.kind != TokenKind::Else && self.current_token.kind != TokenKind::ElseIf && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::EndIf
+                && self.current_token.kind != TokenKind::Else
+                && self.current_token.kind != TokenKind::ElseIf
+                && self.current_token.kind != TokenKind::Eof
+            {
                 stmts.push(self.parse_stmt());
             }
             self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>]
@@ -51,7 +55,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     self.bump();
                 }
                 let mut stmts = std::vec::Vec::new();
-                while self.current_token.kind != TokenKind::EndIf && self.current_token.kind != TokenKind::Eof {
+                while self.current_token.kind != TokenKind::EndIf
+                    && self.current_token.kind != TokenKind::Eof
+                {
                     stmts.push(self.parse_stmt());
                 }
                 Some(self.arena.alloc_slice_copy(&stmts) as &'ast [StmtId<'ast>])
@@ -96,7 +102,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
             let mut stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::EndWhile && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::EndWhile
+                && self.current_token.kind != TokenKind::Eof
+            {
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndWhile {
@@ -127,7 +135,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let body_stmt = self.parse_stmt();
         let body: &'ast [StmtId<'ast>] = match body_stmt {
-            Stmt::Block { statements, .. } => *statements,
+            Stmt::Block { statements, .. } => statements,
             _ => self.arena.alloc_slice_copy(&[body_stmt]) as &'ast [StmtId<'ast>],
         };
 
@@ -204,7 +212,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
             let mut stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::EndFor && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::EndFor
+                && self.current_token.kind != TokenKind::Eof
+            {
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndFor {
@@ -238,22 +248,22 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
-        
+
         let expr = self.parse_expr(0);
-        
+
         if self.current_token.kind == TokenKind::As {
             self.bump();
         }
-        
+
         let mut key_var = None;
         let mut value_var = self.parse_expr(0); // This might be key if => follows
-        
+
         if self.current_token.kind == TokenKind::DoubleArrow {
             self.bump();
             key_var = Some(value_var);
             value_var = self.parse_expr(0);
         }
-        
+
         if self.current_token.kind == TokenKind::CloseParen {
             self.bump();
         }
@@ -261,7 +271,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
             let mut stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::EndForeach && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::EndForeach
+                && self.current_token.kind != TokenKind::Eof
+            {
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndForeach {
@@ -291,7 +303,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_switch(&mut self) -> StmtId<'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat switch
-        
+
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
@@ -299,7 +311,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::CloseParen {
             self.bump();
         }
-        
+
         let is_alt = if self.current_token.kind == TokenKind::Colon {
             self.bump();
             true
@@ -309,22 +321,30 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
             false
         };
-        
+
         let mut cases = std::vec::Vec::new();
-        let end_token = if is_alt { TokenKind::EndSwitch } else { TokenKind::CloseBrace };
+        let end_token = if is_alt {
+            TokenKind::EndSwitch
+        } else {
+            TokenKind::CloseBrace
+        };
 
         while self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
             let case_start = self.current_token.span.start;
             let condition = if self.current_token.kind == TokenKind::Case {
                 self.bump();
                 let expr = self.parse_expr(0);
-                if self.current_token.kind == TokenKind::Colon || self.current_token.kind == TokenKind::SemiColon {
+                if self.current_token.kind == TokenKind::Colon
+                    || self.current_token.kind == TokenKind::SemiColon
+                {
                     self.bump();
                 }
                 Some(expr)
             } else if self.current_token.kind == TokenKind::Default {
                 self.bump();
-                if self.current_token.kind == TokenKind::Colon || self.current_token.kind == TokenKind::SemiColon {
+                if self.current_token.kind == TokenKind::Colon
+                    || self.current_token.kind == TokenKind::SemiColon
+                {
                     self.bump();
                 }
                 None
@@ -332,34 +352,38 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 // Error or end of switch
                 break;
             };
-            
+
             let mut body_stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::Case && self.current_token.kind != TokenKind::Default && self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::Case
+                && self.current_token.kind != TokenKind::Default
+                && self.current_token.kind != end_token
+                && self.current_token.kind != TokenKind::Eof
+            {
                 body_stmts.push(self.parse_stmt());
             }
-            
+
             let case_end = if body_stmts.is_empty() {
                 self.current_token.span.start
             } else {
                 body_stmts.last().unwrap().span().end
             };
-            
+
             cases.push(Case {
                 condition,
                 body: self.arena.alloc_slice_copy(&body_stmts),
                 span: Span::new(case_start, case_end),
             });
         }
-        
+
         if self.current_token.kind == end_token {
             self.bump();
         }
         if is_alt {
             self.expect_semicolon();
         }
-        
+
         let end = self.current_token.span.end;
-        
+
         self.arena.alloc(Stmt::Switch {
             condition,
             cases: self.arena.alloc_slice_copy(&cases),
@@ -370,19 +394,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_break(&mut self) -> StmtId<'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat break
-        
-        let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
+
+        let level = if self.current_token.kind != TokenKind::SemiColon
+            && self.current_token.kind != TokenKind::CloseTag
+            && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseBrace
+        {
             let expr = self.parse_expr(0);
             self.validate_break_continue_level(expr);
             Some(expr)
         } else {
             None
         };
-        
+
         self.expect_semicolon();
-        
+
         let end = self.current_token.span.end;
-        
+
         self.arena.alloc(Stmt::Break {
             level,
             span: Span::new(start, end),
@@ -392,19 +420,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_continue(&mut self) -> StmtId<'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat continue
-        
-        let level = if self.current_token.kind != TokenKind::SemiColon && self.current_token.kind != TokenKind::CloseTag && self.current_token.kind != TokenKind::Eof && self.current_token.kind != TokenKind::CloseBrace {
+
+        let level = if self.current_token.kind != TokenKind::SemiColon
+            && self.current_token.kind != TokenKind::CloseTag
+            && self.current_token.kind != TokenKind::Eof
+            && self.current_token.kind != TokenKind::CloseBrace
+        {
             let expr = self.parse_expr(0);
             self.validate_break_continue_level(expr);
             Some(expr)
         } else {
             None
         };
-        
+
         self.expect_semicolon();
-        
+
         let end = self.current_token.span.end;
-        
+
         self.arena.alloc(Stmt::Continue {
             level,
             span: Span::new(start, end),
@@ -414,7 +446,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     fn validate_break_continue_level(&mut self, expr: ExprId<'ast>) {
         if let Expr::Integer { value, span } = expr {
             if value.is_empty() {
-                self.errors.push(crate::ast::ParseError { span: *span, message: "break/continue level must be a positive integer" });
+                self.errors.push(crate::ast::ParseError {
+                    span: *span,
+                    message: "break/continue level must be a positive integer",
+                });
                 return;
             }
             let mut num: usize = 0;
@@ -426,10 +461,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 num = num.saturating_mul(10).saturating_add((b - b'0') as usize);
             }
             if num == 0 {
-                self.errors.push(crate::ast::ParseError { span: *span, message: "break/continue level must be a positive integer" });
+                self.errors.push(crate::ast::ParseError {
+                    span: *span,
+                    message: "break/continue level must be a positive integer",
+                });
             }
         } else {
-            self.errors.push(crate::ast::ParseError { span: expr.span(), message: "break/continue level must be a positive integer literal" });
+            self.errors.push(crate::ast::ParseError {
+                span: expr.span(),
+                message: "break/continue level must be a positive integer literal",
+            });
         }
     }
 
@@ -475,7 +516,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.bump();
                 token
             } else {
-                self.arena.alloc(Token { kind: TokenKind::Error, span: Span::default() })
+                self.arena.alloc(Token {
+                    kind: TokenKind::Error,
+                    span: Span::default(),
+                })
             };
 
             if self.current_token.kind == TokenKind::Eq {
@@ -505,7 +549,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let body = if self.current_token.kind == TokenKind::Colon {
             self.bump();
             let mut stmts = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::EndDeclare && self.current_token.kind != TokenKind::Eof {
+            while self.current_token.kind != TokenKind::EndDeclare
+                && self.current_token.kind != TokenKind::Eof
+            {
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndDeclare {
@@ -537,23 +583,38 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.token_eq_ident(key, b"strict_types") {
             if let Some(num) = self.int_literal_value(value) {
                 if num != 0 && num != 1 {
-                    self.errors.push(crate::ast::ParseError { span: value.span(), message: "strict_types must be 0 or 1" });
+                    self.errors.push(crate::ast::ParseError {
+                        span: value.span(),
+                        message: "strict_types must be 0 or 1",
+                    });
                 }
             } else {
-                self.errors.push(crate::ast::ParseError { span: value.span(), message: "strict_types must be an integer literal" });
+                self.errors.push(crate::ast::ParseError {
+                    span: value.span(),
+                    message: "strict_types must be an integer literal",
+                });
             }
         } else if self.token_eq_ident(key, b"ticks") {
             if let Some(num) = self.int_literal_value(value) {
                 if num == 0 {
-                    self.errors.push(crate::ast::ParseError { span: value.span(), message: "ticks must be a positive integer" });
+                    self.errors.push(crate::ast::ParseError {
+                        span: value.span(),
+                        message: "ticks must be a positive integer",
+                    });
                 }
             } else {
-                self.errors.push(crate::ast::ParseError { span: value.span(), message: "ticks must be an integer literal" });
+                self.errors.push(crate::ast::ParseError {
+                    span: value.span(),
+                    message: "ticks must be an integer literal",
+                });
             }
         } else if self.token_eq_ident(key, b"encoding") {
             match value {
                 Expr::String { .. } => {}
-                _ => self.errors.push(crate::ast::ParseError { span: value.span(), message: "encoding must be a string literal" }),
+                _ => self.errors.push(crate::ast::ParseError {
+                    span: value.span(),
+                    message: "encoding must be a string literal",
+                }),
             }
         }
     }

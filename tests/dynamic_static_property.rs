@@ -10,7 +10,11 @@ fn parses_dynamic_static_property_name() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.is_empty(), "unexpected errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "unexpected errors: {:?}",
+        program.errors
+    );
 
     let stmt = program
         .statements

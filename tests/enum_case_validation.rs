@@ -8,7 +8,10 @@ fn pure_enum_case_with_value_errors() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for pure enum case value");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for pure enum case value"
+    );
 }
 
 #[test]
@@ -17,5 +20,8 @@ fn backed_enum_case_without_value_errors() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty(), "expected error for missing backed enum case value");
+    assert!(
+        !program.errors.is_empty(),
+        "expected error for missing backed enum case value"
+    );
 }

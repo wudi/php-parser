@@ -5,12 +5,17 @@ use php_parser_rs::parser::Parser;
 
 #[test]
 fn parses_anonymous_class_expression() {
-    let code = "<?php $obj = new class($arg) extends Foo implements Bar { public function run() {} };";
+    let code =
+        "<?php $obj = new class($arg) extends Foo implements Bar { public function run() {} };";
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.is_empty(), "unexpected errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "unexpected errors: {:?}",
+        program.errors
+    );
 
     let stmt = program
         .statements
@@ -28,7 +33,13 @@ fn parses_anonymous_class_expression() {
             Expr::New { class, args, .. } => {
                 assert_eq!(args.len(), 1);
                 match class {
-                    Expr::AnonymousClass { args: ctor_args, extends, implements, members, .. } => {
+                    Expr::AnonymousClass {
+                        args: ctor_args,
+                        extends,
+                        implements,
+                        members,
+                        ..
+                    } => {
                         assert_eq!(ctor_args.len(), 1);
                         assert!(extends.is_some());
                         assert_eq!(implements.len(), 1);
@@ -50,13 +61,19 @@ fn parses_static_scope_resolution() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.is_empty(), "unexpected errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "unexpected errors: {:?}",
+        program.errors
+    );
 
     let expr = program
         .statements
         .iter()
         .find_map(|stmt| match **stmt {
-            Stmt::Return { expr: Some(expr), .. } => Some(expr),
+            Stmt::Return {
+                expr: Some(expr), ..
+            } => Some(expr),
             _ => None,
         })
         .expect("expected return statement");

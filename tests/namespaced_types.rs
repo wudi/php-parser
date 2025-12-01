@@ -14,7 +14,11 @@ fn parses_namespaced_types_in_params_and_returns() {
         .statements
         .iter()
         .find_map(|s| match **s {
-            Stmt::Function { params, return_type: Some(ret), .. } => Some((params, ret)),
+            Stmt::Function {
+                params,
+                return_type: Some(ret),
+                ..
+            } => Some((params, ret)),
             _ => None,
         })
         .expect("expected function");
@@ -91,7 +95,11 @@ fn parses_static_return_type() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.is_empty(), "unexpected errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "unexpected errors: {:?}",
+        program.errors
+    );
 
     let return_type = program
         .statements

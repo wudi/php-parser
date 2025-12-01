@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 439
 expression: program
 ---
 Program {
@@ -167,14 +166,22 @@ Program {
                         },
                     ],
                     ty: None,
-                    name: Token {
-                        kind: Variable,
-                        span: Span {
-                            start: 107,
-                            end: 112,
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 107,
+                                    end: 112,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 107,
+                                end: 112,
+                            },
                         },
-                    },
-                    default: None,
+                    ],
                     span: Span {
                         start: 80,
                         end: 125,
@@ -339,6 +346,7 @@ Program {
                             default: None,
                             by_ref: false,
                             variadic: false,
+                            hooks: None,
                             span: Span {
                                 start: 220,
                                 end: 239,

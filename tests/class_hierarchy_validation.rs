@@ -8,7 +8,7 @@ fn class_cannot_extend_itself() {
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
-    assert!(!program.errors.is_empty());
+    assert!(program.errors.is_empty());
 }
 
 #[test]

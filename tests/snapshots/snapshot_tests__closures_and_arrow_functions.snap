@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 335
 expression: program
 ---
 Program {
@@ -50,6 +49,7 @@ Program {
                             default: None,
                             by_ref: false,
                             variadic: false,
+                            hooks: None,
                             span: Span {
                                 start: 21,
                                 end: 23,
@@ -123,6 +123,7 @@ Program {
                             default: None,
                             by_ref: false,
                             variadic: false,
+                            hooks: None,
                             span: Span {
                                 start: 55,
                                 end: 57,
@@ -228,6 +229,7 @@ Program {
                             default: None,
                             by_ref: false,
                             variadic: false,
+                            hooks: None,
                             span: Span {
                                 start: 97,
                                 end: 99,
@@ -306,6 +308,7 @@ Program {
                             default: None,
                             by_ref: false,
                             variadic: false,
+                            hooks: None,
                             span: Span {
                                 start: 120,
                                 end: 122,

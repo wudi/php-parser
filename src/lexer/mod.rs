@@ -1,7 +1,7 @@
 pub mod token;
 
-use token::{Token, TokenKind};
 use crate::span::Span;
+use token::{Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LexerMode {
@@ -21,6 +21,7 @@ enum LexerState {
     HaltCompiler,
     RawData,
     VarOffset,
+    VarOffsetDollarCurly,
     LookingForProperty,
     LookingForVarName,
 }
@@ -82,8 +83,8 @@ impl<'src> Lexer<'src> {
             if c.is_ascii_alphanumeric() || c == b'_' {
                 self.advance();
             } else if c >= 0x80 {
-                 // PHP allows extended ASCII in identifiers
-                 self.advance();
+                // PHP allows extended ASCII in identifiers
+                self.advance();
             } else {
                 break;
             }
@@ -92,7 +93,7 @@ impl<'src> Lexer<'src> {
 
     fn read_number(&mut self) -> TokenKind {
         let mut is_float = false;
-        
+
         // Check for hex/binary/octal
         if self.peek() == Some(b'0') {
             self.advance();
@@ -120,7 +121,7 @@ impl<'src> Lexer<'src> {
                 } else if c == b'o' || c == b'O' {
                     self.advance();
                     while let Some(c) = self.peek() {
-                        if (c >= b'0' && c <= b'7') || c == b'_' {
+                        if (b'0'..=b'7').contains(&c) || c == b'_' {
                             self.advance();
                         } else {
                             break;
@@ -143,23 +144,22 @@ impl<'src> Lexer<'src> {
             } else if c == b'e' || c == b'E' {
                 is_float = true;
                 self.advance();
-                if let Some(next) = self.peek() {
-                    if next == b'+' || next == b'-' {
+                if let Some(next) = self.peek()
+                    && (next == b'+' || next == b'-') {
                         self.advance();
                     }
-                }
             } else {
                 break;
             }
         }
-        
+
         if is_float {
             TokenKind::DNumber
         } else {
             TokenKind::LNumber
         }
     }
-    
+
     fn consume_single_line_comment(&mut self) -> TokenKind {
         while let Some(c) = self.peek() {
             if c == b'\n' || c == b'\r' {
@@ -172,142 +172,192 @@ impl<'src> Lexer<'src> {
         }
         TokenKind::Comment
     }
-    
+
     fn consume_multi_line_comment(&mut self) -> TokenKind {
-        let is_doc = if self.peek() == Some(b'*') && self.input.get(self.cursor + 1) != Some(&b'/') {
+        let is_doc = if self.peek() == Some(b'*') && self.input.get(self.cursor + 1) != Some(&b'/')
+        {
             self.advance();
             true
         } else {
             false
         };
-        
+
         while let Some(c) = self.peek() {
             if c == b'*' {
                 self.advance();
                 if self.peek() == Some(b'/') {
                     self.advance();
-                    return if is_doc { TokenKind::DocComment } else { TokenKind::Comment };
+                    return if is_doc {
+                        TokenKind::DocComment
+                    } else {
+                        TokenKind::Comment
+                    };
                 }
             } else {
                 self.advance();
             }
         }
-        
+
         TokenKind::Error // Unterminated comment
     }
-
-
 
     fn next_in_looking_for_property(&mut self) -> Option<Token> {
         let start = self.cursor;
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(start, start),
+            });
         }
-        
+
         let c = self.input[self.cursor];
-        
-        if c == b'-' {
-            if self.input.get(self.cursor + 1) == Some(&b'>') {
-                self.advance_n(2);
-                return Some(Token { kind: TokenKind::Arrow, span: Span::new(start, self.cursor) });
-            }
+
+        if c == b'-' && self.input.get(self.cursor + 1) == Some(&b'>') {
+            self.advance_n(2);
+            return Some(Token {
+                kind: TokenKind::Arrow,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
             self.read_identifier();
             self.state_stack.pop(); // Done with property
-            return Some(Token { kind: TokenKind::Identifier, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::Identifier,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         // Fallback: if we are here, it means we expected -> or identifier but got something else.
         // This shouldn't happen if we only push state when we see ->.
         // But if we just returned Arrow, next call expects Identifier.
         // If we don't see identifier, we should probably pop state and let double quotes handle it?
         // But double quotes expects string content.
-        
+
         self.state_stack.pop();
         // Return empty token? No.
         // Let's return Error for now if it's unexpected.
-        Some(Token { kind: TokenKind::Error, span: Span::new(start, self.cursor) })
+        Some(Token {
+            kind: TokenKind::Error,
+            span: Span::new(start, self.cursor),
+        })
     }
 
     fn next_in_looking_for_var_name(&mut self) -> Option<Token> {
         let start = self.cursor;
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(start, start),
+            });
         }
-        
+
         let c = self.input[self.cursor];
-        
+
         if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
             self.read_identifier();
-            return Some(Token { kind: TokenKind::StringVarname, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::StringVarname,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
+        if c == b'[' {
+            self.advance();
+            self.state_stack.push(LexerState::VarOffsetDollarCurly);
+            return Some(Token {
+                kind: TokenKind::OpenBracket,
+                span: Span::new(start, self.cursor),
+            });
+        }
+
         if c == b'}' {
             self.advance();
             self.state_stack.pop();
-            return Some(Token { kind: TokenKind::CloseBrace, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::CloseBrace,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         self.advance();
-        Some(Token { kind: TokenKind::Error, span: Span::new(start, self.cursor) })
+        Some(Token {
+            kind: TokenKind::Error,
+            span: Span::new(start, self.cursor),
+        })
     }
 
-    fn next_in_var_offset(&mut self) -> Option<Token> {
+    fn next_in_var_offset(&mut self, is_num_string: bool) -> Option<Token> {
         let start = self.cursor;
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(start, start),
+            });
         }
-        
+
         let c = self.input[self.cursor];
-        
+
         if c == b']' {
             self.advance();
             self.state_stack.pop();
-            return Some(Token { kind: TokenKind::CloseBracket, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::CloseBracket,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         if c == b'$' {
             self.advance();
-            if let Some(next) = self.peek() {
-                if next.is_ascii_alphabetic() || next == b'_' {
+            if let Some(next) = self.peek()
+                && (next.is_ascii_alphabetic() || next == b'_') {
                     let var_start = self.cursor - 1;
                     self.read_identifier();
-                    return Some(Token { kind: TokenKind::Variable, span: Span::new(var_start, self.cursor) });
+                    return Some(Token {
+                        kind: TokenKind::Variable,
+                        span: Span::new(var_start, self.cursor),
+                    });
                 }
-            }
             // Fallback to identifier/etc if not variable?
             // PHP scanner: if $foo[bar], bar is T_STRING. if $foo[$bar], $bar is T_VARIABLE.
             // if $foo[1], 1 is T_NUM_STRING.
         }
-        
+
         if c.is_ascii_digit() {
-            self.read_number(); // This returns LNumber or DNumber, but we want NumString for LNumber?
-            // Actually PHP returns T_NUM_STRING for integers in this context.
-            // Let's check if it's an integer.
-            // Re-read number logic but simpler since it's inside []
-            // Wait, read_number handles hex/bin/oct/float.
-            // T_NUM_STRING is only for decimal integers?
-            // Let's check PHP: "$a[0x10]" -> 0x10 is T_NUM_STRING?
-            // php -r 'print_r(token_get_all("<?php \"$a[0x10]\""));'
-            // Array ( [0] => ... [3] => Array ( [0] => 266 [1] => $a ... ) [4] => [ [5] => 0 [6] => x10 [7] => ] ... )
-            // It parses 0 then x10 as chars!
-            // So only decimal digits are T_NUM_STRING?
-            // php -r 'print_r(token_get_all("<?php \"$a[123]\""));' -> T_NUM_STRING 123.
-            
-            // So we should read digits.
-            return Some(Token { kind: TokenKind::NumString, span: Span::new(start, self.cursor) });
+            if is_num_string {
+                // Only consume digits
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_digit() {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                return Some(Token {
+                    kind: TokenKind::NumString,
+                    span: Span::new(start, self.cursor),
+                });
+            } else {
+                let kind = self.read_number();
+                return Some(Token {
+                    kind,
+                    span: Span::new(start, self.cursor),
+                });
+            }
         }
-        
+
         if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
             self.read_identifier();
-            return Some(Token { kind: TokenKind::Identifier, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::Identifier,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         // Any other char is just returned as is (e.g. - . etc)
         self.advance();
-        
+
         // Map specific chars to tokens if needed, or just return Error/Char?
         // In this context, [ is not possible (nested?), ] is handled.
         // - is possible.
@@ -319,47 +369,62 @@ impl<'src> Lexer<'src> {
         // No, I pushed state when I saw [.
         // But I did NOT consume [.
         // Ah!
-        
+
         /*
                         // Check for array offset [
                         if self.peek() == Some(b'[') {
                             self.state_stack.push(LexerState::VarOffset);
                         }
         */
-        
+
         // So the next char IS [.
         // So I need to handle [ in next_in_var_offset.
-        
+
         if c == b'[' {
-             return Some(Token { kind: TokenKind::OpenBracket, span: Span::new(start, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::OpenBracket,
+                span: Span::new(start, self.cursor),
+            });
         }
 
-        Some(Token { kind: TokenKind::Error, span: Span::new(start, self.cursor) })
+        Some(Token {
+            kind: TokenKind::Error,
+            span: Span::new(start, self.cursor),
+        })
     }
 
     fn next_in_double_quotes(&mut self) -> Option<Token> {
         let start = self.cursor;
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(start, start) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(start, start),
+            });
         }
-        
+
         let char = self.input[self.cursor];
-        
+
         match char {
             b'"' => {
                 if let Some(LexerState::DoubleQuotes) = self.state_stack.last() {
                     self.advance();
                     self.state_stack.pop();
-                    return Some(Token { kind: TokenKind::DoubleQuote, span: Span::new(start, self.cursor) });
+                    return Some(Token {
+                        kind: TokenKind::DoubleQuote,
+                        span: Span::new(start, self.cursor),
+                    });
                 }
-            },
+            }
             b'`' => {
-                 if let Some(LexerState::Backquote) = self.state_stack.last() {
+                if let Some(LexerState::Backquote) = self.state_stack.last() {
                     self.advance();
                     self.state_stack.pop();
-                    return Some(Token { kind: TokenKind::Backtick, span: Span::new(start, self.cursor) });
+                    return Some(Token {
+                        kind: TokenKind::Backtick,
+                        span: Span::new(start, self.cursor),
+                    });
                 }
-            },
+            }
             b'$' => {
                 self.advance();
                 if let Some(c) = self.peek() {
@@ -370,40 +435,46 @@ impl<'src> Lexer<'src> {
                         // So we are at the start of identifier.
                         let var_start = self.cursor - 1;
                         self.read_identifier();
-                        
+
                         // Check for array offset [
                         if self.peek() == Some(b'[') {
                             self.state_stack.push(LexerState::VarOffset);
-                        } else if self.peek() == Some(b'-') {
-                             if self.input.get(self.cursor + 1) == Some(&b'>') {
-                                 if let Some(next_next) = self.input.get(self.cursor + 2) {
-                                     if next_next.is_ascii_alphabetic() || *next_next == b'_' {
-                                         self.state_stack.push(LexerState::LookingForProperty);
-                                     }
-                                 }
-                             }
-                        }
-                        
-                        return Some(Token { kind: TokenKind::Variable, span: Span::new(var_start, self.cursor) });
+                        } else if self.peek() == Some(b'-')
+                            && self.input.get(self.cursor + 1) == Some(&b'>')
+                                && let Some(next_next) = self.input.get(self.cursor + 2)
+                                    && (next_next.is_ascii_alphabetic() || *next_next == b'_') {
+                                        self.state_stack.push(LexerState::LookingForProperty);
+                                    }
+
+                        return Some(Token {
+                            kind: TokenKind::Variable,
+                            span: Span::new(var_start, self.cursor),
+                        });
                     } else if c == b'{' {
                         self.advance(); // Eat {
                         self.state_stack.push(LexerState::LookingForVarName);
-                        return Some(Token { kind: TokenKind::DollarOpenCurlyBraces, span: Span::new(start, self.cursor) });
+                        return Some(Token {
+                            kind: TokenKind::DollarOpenCurlyBraces,
+                            span: Span::new(start, self.cursor),
+                        });
                     }
                 }
                 // Just a $ literal, continue as Encapsed
-            },
+            }
             b'{' => {
                 if self.input.get(self.cursor + 1) == Some(&b'$') {
                     self.advance();
                     // Do NOT consume $
                     self.state_stack.push(LexerState::Scripting);
-                    return Some(Token { kind: TokenKind::CurlyOpen, span: Span::new(start, self.cursor) });
+                    return Some(Token {
+                        kind: TokenKind::CurlyOpen,
+                        span: Span::new(start, self.cursor),
+                    });
                 }
-            },
+            }
             _ => {}
         }
-        
+
         // EncapsedAndWhitespace
         while let Some(c) = self.peek() {
             if c == b'"' && matches!(self.state_stack.last(), Some(LexerState::DoubleQuotes)) {
@@ -412,19 +483,15 @@ impl<'src> Lexer<'src> {
             if c == b'`' && matches!(self.state_stack.last(), Some(LexerState::Backquote)) {
                 break;
             }
-            if c == b'$' {
-                if let Some(next) = self.input.get(self.cursor + 1) {
-                    if next.is_ascii_alphabetic() || *next == b'_' || *next == b'{' {
+            if c == b'$'
+                && let Some(next) = self.input.get(self.cursor + 1)
+                    && (next.is_ascii_alphabetic() || *next == b'_' || *next == b'{') {
                         break;
                     }
-                }
+            if c == b'{' && self.input.get(self.cursor + 1) == Some(&b'$') {
+                break;
             }
-            if c == b'{' {
-                if self.input.get(self.cursor + 1) == Some(&b'$') {
-                    break;
-                }
-            }
-            
+
             if c == b'\\' {
                 self.advance();
                 if self.peek().is_some() {
@@ -434,22 +501,25 @@ impl<'src> Lexer<'src> {
                 self.advance();
             }
         }
-        
+
         if self.cursor > start {
-            Some(Token { kind: TokenKind::EncapsedAndWhitespace, span: Span::new(start, self.cursor) })
+            Some(Token {
+                kind: TokenKind::EncapsedAndWhitespace,
+                span: Span::new(start, self.cursor),
+            })
         } else {
             // Should have matched something above or broke immediately
             // If we broke immediately (e.g. at "), we should have handled it in match char
             // But if we are at $ or { that is NOT a variable start, we should consume it.
             // Wait, if we are at $ and it fell through match char, it means it's NOT a variable.
             // So we should consume it.
-            
+
             // My loop logic:
             // `while let Some(c) = self.peek()`
             // If `c` is `$`, check if variable. If NOT variable, consume.
             // But my loop breaks if `c == b'$'` and it IS a variable.
             // If it is NOT a variable, it continues?
-            
+
             // Let's re-check loop:
             /*
             if c == b'$' {
@@ -462,8 +532,11 @@ impl<'src> Lexer<'src> {
             */
             // It doesn't advance if it's NOT a variable. It just falls through to `if c == b'\\' ... else self.advance()`.
             // So it advances. Correct.
-            
-            Some(Token { kind: TokenKind::EncapsedAndWhitespace, span: Span::new(start, self.cursor) })
+
+            Some(Token {
+                kind: TokenKind::EncapsedAndWhitespace,
+                span: Span::new(start, self.cursor),
+            })
         }
     }
 
@@ -495,21 +568,36 @@ impl<'src> Lexer<'src> {
                     self.advance();
                 }
             } else if c == b'$' {
-                if let Some(next) = self.input.get(self.cursor + 1) {
-                    if next.is_ascii_alphabetic() || *next == b'_' || *next == b'{' {
+                if let Some(next) = self.input.get(self.cursor + 1)
+                    && (next.is_ascii_alphabetic() || *next == b'_' || *next == b'{') {
                         self.cursor = start_pos + 1;
-                        self.state_stack.push(if quote == b'"' { LexerState::DoubleQuotes } else { LexerState::Backquote });
-                        return if quote == b'"' { TokenKind::DoubleQuote } else { TokenKind::Backtick };
+                        self.state_stack.push(if quote == b'"' {
+                            LexerState::DoubleQuotes
+                        } else {
+                            LexerState::Backquote
+                        });
+                        return if quote == b'"' {
+                            TokenKind::DoubleQuote
+                        } else {
+                            TokenKind::Backtick
+                        };
                     }
-                }
                 self.advance();
             } else if c == b'{' {
-                 if self.input.get(self.cursor + 1) == Some(&b'$') {
-                     self.cursor = start_pos + 1;
-                     self.state_stack.push(if quote == b'"' { LexerState::DoubleQuotes } else { LexerState::Backquote });
-                     return if quote == b'"' { TokenKind::DoubleQuote } else { TokenKind::Backtick };
-                 }
-                 self.advance();
+                if self.input.get(self.cursor + 1) == Some(&b'$') {
+                    self.cursor = start_pos + 1;
+                    self.state_stack.push(if quote == b'"' {
+                        LexerState::DoubleQuotes
+                    } else {
+                        LexerState::Backquote
+                    });
+                    return if quote == b'"' {
+                        TokenKind::DoubleQuote
+                    } else {
+                        TokenKind::Backtick
+                    };
+                }
+                self.advance();
             } else {
                 self.advance();
             }
@@ -525,25 +613,24 @@ impl<'src> Lexer<'src> {
                 break;
             }
         }
-        
+
         let quote = self.peek();
         let is_quoted = quote == Some(b'\'') || quote == Some(b'"');
         let is_nowdoc = quote == Some(b'\'');
-        
+
         if is_quoted {
             self.advance();
         }
-        
+
         let label_start = self.cursor;
         self.read_identifier();
         let label = self.input[label_start..self.cursor].to_vec();
-        
-        if is_quoted {
-            if self.peek() == quote {
+
+        if is_quoted
+            && self.peek() == quote {
                 self.advance();
             }
-        }
-        
+
         // Consume newline after label
         if let Some(c) = self.peek() {
             if c == b'\n' {
@@ -555,13 +642,13 @@ impl<'src> Lexer<'src> {
                 }
             }
         }
-        
+
         if is_nowdoc {
             self.state_stack.push(LexerState::Nowdoc(label));
         } else {
             self.state_stack.push(LexerState::Heredoc(label));
         }
-        
+
         Token {
             kind: TokenKind::StartHeredoc,
             span: Span::new(start, self.cursor),
@@ -578,11 +665,11 @@ impl<'src> Lexer<'src> {
                 break;
             }
         }
-        
+
         if current + label.len() > self.input.len() {
             return None;
         }
-        
+
         if &self.input[current..current + label.len()] == label {
             // Check what follows. Must not be a label character.
             let after = current + label.len();
@@ -605,7 +692,7 @@ impl<'src> Lexer<'src> {
                 cursor += 1;
                 continue;
             }
-            
+
             // Comments
             if c == b'#' {
                 // Single line comment
@@ -614,49 +701,106 @@ impl<'src> Lexer<'src> {
                 }
                 continue;
             }
-            if c == b'/' {
-                if cursor + 1 < self.input.len() {
-                    if self.input[cursor+1] == b'/' {
-                         // Single line
-                        while cursor < self.input.len() && self.input[cursor] != b'\n' {
-                            cursor += 1;
-                        }
-                        continue;
-                    } else if self.input[cursor+1] == b'*' {
-                        // Multi line
-                        cursor += 2;
-                        while cursor < self.input.len() {
-                            if self.input[cursor] == b'*' && cursor + 1 < self.input.len() && self.input[cursor+1] == b'/' {
-                                cursor += 2;
-                                break;
-                            }
-                            cursor += 1;
-                        }
-                        continue;
+            if c == b'/' && cursor + 1 < self.input.len() {
+                if self.input[cursor + 1] == b'/' {
+                    // Single line
+                    while cursor < self.input.len() && self.input[cursor] != b'\n' {
+                        cursor += 1;
                     }
+                    continue;
+                } else if self.input[cursor + 1] == b'*' {
+                    // Multi line
+                    cursor += 2;
+                    while cursor < self.input.len() {
+                        if self.input[cursor] == b'*'
+                            && cursor + 1 < self.input.len()
+                            && self.input[cursor + 1] == b'/'
+                        {
+                            cursor += 2;
+                            break;
+                        }
+                        cursor += 1;
+                    }
+                    continue;
                 }
             }
-            
+
             // Check for Variable ($...)
-            if c == b'$' {
-                if cursor + 1 < self.input.len() {
-                    let next = self.input[cursor+1];
-                    if next.is_ascii_alphabetic() || next == b'_' || next >= 0x80 {
-                        return true;
-                    }
-                }
-            }
-            
-            // Check for Ellipsis (...)
-            if c == b'.' {
-                if cursor + 2 < self.input.len() && self.input[cursor+1] == b'.' && self.input[cursor+2] == b'.' {
+            if c == b'$' && cursor + 1 < self.input.len() {
+                let next = self.input[cursor + 1];
+                if next.is_ascii_alphabetic() || next == b'_' || next >= 0x80 {
                     return true;
                 }
             }
-            
+
+            // Check for Ellipsis (...)
+            if c == b'.'
+                && cursor + 2 < self.input.len()
+                && self.input[cursor + 1] == b'.'
+                && self.input[cursor + 2] == b'.'
+            {
+                return true;
+            }
+
             return false;
         }
         false
+    }
+
+    fn check_set_visibility(&mut self, normal: TokenKind, set: TokenKind) -> TokenKind {
+        let mut look = self.cursor;
+
+        // Skip whitespace before (
+        while let Some(b) = self.input.get(look) {
+            if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
+                look += 1;
+            } else {
+                break;
+            }
+        }
+
+        if self.input.get(look) != Some(&b'(') {
+            return normal;
+        }
+        look += 1;
+
+        // Skip whitespace after (
+        while let Some(b) = self.input.get(look) {
+            if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
+                look += 1;
+            } else {
+                break;
+            }
+        }
+
+        let set_kw = b"set";
+        let is_set = self
+            .input
+            .get(look..look + set_kw.len())
+            .map(|s| s.eq_ignore_ascii_case(set_kw))
+            .unwrap_or(false);
+
+        if !is_set {
+            return normal;
+        }
+        look += set_kw.len();
+
+        // Skip whitespace after set
+        while let Some(b) = self.input.get(look) {
+            if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
+                look += 1;
+            } else {
+                break;
+            }
+        }
+
+        if self.input.get(look) != Some(&b')') {
+            return normal;
+        }
+        look += 1;
+
+        self.cursor = look;
+        set
     }
 
     fn next_in_nowdoc(&mut self) -> Option<Token> {
@@ -667,19 +811,25 @@ impl<'src> Lexer<'src> {
         };
 
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(self.cursor, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(self.cursor, self.cursor),
+            });
         }
 
         let start = self.cursor;
-        
+
         // Check if we are at the end label immediately
         if let Some(len) = self.check_heredoc_end(&label) {
             self.advance_n(len);
             self.state_stack.pop();
-            
-            return Some(Token { kind: TokenKind::EndHeredoc, span: Span::new(start, self.cursor) });
+
+            return Some(Token {
+                kind: TokenKind::EndHeredoc,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         // Consume content until newline (inclusive)
         while let Some(c) = self.peek() {
             self.advance();
@@ -690,8 +840,11 @@ impl<'src> Lexer<'src> {
                 }
             }
         }
-        
-        Some(Token { kind: TokenKind::EncapsedAndWhitespace, span: Span::new(start, self.cursor) })
+
+        Some(Token {
+            kind: TokenKind::EncapsedAndWhitespace,
+            span: Span::new(start, self.cursor),
+        })
     }
 
     fn next_in_heredoc(&mut self) -> Option<Token> {
@@ -702,19 +855,25 @@ impl<'src> Lexer<'src> {
         };
 
         if self.cursor >= self.input.len() {
-             return Some(Token { kind: TokenKind::Error, span: Span::new(self.cursor, self.cursor) });
+            return Some(Token {
+                kind: TokenKind::Error,
+                span: Span::new(self.cursor, self.cursor),
+            });
         }
 
         let start = self.cursor;
-        
+
         // Check end label
         if let Some(len) = self.check_heredoc_end(&label) {
             self.advance_n(len);
             self.state_stack.pop();
-            
-            return Some(Token { kind: TokenKind::EndHeredoc, span: Span::new(start, self.cursor) });
+
+            return Some(Token {
+                kind: TokenKind::EndHeredoc,
+                span: Span::new(start, self.cursor),
+            });
         }
-        
+
         // Handle interpolation
         if let Some(c) = self.peek() {
             if c == b'$' {
@@ -727,72 +886,74 @@ impl<'src> Lexer<'src> {
                         // Check for array offset [
                         if self.peek() == Some(b'[') {
                             self.state_stack.push(LexerState::VarOffset);
-                        } else if self.peek() == Some(b'-') {
-                             if self.input.get(self.cursor + 1) == Some(&b'>') {
-                                 if let Some(next_next) = self.input.get(self.cursor + 2) {
-                                     if next_next.is_ascii_alphabetic() || *next_next == b'_' {
-                                         self.state_stack.push(LexerState::LookingForProperty);
-                                     }
-                                 }
-                             }
-                        }
+                        } else if self.peek() == Some(b'-')
+                            && self.input.get(self.cursor + 1) == Some(&b'>')
+                                && let Some(next_next) = self.input.get(self.cursor + 2)
+                                    && (next_next.is_ascii_alphabetic() || *next_next == b'_') {
+                                        self.state_stack.push(LexerState::LookingForProperty);
+                                    }
 
-                        return Some(Token { kind: TokenKind::Variable, span: Span::new(var_start, self.cursor) });
+                        return Some(Token {
+                            kind: TokenKind::Variable,
+                            span: Span::new(var_start, self.cursor),
+                        });
                     } else if next == b'{' {
                         self.advance();
                         self.state_stack.push(LexerState::LookingForVarName);
-                        return Some(Token { kind: TokenKind::DollarOpenCurlyBraces, span: Span::new(start, self.cursor) });
+                        return Some(Token {
+                            kind: TokenKind::DollarOpenCurlyBraces,
+                            span: Span::new(start, self.cursor),
+                        });
                     }
                 }
-            } else if c == b'{' {
-                if self.input.get(self.cursor + 1) == Some(&b'$') {
-                    self.advance();
-                    self.state_stack.push(LexerState::Scripting);
-                    return Some(Token { kind: TokenKind::CurlyOpen, span: Span::new(start, self.cursor) });
-                }
+            } else if c == b'{' && self.input.get(self.cursor + 1) == Some(&b'$') {
+                self.advance();
+                self.state_stack.push(LexerState::Scripting);
+                return Some(Token {
+                    kind: TokenKind::CurlyOpen,
+                    span: Span::new(start, self.cursor),
+                });
             }
         }
-        
+
         // Consume content
         while let Some(c) = self.peek() {
-            if c == b'$' {
-                if let Some(next) = self.input.get(self.cursor + 1) {
-                    if next.is_ascii_alphabetic() || *next == b'_' || *next == b'{' {
+            if c == b'$'
+                && let Some(next) = self.input.get(self.cursor + 1)
+                    && (next.is_ascii_alphabetic() || *next == b'_' || *next == b'{') {
                         break;
                     }
-                }
+            if c == b'{' && self.input.get(self.cursor + 1) == Some(&b'$') {
+                break;
             }
-            if c == b'{' {
-                if self.input.get(self.cursor + 1) == Some(&b'$') {
-                    break;
-                }
-            }
-            
+
             self.advance();
-            if c == b'\n' {
-                if self.check_heredoc_end(&label).is_some() {
-                    break;
-                }
+            if c == b'\n' && self.check_heredoc_end(&label).is_some() {
+                break;
             }
-            
-            if c == b'\\' {
-                 if self.peek().is_some() {
-                     self.advance();
-                 }
+
+            if c == b'\\' && self.peek().is_some() {
+                self.advance();
             }
         }
-        
+
         if self.cursor > start {
-            Some(Token { kind: TokenKind::EncapsedAndWhitespace, span: Span::new(start, self.cursor) })
+            Some(Token {
+                kind: TokenKind::EncapsedAndWhitespace,
+                span: Span::new(start, self.cursor),
+            })
         } else {
             // Should have matched something above
-             Some(Token { kind: TokenKind::EncapsedAndWhitespace, span: Span::new(start, self.cursor) })
+            Some(Token {
+                kind: TokenKind::EncapsedAndWhitespace,
+                span: Span::new(start, self.cursor),
+            })
         }
     }
 
     fn next_in_halt_compiler(&mut self) -> Option<Token> {
         self.skip_whitespace();
-        
+
         if self.cursor >= self.input.len() {
             return Some(Token {
                 kind: TokenKind::Eof,
@@ -811,7 +972,7 @@ impl<'src> Lexer<'src> {
                 self.state_stack.pop();
                 self.state_stack.push(LexerState::RawData);
                 TokenKind::SemiColon
-            },
+            }
             b'#' => self.consume_single_line_comment(),
             b'/' => {
                 if self.peek() == Some(b'/') {
@@ -823,7 +984,7 @@ impl<'src> Lexer<'src> {
                 } else {
                     TokenKind::Error
                 }
-            },
+            }
             _ => TokenKind::Error,
         };
 
@@ -853,25 +1014,23 @@ impl<'src> Iterator for Lexer<'src> {
                             span: Span::new(start, self.cursor),
                         });
                     }
-                    
+
                     let tag_start = self.cursor;
                     self.state_stack.pop();
                     self.state_stack.push(LexerState::Scripting);
                     self.advance_n(5);
-                    
+
                     // Check for trailing newline/whitespace after <?php
-                    if let Some(c) = self.peek() {
-                        if c.is_ascii_whitespace() {
-                            self.advance();
-                        }
+                    if self.peek().is_some_and(|c| c.is_ascii_whitespace()) {
+                        self.advance();
                     }
-                    
+
                     return Some(Token {
                         kind: TokenKind::OpenTag,
                         span: Span::new(tag_start, self.cursor),
                     });
                 } else if self.input[self.cursor..].starts_with(b"<?=") {
-                     if self.cursor > start {
+                    if self.cursor > start {
                         return Some(Token {
                             kind: TokenKind::InlineHtml,
                             span: Span::new(start, self.cursor),
@@ -888,14 +1047,14 @@ impl<'src> Iterator for Lexer<'src> {
                 }
                 self.advance();
             }
-            
+
             if self.cursor > start {
                 return Some(Token {
                     kind: TokenKind::InlineHtml,
                     span: Span::new(start, self.cursor),
                 });
             }
-            
+
             return Some(Token {
                 kind: TokenKind::Eof,
                 span: Span::new(self.cursor, self.cursor),
@@ -903,14 +1062,16 @@ impl<'src> Iterator for Lexer<'src> {
         }
 
         // Handle DoubleQuotes/Backquote state
-        if let Some(LexerState::DoubleQuotes) | Some(LexerState::Backquote) = self.state_stack.last() {
+        if let Some(LexerState::DoubleQuotes) | Some(LexerState::Backquote) =
+            self.state_stack.last()
+        {
             return self.next_in_double_quotes();
         }
-        
+
         if let Some(LexerState::Heredoc(_)) = self.state_stack.last() {
             return self.next_in_heredoc();
         }
-        
+
         if let Some(LexerState::Nowdoc(_)) = self.state_stack.last() {
             return self.next_in_nowdoc();
         }
@@ -920,7 +1081,11 @@ impl<'src> Iterator for Lexer<'src> {
         }
 
         if let Some(LexerState::VarOffset) = self.state_stack.last() {
-            return self.next_in_var_offset();
+            return self.next_in_var_offset(true);
+        }
+
+        if let Some(LexerState::VarOffsetDollarCurly) = self.state_stack.last() {
+            return self.next_in_var_offset(false);
         }
 
         if let Some(LexerState::LookingForProperty) = self.state_stack.last() {
@@ -932,18 +1097,18 @@ impl<'src> Iterator for Lexer<'src> {
         }
 
         if let Some(LexerState::RawData) = self.state_stack.last() {
-             if self.cursor >= self.input.len() {
-                 return Some(Token {
+            if self.cursor >= self.input.len() {
+                return Some(Token {
                     kind: TokenKind::Eof,
                     span: Span::new(self.cursor, self.cursor),
                 });
-             }
-             let start = self.cursor;
-             self.cursor = self.input.len(); // Consume all
-             return Some(Token {
-                 kind: TokenKind::InlineHtml,
-                 span: Span::new(start, self.cursor),
-             });
+            }
+            let start = self.cursor;
+            self.cursor = self.input.len(); // Consume all
+            return Some(Token {
+                kind: TokenKind::InlineHtml,
+                span: Span::new(start, self.cursor),
+            });
         }
 
         self.skip_whitespace();
@@ -971,14 +1136,14 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Dollar
                 }
-            },
+            }
             b'\\' => TokenKind::NsSeparator,
             b'\'' => self.read_single_quoted(),
             b'"' => self.read_double_quoted(b'"', start),
             b'`' => {
                 self.state_stack.push(LexerState::Backquote);
                 TokenKind::Backtick
-            },
+            }
             b'#' => {
                 if self.peek() == Some(b'[') {
                     self.advance();
@@ -986,7 +1151,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     self.consume_single_line_comment()
                 }
-            },
+            }
             b';' => TokenKind::SemiColon,
             b':' => {
                 if self.peek() == Some(b':') {
@@ -995,27 +1160,27 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Colon
                 }
-            },
+            }
             b',' => TokenKind::Comma,
             b'{' => {
                 self.state_stack.push(LexerState::Scripting);
                 TokenKind::OpenBrace
-            },
+            }
             b'}' => {
                 if self.state_stack.len() > 1 {
                     self.state_stack.pop();
                 }
                 TokenKind::CloseBrace
-            },
+            }
             b'(' => {
                 // Check for cast
                 let saved_cursor = self.cursor;
                 self.skip_whitespace();
-                
+
                 let start_ident = self.cursor;
                 self.read_identifier();
                 let ident_len = self.cursor - start_ident;
-                
+
                 if ident_len > 0 {
                     let ident = &self.input[start_ident..self.cursor];
                     self.skip_whitespace();
@@ -1030,7 +1195,7 @@ impl<'src> Iterator for Lexer<'src> {
                             b"unset" => Some(TokenKind::UnsetCast),
                             _ => None,
                         };
-                        
+
                         if let Some(k) = cast_kind {
                             self.advance(); // Eat ')'
                             k
@@ -1046,7 +1211,7 @@ impl<'src> Iterator for Lexer<'src> {
                     self.cursor = saved_cursor;
                     TokenKind::OpenParen
                 }
-            },
+            }
             b')' => TokenKind::CloseParen,
             b'[' => TokenKind::OpenBracket,
             b']' => TokenKind::CloseBracket,
@@ -1060,7 +1225,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Plus
                 }
-            },
+            }
             b'-' => {
                 if self.peek() == Some(b'>') {
                     self.advance();
@@ -1074,7 +1239,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Minus
                 }
-            },
+            }
             b'*' => {
                 if self.peek() == Some(b'*') {
                     self.advance();
@@ -1090,7 +1255,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Asterisk
                 }
-            },
+            }
             b'/' => {
                 if self.peek() == Some(b'/') {
                     self.advance();
@@ -1104,7 +1269,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Slash
                 }
-            },
+            }
             b'%' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1112,7 +1277,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Percent
                 }
-            },
+            }
             b'.' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1125,13 +1290,15 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         TokenKind::Dot
                     }
-                } else if let Some(c) = self.peek() && c.is_ascii_digit() {
+                } else if let Some(c) = self.peek()
+                    && c.is_ascii_digit()
+                {
                     self.cursor -= 1;
                     self.read_number()
                 } else {
                     TokenKind::Dot
                 }
-            },
+            }
             b'=' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1147,7 +1314,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Eq
                 }
-            },
+            }
             b'!' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1160,7 +1327,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Bang
                 }
-            },
+            }
             b'<' => {
                 if self.peek() == Some(b'<') && self.input.get(self.cursor + 1) == Some(&b'<') {
                     self.advance(); // Eat second <
@@ -1188,7 +1355,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Lt
                 }
-            },
+            }
             b'>' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1204,7 +1371,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Gt
                 }
-            },
+            }
             b'&' => {
                 if self.peek() == Some(b'&') {
                     self.advance();
@@ -1212,14 +1379,12 @@ impl<'src> Iterator for Lexer<'src> {
                 } else if self.peek() == Some(b'=') {
                     self.advance();
                     TokenKind::AndEq
+                } else if self.is_followed_by_var_or_vararg() {
+                    TokenKind::AmpersandFollowedByVarOrVararg
                 } else {
-                    if self.is_followed_by_var_or_vararg() {
-                        TokenKind::AmpersandFollowedByVarOrVararg
-                    } else {
-                        TokenKind::AmpersandNotFollowedByVarOrVararg
-                    }
+                    TokenKind::AmpersandNotFollowedByVarOrVararg
                 }
-            },
+            }
             b'|' => {
                 if self.peek() == Some(b'|') {
                     self.advance();
@@ -1230,7 +1395,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Pipe
                 }
-            },
+            }
             b'^' => {
                 if self.peek() == Some(b'=') {
                     self.advance();
@@ -1238,7 +1403,7 @@ impl<'src> Iterator for Lexer<'src> {
                 } else {
                     TokenKind::Caret
                 }
-            },
+            }
             b'~' => TokenKind::BitNot,
             b'@' => TokenKind::At,
             b'?' => {
@@ -1255,22 +1420,24 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         TokenKind::Coalesce
                     }
-                } else if self.peek() == Some(b'-') && self.input.get(self.cursor + 1) == Some(&b'>') {
+                } else if self.peek() == Some(b'-')
+                    && self.input.get(self.cursor + 1) == Some(&b'>')
+                {
                     self.advance();
                     self.advance();
                     TokenKind::NullSafeArrow
                 } else {
                     TokenKind::Question
                 }
-            },
+            }
             c if c.is_ascii_digit() => {
                 self.cursor -= 1;
                 self.read_number()
-            },
+            }
             c if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 => {
                 // Check for binary string prefix
-                if c == b'b' || c == b'B' {
-                    if let Some(next) = self.peek() {
+                if (c == b'b' || c == b'B')
+                    && let Some(next) = self.peek() {
                         if next == b'\'' {
                             self.advance(); // Eat '
                             return Some(Token {
@@ -1286,139 +1453,146 @@ impl<'src> Iterator for Lexer<'src> {
                             });
                         }
                     }
-                }
 
                 self.read_identifier();
                 let text = &self.input[start..self.cursor];
-                
+
                 if self.mode == LexerMode::LookingForProperty {
                     self.mode = LexerMode::Standard;
                     TokenKind::Identifier
                 } else {
                     match text.to_ascii_lowercase().as_slice() {
-                    b"or" => TokenKind::LogicalOr,
-                    b"and" => TokenKind::LogicalAnd,
-                    b"xor" => TokenKind::LogicalXor,
-                    b"bool" => TokenKind::TypeBool,
-                    b"int" => TokenKind::TypeInt,
-                    b"float" => TokenKind::TypeFloat,
-                    b"string" => TokenKind::TypeString,
-                    b"mixed" => TokenKind::TypeMixed,
-                    b"never" => TokenKind::TypeNever,
-                    b"null" => TokenKind::TypeNull,
-                    b"false" => TokenKind::TypeFalse,
-                    b"true" => TokenKind::TypeTrue,
+                        b"or" => TokenKind::LogicalOr,
+                        b"and" => TokenKind::LogicalAnd,
+                        b"xor" => TokenKind::LogicalXor,
+                        b"bool" => TokenKind::TypeBool,
+                        b"int" => TokenKind::TypeInt,
+                        b"float" => TokenKind::TypeFloat,
+                        b"string" => TokenKind::TypeString,
+                        b"mixed" => TokenKind::TypeMixed,
+                        b"never" => TokenKind::TypeNever,
+                        b"null" => TokenKind::TypeNull,
+                        b"false" => TokenKind::TypeFalse,
+                        b"true" => TokenKind::TypeTrue,
                         b"exit" => TokenKind::Exit,
-                    b"die" => TokenKind::Die,
-                    b"function" => TokenKind::Function,
-                    b"fn" => TokenKind::Fn,
-                    b"const" => TokenKind::Const,
-                    b"return" => TokenKind::Return,
-                    b"yield" => {
-                        // Detect "yield from" as a single token to match PHP scanner
-                        let mut look = self.cursor;
-                        while let Some(b) = self.input.get(look) {
-                            if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
-                                look += 1;
+                        b"die" => TokenKind::Die,
+                        b"function" => TokenKind::Function,
+                        b"fn" => TokenKind::Fn,
+                        b"const" => TokenKind::Const,
+                        b"return" => TokenKind::Return,
+                        b"yield" => {
+                            // Detect "yield from" as a single token to match PHP scanner
+                            let mut look = self.cursor;
+                            while let Some(b) = self.input.get(look) {
+                                if matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b'\x0b' | b'\x0c') {
+                                    look += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            let from_kw = b"from";
+                            let is_from = self
+                                .input
+                                .get(look..look + from_kw.len())
+                                .map(|s| {
+                                    s.iter()
+                                        .zip(from_kw.iter())
+                                        .all(|(c, k)| c.to_ascii_lowercase() == *k)
+                                })
+                                .unwrap_or(false)
+                                && !self
+                                    .input
+                                    .get(look + from_kw.len())
+                                    .map(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c >= 0x80)
+                                    .unwrap_or(false);
+
+                            if is_from {
+                                self.cursor = look + from_kw.len();
+                                TokenKind::YieldFrom
                             } else {
-                                break;
+                                TokenKind::Yield
                             }
                         }
-                        let from_kw = b"from";
-                        let is_from = self.input.get(look..look + from_kw.len())
-                            .map(|s| {
-                                s.iter().zip(from_kw.iter()).all(|(c, k)| c.to_ascii_lowercase() == *k)
-                            })
-                            .unwrap_or(false)
-                            && !self.input.get(look + from_kw.len()).map(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c >= 0x80).unwrap_or(false);
-
-                        if is_from {
-                            self.cursor = look + from_kw.len();
-                            TokenKind::YieldFrom
-                        } else {
-                            TokenKind::Yield
+                        b"try" => TokenKind::Try,
+                        b"catch" => TokenKind::Catch,
+                        b"finally" => TokenKind::Finally,
+                        b"throw" => TokenKind::Throw,
+                        b"if" => TokenKind::If,
+                        b"elseif" => TokenKind::ElseIf,
+                        b"endif" => TokenKind::EndIf,
+                        b"else" => TokenKind::Else,
+                        b"insteadof" => TokenKind::Insteadof,
+                        b"while" => TokenKind::While,
+                        b"endwhile" => TokenKind::EndWhile,
+                        b"do" => TokenKind::Do,
+                        b"for" => TokenKind::For,
+                        b"endfor" => TokenKind::EndFor,
+                        b"foreach" => TokenKind::Foreach,
+                        b"endforeach" => TokenKind::EndForeach,
+                        b"declare" => TokenKind::Declare,
+                        b"enddeclare" => TokenKind::EndDeclare,
+                        b"instanceof" => TokenKind::InstanceOf,
+                        b"as" => TokenKind::As,
+                        b"switch" => TokenKind::Switch,
+                        b"endswitch" => TokenKind::EndSwitch,
+                        b"case" => TokenKind::Case,
+                        b"default" => TokenKind::Default,
+                        b"break" => TokenKind::Break,
+                        b"continue" => TokenKind::Continue,
+                        b"goto" => TokenKind::Goto,
+                        b"echo" => TokenKind::Echo,
+                        b"print" => TokenKind::Print,
+                        b"enum" => TokenKind::Enum,
+                        b"class" => TokenKind::Class,
+                        b"interface" => TokenKind::Interface,
+                        b"trait" => TokenKind::Trait,
+                        b"extends" => TokenKind::Extends,
+                        b"implements" => TokenKind::Implements,
+                        b"new" => TokenKind::New,
+                        b"clone" => TokenKind::Clone,
+                        b"var" => TokenKind::Public,
+                        b"public" => self.check_set_visibility(TokenKind::Public, TokenKind::PublicSet),
+                        b"protected" => self.check_set_visibility(TokenKind::Protected, TokenKind::ProtectedSet),
+                        b"private" => self.check_set_visibility(TokenKind::Private, TokenKind::PrivateSet),
+                        b"final" => TokenKind::Final,
+                        b"abstract" => TokenKind::Abstract,
+                        b"static" => TokenKind::Static,
+                        b"readonly" => TokenKind::Readonly,
+                        b"namespace" => TokenKind::Namespace,
+                        b"use" => TokenKind::Use,
+                        b"global" => TokenKind::Global,
+                        b"isset" => TokenKind::Isset,
+                        b"empty" => TokenKind::Empty,
+                        b"__halt_compiler" => {
+                            self.state_stack.pop();
+                            self.state_stack.push(LexerState::HaltCompiler);
+                            TokenKind::HaltCompiler
                         }
+                        b"__class__" => TokenKind::ClassC,
+                        b"__trait__" => TokenKind::TraitC,
+                        b"__function__" => TokenKind::FuncC,
+                        b"__method__" => TokenKind::MethodC,
+                        b"__line__" => TokenKind::Line,
+                        b"__file__" => TokenKind::File,
+                        b"__dir__" => TokenKind::Dir,
+                        b"__namespace__" => TokenKind::NsC,
+                        b"array" => TokenKind::Array,
+                        b"callable" => TokenKind::TypeCallable,
+                        b"iterable" => TokenKind::TypeIterable,
+                        b"void" => TokenKind::TypeVoid,
+                        b"object" => TokenKind::TypeObject,
+                        b"match" => TokenKind::Match,
+                        b"list" => TokenKind::List,
+                        b"include" => TokenKind::Include,
+                        b"include_once" => TokenKind::IncludeOnce,
+                        b"require" => TokenKind::Require,
+                        b"require_once" => TokenKind::RequireOnce,
+                        b"eval" => TokenKind::Eval,
+                        b"unset" => TokenKind::Unset,
+                        _ => TokenKind::Identifier,
                     }
-                    b"try" => TokenKind::Try,
-                    b"catch" => TokenKind::Catch,
-                    b"finally" => TokenKind::Finally,
-                    b"throw" => TokenKind::Throw,
-                    b"if" => TokenKind::If,
-                    b"elseif" => TokenKind::ElseIf,
-                    b"endif" => TokenKind::EndIf,
-                    b"else" => TokenKind::Else,
-                    b"insteadof" => TokenKind::Insteadof,
-                    b"while" => TokenKind::While,
-                    b"endwhile" => TokenKind::EndWhile,
-                    b"do" => TokenKind::Do,
-                    b"for" => TokenKind::For,
-                    b"endfor" => TokenKind::EndFor,
-                    b"foreach" => TokenKind::Foreach,
-                    b"endforeach" => TokenKind::EndForeach,
-                    b"declare" => TokenKind::Declare,
-                    b"enddeclare" => TokenKind::EndDeclare,
-                    b"instanceof" => TokenKind::InstanceOf,
-                    b"as" => TokenKind::As,
-                    b"switch" => TokenKind::Switch,
-                    b"endswitch" => TokenKind::EndSwitch,
-                    b"case" => TokenKind::Case,
-                    b"default" => TokenKind::Default,
-                    b"break" => TokenKind::Break,
-                    b"continue" => TokenKind::Continue,
-                    b"goto" => TokenKind::Goto,
-                    b"echo" => TokenKind::Echo,
-                    b"print" => TokenKind::Print,
-                    b"enum" => TokenKind::Enum,
-                    b"class" => TokenKind::Class,
-                    b"interface" => TokenKind::Interface,
-                    b"trait" => TokenKind::Trait,
-                    b"extends" => TokenKind::Extends,
-                    b"implements" => TokenKind::Implements,
-                    b"new" => TokenKind::New,
-                    b"clone" => TokenKind::Clone,
-                    b"var" => TokenKind::Public,
-                    b"public" => TokenKind::Public,
-                    b"protected" => TokenKind::Protected,
-                    b"private" => TokenKind::Private,
-                    b"final" => TokenKind::Final,
-                    b"abstract" => TokenKind::Abstract,
-                    b"static" => TokenKind::Static,
-                    b"readonly" => TokenKind::Readonly,
-                    b"namespace" => TokenKind::Namespace,
-                    b"use" => TokenKind::Use,
-                    b"global" => TokenKind::Global,
-                    b"isset" => TokenKind::Isset,
-                    b"empty" => TokenKind::Empty,
-                    b"__halt_compiler" => {
-                        self.state_stack.pop();
-                        self.state_stack.push(LexerState::HaltCompiler);
-                        TokenKind::HaltCompiler
-                    },
-                    b"__class__" => TokenKind::ClassC,
-                    b"__trait__" => TokenKind::TraitC,
-                    b"__function__" => TokenKind::FuncC,
-                    b"__method__" => TokenKind::MethodC,
-                    b"__line__" => TokenKind::Line,
-                    b"__file__" => TokenKind::File,
-                    b"__dir__" => TokenKind::Dir,
-                    b"__namespace__" => TokenKind::NsC,
-                    b"array" => TokenKind::Array,
-                    b"callable" => TokenKind::TypeCallable,
-                    b"iterable" => TokenKind::TypeIterable,
-                    b"void" => TokenKind::TypeVoid,
-                    b"object" => TokenKind::TypeObject,
-                    b"match" => TokenKind::Match,
-                    b"list" => TokenKind::List,
-                    b"include" => TokenKind::Include,
-                    b"include_once" => TokenKind::IncludeOnce,
-                    b"require" => TokenKind::Require,
-                    b"require_once" => TokenKind::RequireOnce,
-                    b"eval" => TokenKind::Eval,
-                    b"unset" => TokenKind::Unset,
-                    _ => TokenKind::Identifier,
                 }
-                }
-            },
+            }
             _ => TokenKind::Error,
         };
 

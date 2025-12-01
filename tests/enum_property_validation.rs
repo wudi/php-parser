@@ -9,7 +9,10 @@ fn enum_properties_are_errors() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(!program.errors.is_empty(), "expected enum property to be rejected");
+    assert!(
+        !program.errors.is_empty(),
+        "expected enum property to be rejected"
+    );
 }
 
 #[test]
@@ -19,5 +22,8 @@ fn enum_constructor_promotion_allowed() {
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
 
-    assert!(program.errors.is_empty(), "constructor promotion should be permitted in enums");
+    assert!(
+        program.errors.is_empty(),
+        "constructor promotion should be permitted in enums"
+    );
 }

@@ -1,7 +1,7 @@
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
 use bumpalo::Bump;
 use insta::assert_debug_snapshot;
+use php_parser_rs::lexer::Lexer;
+use php_parser_rs::parser::Parser;
 
 #[test]
 fn test_declare() {
