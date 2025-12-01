@@ -14,7 +14,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
         self.bump(); // consume (
 
-        let mut args = std::vec::Vec::new();
+        let mut args = bumpalo::collections::Vec::new_in(self.arena);
         while self.current_token.kind != TokenKind::CloseParen
             && self.current_token.kind != TokenKind::Eof
         {
@@ -73,7 +73,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         if self.current_token.kind == TokenKind::CloseParen {
             self.bump();
         }
-        (self.arena.alloc_slice_copy(&args), Span::new(start, end))
+        (args.into_bump_slice(), Span::new(start, end))
     }
 
     pub(super) fn parse_closure_expr(
@@ -1222,7 +1222,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 if self.current_token.kind == TokenKind::OpenParen {
                     self.bump();
                 }
-                let mut items = std::vec::Vec::new();
+                let mut items = bumpalo::collections::Vec::new_in(self.arena);
                 while self.current_token.kind != TokenKind::CloseParen
                     && self.current_token.kind != TokenKind::Eof
                 {
@@ -1236,7 +1236,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Array {
-                    items: self.arena.alloc_slice_copy(&items),
+                    items: items.into_bump_slice(),
                     span: Span::new(start, end),
                 })
             }
@@ -1246,7 +1246,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 if self.current_token.kind == TokenKind::OpenParen {
                     self.bump();
                 }
-                let mut items = std::vec::Vec::new();
+                let mut items = bumpalo::collections::Vec::new_in(self.arena);
                 while self.current_token.kind != TokenKind::CloseParen
                     && self.current_token.kind != TokenKind::Eof
                 {
@@ -1278,7 +1278,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Array {
-                    items: self.arena.alloc_slice_copy(&items),
+                    items: items.into_bump_slice(),
                     span: Span::new(start, end),
                 })
             }
@@ -1286,7 +1286,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 // Short array syntax [1, 2, 3]
                 let start = token.span.start;
                 self.bump();
-                let mut items = std::vec::Vec::new();
+                let mut items = bumpalo::collections::Vec::new_in(self.arena);
                 while self.current_token.kind != TokenKind::CloseBracket
                     && self.current_token.kind != TokenKind::Eof
                 {
@@ -1300,7 +1300,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 let end = self.current_token.span.end;
                 self.arena.alloc(Expr::Array {
-                    items: self.arena.alloc_slice_copy(&items),
+                    items: items.into_bump_slice(),
                     span: Span::new(start, end),
                 })
             }
@@ -1413,7 +1413,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat opening token
 
-        let mut parts: std::vec::Vec<&'ast Expr<'ast>> = std::vec::Vec::new();
+        let mut parts: bumpalo::collections::Vec<&'ast Expr<'ast>> = bumpalo::collections::Vec::new_in(self.arena);
 
         while self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
             match self.current_token.kind {
@@ -1556,15 +1556,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
 
         let span = Span::new(start, end);
+        let parts = parts.into_bump_slice();
 
         if end_token == TokenKind::Backtick {
             self.arena.alloc(Expr::ShellExec {
-                parts: self.arena.alloc_slice_copy(&parts),
+                parts,
                 span,
             })
         } else {
             self.arena.alloc(Expr::InterpolatedString {
-                parts: self.arena.alloc_slice_copy(&parts),
+                parts,
                 span,
             })
         }
