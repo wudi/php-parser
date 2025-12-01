@@ -2,6 +2,7 @@
 
 ## Project Structure & Module Organization
 - Core parser pieces live in `src/lexer/`, `src/parser/`, `src/ast/`, and `src/span.rs`, wired together from `src/lib.rs`. The demo entry point is `src/main.rs`, and the corpus runner is `src/bin/corpus_test.rs`.
+- AST traversal helpers live in `src/ast/visitor.rs`; prefer implementing visitors by overriding the hooks you need and delegating to the `walk_*` helpers to keep traversal consistent.
 - Tests are integration-based under `tests/` with insta snapshots in `tests/snapshots/`. Consult `ARCHITECTURE.md` before touching arenas, spans, or lifetime plumbing.
 - Keep PHP parity in mind: do not invent new syntax or AST kinds. Mirror upstream PHP tokens/AST from `zend_language_scanner.y` and `zend_ast.h`.
 
@@ -21,6 +22,7 @@
 
 ## Testing Guidelines
 - Add focused fixtures per PHP feature (e.g., `enum_case_validation.rs`, `declare_alt.rs`) and include both success and recovery cases.
+- For visitor/lint flows, add targeted tests in `tests/` (e.g., `visitor_lint.rs`) that exercise the traversal with realistic constructs.
 - When output shifts, run `cargo insta accept` and commit updated files in `tests/snapshots/`.
 - For semantic checks (declare literals, break/continue levels, inheritance rules), prefer targeted rust tests over broad corpus expectations.
 - Compare tricky behaviors against `php -l` or `php -r` to confirm alignment before encoding parser rules.
