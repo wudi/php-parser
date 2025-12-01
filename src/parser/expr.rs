@@ -82,15 +82,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         is_static: bool,
         start: usize,
     ) -> ExprId<'ast> {
-        let _returns_by_ref = if matches!(
-            self.current_token.kind,
-            TokenKind::Ampersand | TokenKind::AmpersandNotFollowedByVarOrVararg
-        ) {
-            self.bump();
-            true
-        } else {
-            false
-        };
+     
 
         // Anonymous functions should not have a name, but allow an identifier for recovery
         if self.current_token.kind == TokenKind::Identifier {
@@ -193,12 +185,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         is_static: bool,
         start: usize,
     ) -> ExprId<'ast> {
-        let _returns_by_ref = if self.current_token.kind == TokenKind::Ampersand {
-            self.bump();
-            true
-        } else {
-            false
-        };
 
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
