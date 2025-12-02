@@ -2,6 +2,9 @@
 name = "php-parser"
 version = "0.1.0"
 edition = "2024"
+authors = ["Di Wu <hi@wudi.io>"]
+description = "A fast PHP parser written in Rust"
+license = "MIT"
 
 [dependencies]
 bumpalo = { version = "3.19.0", features = ["collections"] }
