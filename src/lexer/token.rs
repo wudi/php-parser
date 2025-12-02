@@ -132,6 +132,7 @@ pub enum TokenKind {
     ObjectCast,
     BoolCast,
     UnsetCast,
+    VoidCast,
 
     // Identifiers & Literals
     Identifier,

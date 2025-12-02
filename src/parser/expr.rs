@@ -282,8 +282,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn is_reassociable_assignment_target(&self, expr: ExprId<'ast>) -> bool {
         match expr {
-            Expr::Unary { expr: inner, .. }
-            | Expr::Cast { expr: inner, .. } => {
+            Expr::Unary { expr: inner, .. } | Expr::Cast { expr: inner, .. } => {
                 self.is_assignable(inner) || self.is_reassociable_assignment_target(inner)
             }
             Expr::Binary { right, .. } => {
@@ -299,7 +298,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
     }
 
-    fn create_assignment(&self, var: ExprId<'ast>, right: ExprId<'ast>, op: Option<AssignOp>) -> ExprId<'ast> {
+    fn create_assignment(
+        &self,
+        var: ExprId<'ast>,
+        right: ExprId<'ast>,
+        op: Option<AssignOp>,
+    ) -> ExprId<'ast> {
         let span = Span::new(var.span().start, right.span().end);
         if let Some(assign_op) = op {
             self.arena.alloc(Expr::AssignOp {
@@ -317,9 +321,18 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
     }
 
-    fn reassociate_assignment(&self, left: ExprId<'ast>, right: ExprId<'ast>, op: Option<AssignOp>) -> ExprId<'ast> {
+    fn reassociate_assignment(
+        &self,
+        left: ExprId<'ast>,
+        right: ExprId<'ast>,
+        op: Option<AssignOp>,
+    ) -> ExprId<'ast> {
         match left {
-            Expr::Unary { op: unary_op, expr: inner, span } => {
+            Expr::Unary {
+                op: unary_op,
+                expr: inner,
+                span,
+            } => {
                 let new_inner = if self.is_assignable(inner) {
                     self.create_assignment(inner, right, op)
                 } else {
@@ -332,7 +345,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: new_span,
                 })
             }
-            Expr::Cast { kind, expr: inner, span } => {
+            Expr::Cast {
+                kind,
+                expr: inner,
+                span,
+            } => {
                 let new_inner = if self.is_assignable(inner) {
                     self.create_assignment(inner, right, op)
                 } else {
@@ -345,7 +362,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: new_span,
                 })
             }
-            Expr::Binary { left: b_left, op: b_op, right: b_right, span } => {
+            Expr::Binary {
+                left: b_left,
+                op: b_op,
+                right: b_right,
+                span,
+            } => {
                 let new_right = if self.is_assignable(b_right) {
                     self.create_assignment(b_right, right, op)
                 } else {
@@ -359,7 +381,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: new_span,
                 })
             }
-            Expr::Ternary { condition, if_true, if_false, span } => {
+            Expr::Ternary {
+                condition,
+                if_true,
+                if_false,
+                span,
+            } => {
                 let new_if_false = if self.is_assignable(if_false) {
                     self.create_assignment(if_false, right, op)
                 } else {
@@ -385,7 +412,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     span: new_span,
                 })
             }
-            _ => unreachable!("Should only be called if is_reassociable_assignment_target returned true"),
+            _ => unreachable!(
+                "Should only be called if is_reassociable_assignment_target returned true"
+            ),
         }
     }
 
@@ -1459,7 +1488,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             | TokenKind::StringCast
             | TokenKind::ArrayCast
             | TokenKind::ObjectCast
-            | TokenKind::UnsetCast => {
+            | TokenKind::UnsetCast
+            | TokenKind::VoidCast => {
                 let kind = match token.kind {
                     TokenKind::IntCast => CastKind::Int,
                     TokenKind::BoolCast => CastKind::Bool,
@@ -1468,6 +1498,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     TokenKind::ArrayCast => CastKind::Array,
                     TokenKind::ObjectCast => CastKind::Object,
                     TokenKind::UnsetCast => CastKind::Unset,
+                    TokenKind::VoidCast => CastKind::Void,
                     _ => unreachable!(),
                 };
                 self.bump();

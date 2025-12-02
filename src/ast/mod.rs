@@ -479,6 +479,7 @@ pub enum CastKind {
     Array,
     Object,
     Unset,
+    Void,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

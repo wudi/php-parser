@@ -1343,6 +1343,7 @@ impl<'src> Iterator for Lexer<'src> {
                             b"array" => Some(TokenKind::ArrayCast),
                             b"object" => Some(TokenKind::ObjectCast),
                             b"unset" => Some(TokenKind::UnsetCast),
+                            b"void" => Some(TokenKind::VoidCast),
                             _ => None,
                         };
 
