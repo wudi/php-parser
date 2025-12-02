@@ -112,6 +112,7 @@ pub enum Stmt<'ast> {
     Function {
         attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
+        by_ref: bool,
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
@@ -380,6 +381,7 @@ pub enum Expr<'ast> {
     },
     AnonymousClass {
         attributes: &'ast [AttributeGroup<'ast>],
+        modifiers: &'ast [Token],
         args: &'ast [Arg<'ast>],
         extends: Option<Name<'ast>>,
         implements: &'ast [Name<'ast>],

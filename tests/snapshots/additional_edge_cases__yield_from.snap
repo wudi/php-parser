@@ -1,6 +1,5 @@
 ---
 source: tests/additional_edge_cases.rs
-assertion_line: 214
 expression: program
 ---
 Program {
@@ -20,6 +19,7 @@ Program {
                     end: 18,
                 },
             },
+            by_ref: false,
             params: [],
             return_type: None,
             body: [

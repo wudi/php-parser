@@ -1225,18 +1225,36 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     &[]
                 };
 
+                // Parse optional modifiers for anonymous class
+                let mut modifiers = std::vec::Vec::new();
+                while matches!(
+                    self.current_token.kind,
+                    TokenKind::Abstract | TokenKind::Final | TokenKind::Readonly
+                ) {
+                    modifiers.push(self.current_token);
+                    self.bump();
+                }
+
                 if self.current_token.kind == TokenKind::Class {
-                    let (class, args) = self.parse_anonymous_class(attributes);
+                    let (class, args) = self
+                        .parse_anonymous_class(attributes, self.arena.alloc_slice_copy(&modifiers));
                     let span = Span::new(token.span.start, class.span().end);
                     self.arena.alloc(Expr::New { class, args, span })
                 } else {
-                    if !attributes.is_empty() {
+                    if !attributes.is_empty() || !modifiers.is_empty() {
+                        let start = if let Some(attr) = attributes.first() {
+                            attr.span.start
+                        } else {
+                            modifiers.first().unwrap().span.start
+                        };
+                        let end = if let Some(attr) = attributes.last() {
+                            attr.span.end
+                        } else {
+                            modifiers.last().unwrap().span.end
+                        };
                         self.errors.push(ParseError {
-                            span: Span::new(
-                                attributes.first().unwrap().span.start,
-                                attributes.last().unwrap().span.end,
-                            ),
-                            message: "Attributes are only allowed on anonymous classes in new expression",
+                            span: Span::new(start, end),
+                            message: "Attributes and modifiers are only allowed on anonymous classes in new expression",
                         });
                     }
 

@@ -19,6 +19,7 @@ Program {
                     end: 23,
                 },
             },
+            by_ref: false,
             params: [
                 Param {
                     attributes: [],

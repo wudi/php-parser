@@ -27,7 +27,8 @@ fn test_property_hooks() {
 
     let statements: Vec<&Stmt> = program
         .statements
-        .iter().copied()
+        .iter()
+        .copied()
         .filter(|s| !matches!(s, Stmt::Nop { .. }))
         .collect();
 

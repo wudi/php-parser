@@ -1,6 +1,5 @@
 ---
 source: tests/array_destructuring_tests.rs
-assertion_line: 225
 expression: program
 ---
 Program {
@@ -20,6 +19,7 @@ Program {
                     end: 18,
                 },
             },
+            by_ref: false,
             params: [
                 Param {
                     attributes: [],

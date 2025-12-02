@@ -1,6 +1,5 @@
 ---
 source: tests/declare_enddeclare_tests.rs
-assertion_line: 19
 expression: program
 ---
 Program {
@@ -46,6 +45,7 @@ Program {
                             end: 47,
                         },
                     },
+                    by_ref: false,
                     params: [
                         Param {
                             attributes: [],

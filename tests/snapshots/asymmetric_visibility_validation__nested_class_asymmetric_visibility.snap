@@ -1,6 +1,5 @@
 ---
 source: tests/asymmetric_visibility_validation.rs
-assertion_line: 184
 expression: program
 ---
 Program {
@@ -100,6 +99,7 @@ Program {
                                 New {
                                     class: AnonymousClass {
                                         attributes: [],
+                                        modifiers: [],
                                         args: [],
                                         extends: None,
                                         implements: [],

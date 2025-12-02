@@ -406,6 +406,7 @@ Program {
                     end: 295,
                 },
             },
+            by_ref: false,
             params: [],
             return_type: None,
             body: [],

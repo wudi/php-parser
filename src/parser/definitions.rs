@@ -159,9 +159,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_anonymous_class(
         &mut self,
         attributes: &'ast [AttributeGroup<'ast>],
+        modifiers: &'ast [Token],
     ) -> (ExprId<'ast>, &'ast [Arg<'ast>]) {
         let start = if let Some(attr) = attributes.first() {
             attr.span.start
+        } else if let Some(m) = modifiers.first() {
+            m.span.start
         } else {
             self.current_token.span.start
         };
@@ -215,6 +218,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             return (
                 self.arena.alloc(Expr::AnonymousClass {
                     attributes,
+                    modifiers,
                     args: ctor_args,
                     extends,
                     implements: self.arena.alloc_slice_copy(&implements),
@@ -250,6 +254,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         (
             self.arena.alloc(Expr::AnonymousClass {
                 attributes,
+                modifiers,
                 args: ctor_args,
                 extends,
                 implements: self.arena.alloc_slice_copy(&implements),
@@ -1590,8 +1595,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
         self.bump(); // Eat function
 
-        // Name
-        let name = if self.current_token.kind == TokenKind::Identifier {
+        // By-reference return (returns_ref)
+        let by_ref = if matches!(
+            self.current_token.kind,
+            TokenKind::Ampersand
+                | TokenKind::AmpersandFollowedByVarOrVararg
+                | TokenKind::AmpersandNotFollowedByVarOrVararg
+        ) {
+            self.bump();
+            true
+        } else {
+            false
+        };
+
+        // Name (function_name: T_STRING | T_READONLY)
+        let name = if self.current_token.kind == TokenKind::Identifier
+            || self.current_token.kind == TokenKind::Readonly
+        {
             let token = self.arena.alloc(self.current_token);
             self.bump();
             token
@@ -1626,6 +1646,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Stmt::Function {
             attributes,
             name,
+            by_ref,
             params,
             return_type,
             body,

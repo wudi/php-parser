@@ -1,6 +1,5 @@
 ---
 source: tests/anonymous_class_attributes_tests.rs
-assertion_line: 47
 expression: program
 ---
 Program {
@@ -79,6 +78,7 @@ Program {
                                 },
                             },
                         ],
+                        modifiers: [],
                         args: [],
                         extends: None,
                         implements: [],

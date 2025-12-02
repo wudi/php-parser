@@ -28,6 +28,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                 if self.current_token.kind == TokenKind::Comma {
                     self.bump();
+                    // Support trailing comma (possible_comma in grammar)
+                    if self.current_token.kind == TokenKind::CloseBracket {
+                        break;
+                    }
                 } else {
                     break;
                 }

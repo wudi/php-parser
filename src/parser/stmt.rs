@@ -92,11 +92,22 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 let start = self.current_token.span.start;
                 self.bump();
+                // Parentheses are required by grammar: T_HALT_COMPILER '(' ')' ';'
                 if self.current_token.kind == TokenKind::OpenParen {
                     self.bump();
+                } else {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "Expected '(' after __halt_compiler",
+                    });
                 }
                 if self.current_token.kind == TokenKind::CloseParen {
                     self.bump();
+                } else {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "Expected ')' after __halt_compiler(",
+                    });
                 }
                 self.expect_semicolon();
 
@@ -335,25 +346,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.errors.push(crate::ast::ParseError {
                     span: self.current_token.span,
                     message: "Missing '}'",
-                });
-            }
-            Some(statements.into_bump_slice() as &'ast [StmtId<'ast>])
-        } else if self.current_token.kind == TokenKind::Colon {
-            self.bump();
-            let mut statements = bumpalo::collections::Vec::new_in(self.arena);
-            while !matches!(
-                self.current_token.kind,
-                TokenKind::EndDeclare | TokenKind::Eof
-            ) {
-                statements.push(self.parse_stmt());
-            }
-            if self.current_token.kind == TokenKind::EndDeclare {
-                self.bump();
-                self.expect_semicolon();
-            } else {
-                self.errors.push(crate::ast::ParseError {
-                    span: self.current_token.span,
-                    message: "Missing enddeclare",
                 });
             }
             Some(statements.into_bump_slice() as &'ast [StmtId<'ast>])

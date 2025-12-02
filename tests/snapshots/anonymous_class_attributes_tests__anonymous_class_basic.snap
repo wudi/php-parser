@@ -1,6 +1,5 @@
 ---
 source: tests/anonymous_class_attributes_tests.rs
-assertion_line: 17
 expression: program
 ---
 Program {
@@ -26,6 +25,7 @@ Program {
                 expr: New {
                     class: AnonymousClass {
                         attributes: [],
+                        modifiers: [],
                         args: [],
                         extends: None,
                         implements: [],

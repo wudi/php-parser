@@ -322,6 +322,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             false
         };
 
+        // Optional leading semicolon: '{' ';' case_list or ':' ';' case_list
+        if self.current_token.kind == TokenKind::SemiColon {
+            self.bump();
+        }
+
         let mut cases = bumpalo::collections::Vec::new_in(self.arena);
         let end_token = if is_alt {
             TokenKind::EndSwitch

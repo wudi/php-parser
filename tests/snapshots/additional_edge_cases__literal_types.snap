@@ -1,6 +1,5 @@
 ---
 source: tests/additional_edge_cases.rs
-assertion_line: 151
 expression: program
 ---
 Program {
@@ -20,6 +19,7 @@ Program {
                     end: 25,
                 },
             },
+            by_ref: false,
             params: [],
             return_type: Some(
                 Simple(
@@ -63,6 +63,7 @@ Program {
                     end: 76,
                 },
             },
+            by_ref: false,
             params: [],
             return_type: Some(
                 Simple(
@@ -106,6 +107,7 @@ Program {
                     end: 128,
                 },
             },
+            by_ref: false,
             params: [],
             return_type: Some(
                 Simple(
