@@ -176,6 +176,18 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             self.bump();
         }
 
+        let by_ref = if matches!(
+            self.current_token.kind,
+            TokenKind::Ampersand
+                | TokenKind::AmpersandFollowedByVarOrVararg
+                | TokenKind::AmpersandNotFollowedByVarOrVararg
+        ) {
+            self.bump();
+            true
+        } else {
+            false
+        };
+
         let params = self.parse_parameter_list();
         let uses = self.parse_use_list();
         let return_type = self.parse_return_type();
@@ -190,6 +202,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::Closure {
             attributes,
             is_static,
+            by_ref,
             params,
             uses,
             return_type,
@@ -204,6 +217,18 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         is_static: bool,
         start: usize,
     ) -> ExprId<'ast> {
+        let by_ref = if matches!(
+            self.current_token.kind,
+            TokenKind::Ampersand
+                | TokenKind::AmpersandFollowedByVarOrVararg
+                | TokenKind::AmpersandNotFollowedByVarOrVararg
+        ) {
+            self.bump();
+            true
+        } else {
+            false
+        };
+
         let params = self.parse_parameter_list();
         let return_type = self.parse_return_type();
         if self.current_token.kind == TokenKind::DoubleArrow {
@@ -215,6 +240,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Expr::ArrowFunction {
             attributes,
             is_static,
+            by_ref,
             params,
             return_type,
             expr,
@@ -399,36 +425,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     });
                     continue;
                 }
-                TokenKind::OpenBrace => {
-                    let l_bp = 210;
-                    if l_bp < min_bp {
-                        break;
-                    }
 
-                    self.errors.push(ParseError {
-                        span: self.current_token.span,
-                        message: "syntax error, unexpected '{'",
-                    });
-
-                    self.bump(); // {
-
-                    if self.current_token.kind != TokenKind::CloseBrace {
-                        self.parse_expr(0);
-                    }
-
-                    if self.current_token.kind == TokenKind::CloseBrace {
-                        self.bump(); // }
-                    } else {
-                        self.errors.push(ParseError {
-                            span: self.current_token.span,
-                            message: "Expected '}'",
-                        });
-                    }
-
-                    let span = Span::new(left.span().start, self.current_token.span.end);
-                    left = self.arena.alloc(Expr::Error { span });
-                    continue;
-                }
                 TokenKind::NullSafeArrow => {
                     let l_bp = 210;
                     if l_bp < min_bp {
@@ -761,6 +758,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 vars.push(self.parse_expr(0));
                 while self.current_token.kind == TokenKind::Comma {
                     self.bump();
+                    if self.current_token.kind == TokenKind::CloseParen {
+                        break;
+                    }
                     vars.push(self.parse_expr(0));
                 }
                 if self.current_token.kind == TokenKind::CloseParen {

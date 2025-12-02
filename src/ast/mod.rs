@@ -424,6 +424,7 @@ pub enum Expr<'ast> {
     Closure {
         attributes: &'ast [AttributeGroup<'ast>],
         is_static: bool,
+        by_ref: bool,
         params: &'ast [Param<'ast>],
         uses: &'ast [ClosureUse<'ast>],
         return_type: Option<&'ast Type<'ast>>,
@@ -433,6 +434,7 @@ pub enum Expr<'ast> {
     ArrowFunction {
         attributes: &'ast [AttributeGroup<'ast>],
         is_static: bool,
+        by_ref: bool,
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
         expr: ExprId<'ast>,

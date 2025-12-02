@@ -25,6 +25,7 @@ Program {
                 expr: Closure {
                     attributes: [],
                     is_static: true,
+                    by_ref: false,
                     params: [],
                     uses: [],
                     return_type: None,
@@ -59,6 +60,7 @@ Program {
                 expr: ArrowFunction {
                     attributes: [],
                     is_static: true,
+                    by_ref: false,
                     params: [],
                     return_type: None,
                     expr: Integer {

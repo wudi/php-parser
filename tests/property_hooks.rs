@@ -33,3 +33,13 @@ fn parses_property_hooks_get_set() {
     matches!(hooks[0].body, PropertyHookBody::Expr(_));
     matches!(hooks[1].body, PropertyHookBody::Statements(_));
 }
+
+#[test]
+fn parses_property_hooks_with_default() {
+    let code = "<?php class C { public int $x = 1 { get { return $this->x; } } }";
+    let arena = Bump::new();
+    let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
+    let program = parser.parse_program();
+    assert!(program.errors.is_empty());
+}
+

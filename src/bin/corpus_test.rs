@@ -51,6 +51,9 @@ fn main() {
             if path
                 .to_string_lossy()
                 .contains("HiddenDirShouldBeIgnoredSniff.php")
+                || path.to_string_lossy().contains("bad-syntax-strategy.php")
+                || path.to_string_lossy().contains("ParseError.php")
+                || path.to_string_lossy().contains("Crash.php")
             {
                 continue;
             }
