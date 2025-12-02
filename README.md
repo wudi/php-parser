@@ -55,7 +55,7 @@ fn main() {
 
 test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
 
-```
+```bash
 ➜  php-parser-rs git:(master) ✗ ./target/release/bench_file run-tests.php
 Benchmarking: run-tests.php
 File size: 139.63 KB
