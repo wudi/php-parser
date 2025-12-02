@@ -73,10 +73,11 @@ fn parses_named_and_unpack_args() {
 
 #[test]
 fn arrow_function_supports_by_ref_and_attributes() {
-    let code = "<?php #[A] $f = fn & (int $a): int => $a;";
+    let code = "<?php $f = #[A] fn & (int $a): int => $a;";
     let arena = Bump::new();
     let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
     let program = parser.parse_program();
+    println!("{:#?}", program);
     assert!(
         program.errors.is_empty(),
         "Expected arrow function with attributes and by-ref to parse"
