@@ -42,4 +42,3 @@ fn parses_property_hooks_with_default() {
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 }
-
