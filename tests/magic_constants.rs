@@ -25,26 +25,30 @@ fn test_magic_constants() {
 
     // Helper to check assignment
     let check_assign = |stmt: &Stmt, expected_kind: MagicConstKind| {
-        if let Stmt::Expression { expr, .. } = stmt {
-            if let Expr::Assign { expr, .. } = expr {
-                if let Expr::MagicConst { kind, .. } = expr {
-                    assert_eq!(kind, &expected_kind);
-                    return;
-                }
-            }
+        if let Stmt::Expression {
+            expr:
+                Expr::Assign {
+                    expr: Expr::MagicConst { kind, .. },
+                    ..
+                },
+            ..
+        } = stmt
+        {
+            assert_eq!(kind, &expected_kind);
+            return;
         }
         panic!("Expected assignment to magic const, got {:?}", stmt);
     };
 
     // Skip Nop
-    check_assign(&statements[1], MagicConstKind::Dir);
-    check_assign(&statements[2], MagicConstKind::File);
-    check_assign(&statements[3], MagicConstKind::Line);
-    check_assign(&statements[4], MagicConstKind::Function);
-    check_assign(&statements[5], MagicConstKind::Class);
-    check_assign(&statements[6], MagicConstKind::Trait);
-    check_assign(&statements[7], MagicConstKind::Method);
-    check_assign(&statements[8], MagicConstKind::Namespace);
+    check_assign(statements[1], MagicConstKind::Dir);
+    check_assign(statements[2], MagicConstKind::File);
+    check_assign(statements[3], MagicConstKind::Line);
+    check_assign(statements[4], MagicConstKind::Function);
+    check_assign(statements[5], MagicConstKind::Class);
+    check_assign(statements[6], MagicConstKind::Trait);
+    check_assign(statements[7], MagicConstKind::Method);
+    check_assign(statements[8], MagicConstKind::Namespace);
 }
 
 #[test]

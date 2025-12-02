@@ -731,7 +731,7 @@ pub fn walk_property_hook_body<'ast, V: Visitor<'ast> + ?Sized>(
     match body {
         PropertyHookBody::None => {}
         PropertyHookBody::Statements(statements) => walk_statements(visitor, statements),
-        PropertyHookBody::Expr(expr) => visitor.visit_expr(*expr),
+        PropertyHookBody::Expr(expr) => visitor.visit_expr(expr),
     }
 }
 

@@ -1293,7 +1293,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 attributes,
                 modifiers: self.arena.alloc_slice_copy(&modifiers),
                 name,
-                params: self.arena.alloc_slice_copy(&params),
+                params,
                 by_ref,
                 body,
                 span: Span::new(start, end),

@@ -1651,7 +1651,7 @@ impl<'src> Iterator for Lexer<'src> {
                             }
                         }
                         TokenKind::Public => {
-                            if text[0].to_ascii_lowercase() == b'p' {
+                            if text[0].eq_ignore_ascii_case(&b'p') {
                                 kind = self
                                     .check_set_visibility(TokenKind::Public, TokenKind::PublicSet);
                             }
