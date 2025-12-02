@@ -76,7 +76,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         (args.into_bump_slice(), Span::new(start, end))
     }
 
-    fn parse_closure_parameter_list(&mut self) -> &'ast [Param<'ast>] {
+    pub(crate) fn parse_parameter_list(&mut self) -> &'ast [Param<'ast>] {
         if self.current_token.kind == TokenKind::OpenParen {
             self.bump();
         }
@@ -95,27 +95,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         params.into_bump_slice()
     }
 
-    pub(super) fn parse_closure_expr(
-        &mut self,
-        attributes: &'ast [AttributeGroup<'ast>],
-        is_static: bool,
-        start: usize,
-    ) -> ExprId<'ast> {
-     
-
-        // Anonymous functions should not have a name, but allow an identifier for recovery
-        if self.current_token.kind == TokenKind::Identifier {
-            self.bump();
-        }
-
-        let params = self.parse_closure_parameter_list();
-
-        let mut uses = bumpalo::collections::Vec::new_in(self.arena);
+    pub(crate) fn parse_use_list(&mut self) -> &'ast [ClosureUse<'ast>] {
         if self.current_token.kind == TokenKind::Use {
             self.bump();
             if self.current_token.kind == TokenKind::OpenParen {
                 self.bump();
             }
+
+            let mut uses = bumpalo::collections::Vec::new_in(self.arena);
             while self.current_token.kind != TokenKind::CloseParen
                 && self.current_token.kind != TokenKind::Eof
             {
@@ -152,10 +139,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
             if self.current_token.kind == TokenKind::CloseParen {
                 self.bump();
+                uses.into_bump_slice()
+            } else {
+                self.errors.push(ParseError {
+                    span: self.current_token.span,
+                    message: "Expected ')' after closure use list",
+                });
+                &[]
             }
+        } else {
+            &[]
         }
+    }
 
-        let return_type = if self.current_token.kind == TokenKind::Colon {
+    pub(crate) fn parse_return_type(&mut self) -> Option<&'ast Type<'ast>> {
+        if self.current_token.kind == TokenKind::Colon {
             self.bump();
             if let Some(t) = self.parse_type() {
                 Some(self.arena.alloc(t) as &'ast Type<'ast>)
@@ -164,7 +162,23 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             }
         } else {
             None
-        };
+        }
+    }
+
+    pub(super) fn parse_closure_expr(
+        &mut self,
+        attributes: &'ast [AttributeGroup<'ast>],
+        is_static: bool,
+        start: usize,
+    ) -> ExprId<'ast> {
+        // Anonymous functions should not have a name, but allow an identifier for recovery
+        if self.current_token.kind == TokenKind::Identifier {
+            self.bump();
+        }
+
+        let params = self.parse_parameter_list();
+        let uses = self.parse_use_list();
+        let return_type = self.parse_return_type();
 
         let body_stmt = self.parse_block();
         let body: &'ast [StmtId<'ast>] = match body_stmt {
@@ -177,7 +191,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             attributes,
             is_static,
             params,
-            uses: uses.into_bump_slice(),
+            uses,
             return_type,
             body,
             span: Span::new(start, end),
@@ -190,20 +204,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         is_static: bool,
         start: usize,
     ) -> ExprId<'ast> {
-
-        let params = self.parse_closure_parameter_list();
-
-        let return_type = if self.current_token.kind == TokenKind::Colon {
-            self.bump();
-            if let Some(t) = self.parse_type() {
-                Some(self.arena.alloc(t) as &'ast Type<'ast>)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
+        let params = self.parse_parameter_list();
+        let return_type = self.parse_return_type();
         if self.current_token.kind == TokenKind::DoubleArrow {
             self.bump();
         }
@@ -1372,7 +1374,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 // Error recovery
                 let is_terminator = matches!(
                     token.kind,
-                    TokenKind::SemiColon | TokenKind::CloseBrace | TokenKind::CloseTag | TokenKind::Eof
+                    TokenKind::SemiColon
+                        | TokenKind::CloseBrace
+                        | TokenKind::CloseTag
+                        | TokenKind::Eof
                 );
 
                 self.errors.push(ParseError {
@@ -1486,7 +1491,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let start = self.current_token.span.start;
         self.bump(); // Eat opening token
 
-        let mut parts: bumpalo::collections::Vec<&'ast Expr<'ast>> = bumpalo::collections::Vec::new_in(self.arena);
+        let mut parts: bumpalo::collections::Vec<&'ast Expr<'ast>> =
+            bumpalo::collections::Vec::new_in(self.arena);
 
         while self.current_token.kind != end_token && self.current_token.kind != TokenKind::Eof {
             match self.current_token.kind {
@@ -1543,10 +1549,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                                 if self.current_token.kind == TokenKind::NumString {
                                     let t = self.current_token;
                                     self.bump();
-                                    
+
                                     let mut value = bumpalo::collections::Vec::with_capacity_in(
-                                        (minus.span.end - minus.span.start) + (t.span.end - t.span.start),
-                                        self.arena
+                                        (minus.span.end - minus.span.start)
+                                            + (t.span.end - t.span.start),
+                                        self.arena,
                                     );
                                     value.extend_from_slice(self.lexer.slice(minus.span));
                                     value.extend_from_slice(self.lexer.slice(t.span));
@@ -1638,15 +1645,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let parts = parts.into_bump_slice();
 
         if end_token == TokenKind::Backtick {
-            self.arena.alloc(Expr::ShellExec {
-                parts,
-                span,
-            })
+            self.arena.alloc(Expr::ShellExec { parts, span })
         } else {
-            self.arena.alloc(Expr::InterpolatedString {
-                parts,
-                span,
-            })
+            self.arena.alloc(Expr::InterpolatedString { parts, span })
         }
     }
 }

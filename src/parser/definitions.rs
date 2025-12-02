@@ -713,35 +713,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 })
             };
 
-            if self.current_token.kind == TokenKind::OpenParen {
-                self.bump();
-            }
-
-            let mut params = std::vec::Vec::new();
-            while self.current_token.kind != TokenKind::CloseParen
-                && self.current_token.kind != TokenKind::Eof
-            {
-                params.push(self.parse_param());
-                if self.current_token.kind == TokenKind::Comma {
-                    self.bump();
-                }
-            }
-            // Promotion modifier validation for interface/trait already handled at method level
-
-            if self.current_token.kind == TokenKind::CloseParen {
-                self.bump();
-            }
-
-            let return_type = if self.current_token.kind == TokenKind::Colon {
-                self.bump();
-                if let Some(t) = self.parse_type() {
-                    Some(self.arena.alloc(t) as &'ast Type<'ast>)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            let params = self.parse_parameter_list();
+            let return_type = self.parse_return_type();
 
             let mut has_body_flag = false;
             let body = if self.current_token.kind == TokenKind::OpenBrace {
@@ -903,7 +876,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 attributes,
                 modifiers: self.arena.alloc_slice_copy(&modifiers),
                 name,
-                params: self.arena.alloc_slice_copy(&params),
+                params,
                 return_type,
                 body,
                 span: Span::new(start, end),
@@ -1265,21 +1238,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 t
             };
 
-            let mut params = std::vec::Vec::new();
-            if self.current_token.kind == TokenKind::OpenParen {
-                self.bump();
-                while self.current_token.kind != TokenKind::CloseParen
-                    && self.current_token.kind != TokenKind::Eof
-                {
-                    params.push(self.parse_param());
-                    if self.current_token.kind == TokenKind::Comma {
-                        self.bump();
-                    }
-                }
-                if self.current_token.kind == TokenKind::CloseParen {
-                    self.bump();
-                }
-            }
+            let params = if matches!(self.current_token.kind, TokenKind::OpenParen) {
+                self.parse_parameter_list()
+            } else {
+                &[] as &'ast [Param<'ast>]
+            };
 
             let body = match self.current_token.kind {
                 TokenKind::SemiColon => {
@@ -1626,24 +1589,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
 
         // Params
-        if self.current_token.kind == TokenKind::OpenParen {
-            self.bump();
-        }
-
-        let mut params = std::vec::Vec::new();
-        while self.current_token.kind != TokenKind::CloseParen
-            && self.current_token.kind != TokenKind::Eof
-        {
-            params.push(self.parse_param());
-
-            if self.current_token.kind == TokenKind::Comma {
-                self.bump();
-            }
-        }
-
-        if self.current_token.kind == TokenKind::CloseParen {
-            self.bump();
-        }
+        let params = self.parse_parameter_list();
 
         let return_type = if self.current_token.kind == TokenKind::Colon {
             self.bump();
@@ -1668,7 +1614,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Stmt::Function {
             attributes,
             name,
-            params: self.arena.alloc_slice_copy(&params),
+            params,
             return_type,
             body,
             span: Span::new(start, end),
