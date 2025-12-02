@@ -280,6 +280,115 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         }
     }
 
+    fn is_reassociable_assignment_target(&self, expr: ExprId<'ast>) -> bool {
+        match expr {
+            Expr::Unary { expr: inner, .. }
+            | Expr::Cast { expr: inner, .. } => {
+                self.is_assignable(inner) || self.is_reassociable_assignment_target(inner)
+            }
+            Expr::Binary { right, .. } => {
+                self.is_assignable(right) || self.is_reassociable_assignment_target(right)
+            }
+            Expr::Ternary { if_false, .. } => {
+                self.is_assignable(if_false) || self.is_reassociable_assignment_target(if_false)
+            }
+            Expr::Clone { expr: inner, .. } => {
+                self.is_assignable(inner) || self.is_reassociable_assignment_target(inner)
+            }
+            _ => false,
+        }
+    }
+
+    fn create_assignment(&self, var: ExprId<'ast>, right: ExprId<'ast>, op: Option<AssignOp>) -> ExprId<'ast> {
+        let span = Span::new(var.span().start, right.span().end);
+        if let Some(assign_op) = op {
+            self.arena.alloc(Expr::AssignOp {
+                var,
+                op: assign_op,
+                expr: right,
+                span,
+            })
+        } else {
+            self.arena.alloc(Expr::Assign {
+                var,
+                expr: right,
+                span,
+            })
+        }
+    }
+
+    fn reassociate_assignment(&self, left: ExprId<'ast>, right: ExprId<'ast>, op: Option<AssignOp>) -> ExprId<'ast> {
+        match left {
+            Expr::Unary { op: unary_op, expr: inner, span } => {
+                let new_inner = if self.is_assignable(inner) {
+                    self.create_assignment(inner, right, op)
+                } else {
+                    self.reassociate_assignment(inner, right, op)
+                };
+                let new_span = Span::new(span.start, right.span().end);
+                self.arena.alloc(Expr::Unary {
+                    op: *unary_op,
+                    expr: new_inner,
+                    span: new_span,
+                })
+            }
+            Expr::Cast { kind, expr: inner, span } => {
+                let new_inner = if self.is_assignable(inner) {
+                    self.create_assignment(inner, right, op)
+                } else {
+                    self.reassociate_assignment(inner, right, op)
+                };
+                let new_span = Span::new(span.start, right.span().end);
+                self.arena.alloc(Expr::Cast {
+                    kind: *kind,
+                    expr: new_inner,
+                    span: new_span,
+                })
+            }
+            Expr::Binary { left: b_left, op: b_op, right: b_right, span } => {
+                let new_right = if self.is_assignable(b_right) {
+                    self.create_assignment(b_right, right, op)
+                } else {
+                    self.reassociate_assignment(b_right, right, op)
+                };
+                let new_span = Span::new(span.start, right.span().end);
+                self.arena.alloc(Expr::Binary {
+                    left: b_left,
+                    op: *b_op,
+                    right: new_right,
+                    span: new_span,
+                })
+            }
+            Expr::Ternary { condition, if_true, if_false, span } => {
+                let new_if_false = if self.is_assignable(if_false) {
+                    self.create_assignment(if_false, right, op)
+                } else {
+                    self.reassociate_assignment(if_false, right, op)
+                };
+                let new_span = Span::new(span.start, right.span().end);
+                self.arena.alloc(Expr::Ternary {
+                    condition,
+                    if_true: *if_true,
+                    if_false: new_if_false,
+                    span: new_span,
+                })
+            }
+            Expr::Clone { expr: inner, span } => {
+                let new_inner = if self.is_assignable(inner) {
+                    self.create_assignment(inner, right, op)
+                } else {
+                    self.reassociate_assignment(inner, right, op)
+                };
+                let new_span = Span::new(span.start, right.span().end);
+                self.arena.alloc(Expr::Clone {
+                    expr: new_inner,
+                    span: new_span,
+                })
+            }
+            _ => unreachable!("Should only be called if is_reassociable_assignment_target returned true"),
+        }
+    }
+
     pub(super) fn parse_expr(&mut self, min_bp: u8) -> ExprId<'ast> {
         let mut left = self.parse_nud();
         let mut just_parsed_ternary = false;
@@ -401,6 +510,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     }
 
                     if !self.is_assignable(left) {
+                        if self.is_reassociable_assignment_target(left) {
+                            self.bump();
+                            let right = self.parse_expr(l_bp - 1);
+                            left = self.reassociate_assignment(left, right, Some(op));
+                            continue;
+                        }
+
                         self.errors.push(ParseError {
                             span: left.span(),
                             message: "Assignments can only happen to writable values",
@@ -434,6 +550,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     }
 
                     if !self.is_assignable(left) {
+                        if self.is_reassociable_assignment_target(left) {
+                            self.bump();
+                            let right = self.parse_expr(l_bp - 1);
+                            left = self.reassociate_assignment(left, right, None);
+                            continue;
+                        }
+
                         self.errors.push(ParseError {
                             span: left.span(),
                             message: "Assignments can only happen to writable values",
