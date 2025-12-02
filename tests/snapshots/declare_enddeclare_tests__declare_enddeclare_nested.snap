@@ -1,0 +1,116 @@
+---
+source: tests/declare_enddeclare_tests.rs
+assertion_line: 86
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Declare {
+            declares: [
+                DeclareItem {
+                    key: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 14,
+                            end: 26,
+                        },
+                    },
+                    value: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 27,
+                            end: 28,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 28,
+                    },
+                },
+            ],
+            body: [
+                Declare {
+                    declares: [
+                        DeclareItem {
+                            key: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 43,
+                                    end: 48,
+                                },
+                            },
+                            value: Integer {
+                                value: [
+                                    49,
+                                ],
+                                span: Span {
+                                    start: 49,
+                                    end: 50,
+                                },
+                            },
+                            span: Span {
+                                start: 43,
+                                end: 50,
+                            },
+                        },
+                    ],
+                    body: [
+                        Expression {
+                            expr: Assign {
+                                var: Variable {
+                                    name: Span {
+                                        start: 61,
+                                        end: 63,
+                                    },
+                                    span: Span {
+                                        start: 61,
+                                        end: 63,
+                                    },
+                                },
+                                expr: Integer {
+                                    value: [
+                                        49,
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 66,
+                                        end: 68,
+                                    },
+                                },
+                                span: Span {
+                                    start: 61,
+                                    end: 68,
+                                },
+                            },
+                            span: Span {
+                                start: 61,
+                                end: 84,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 35,
+                        end: 96,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 98,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 98,
+    },
+}

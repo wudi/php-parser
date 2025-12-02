@@ -1,0 +1,101 @@
+---
+source: tests/declare_enddeclare_tests.rs
+assertion_line: 52
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Declare {
+            declares: [
+                DeclareItem {
+                    key: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 14,
+                            end: 22,
+                        },
+                    },
+                    value: String {
+                        value: [
+                            39,
+                            85,
+                            84,
+                            70,
+                            45,
+                            56,
+                            39,
+                        ],
+                        span: Span {
+                            start: 23,
+                            end: 30,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 30,
+                    },
+                },
+            ],
+            body: [
+                Expression {
+                    expr: Assign {
+                        var: Variable {
+                            name: Span {
+                                start: 37,
+                                end: 42,
+                            },
+                            span: Span {
+                                start: 37,
+                                end: 42,
+                            },
+                        },
+                        expr: String {
+                            value: [
+                                34,
+                                72,
+                                101,
+                                108,
+                                108,
+                                111,
+                                32,
+                                87,
+                                111,
+                                114,
+                                108,
+                                100,
+                                34,
+                            ],
+                            span: Span {
+                                start: 45,
+                                end: 58,
+                            },
+                        },
+                        span: Span {
+                            start: 37,
+                            end: 58,
+                        },
+                    },
+                    span: Span {
+                        start: 37,
+                        end: 70,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 72,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 72,
+    },
+}

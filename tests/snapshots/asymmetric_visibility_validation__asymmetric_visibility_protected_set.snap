@@ -1,0 +1,99 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 36
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 15,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 22,
+                                end: 28,
+                            },
+                        },
+                        Token {
+                            kind: ProtectedSet,
+                            span: Span {
+                                start: 29,
+                                end: 43,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeInt,
+                                span: Span {
+                                    start: 44,
+                                    end: 47,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 48,
+                                    end: 54,
+                                },
+                            },
+                            default: Some(
+                                Integer {
+                                    value: [
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 57,
+                                        end: 58,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 48,
+                                end: 58,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 22,
+                        end: 61,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 62,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 62,
+    },
+}

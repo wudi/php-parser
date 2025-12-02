@@ -1,0 +1,51 @@
+---
+source: tests/declare_enddeclare_tests.rs
+assertion_line: 119
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Declare {
+            declares: [
+                DeclareItem {
+                    key: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 14,
+                            end: 26,
+                        },
+                    },
+                    value: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 27,
+                            end: 28,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 28,
+                    },
+                },
+            ],
+            body: [],
+            span: Span {
+                start: 6,
+                end: 43,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 43,
+    },
+}

@@ -1,0 +1,89 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 20
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 15,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 22,
+                                end: 28,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 29,
+                                end: 41,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 42,
+                                    end: 48,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 49,
+                                    end: 54,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 49,
+                                end: 54,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 22,
+                        end: 57,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 58,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 58,
+    },
+}

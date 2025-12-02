@@ -24,7 +24,7 @@
 
 ## ⚠️ Needs Testing
 
-- [ ] Modifier validation (asymmetric visibility context)
+(All priority items tested!)
 
 ## ✅ Recently Tested (December 2, 2025)
 
@@ -148,10 +148,12 @@
 | Match Expressions | 15 | 15 | 15 | 100% impl, 100% tested ✅ |
 | Anonymous Classes | 12 | 12 | 12 | 100% impl, 100% tested ✅ |
 | Heredoc/Nowdoc | 7 | 7 | 7 | 100% impl, 100% tested ✅ |
+| Asymmetric Visibility | 10 | 10 | 10 | 100% impl, 100% tested ✅ |
+| Declare/Enddeclare | 8 | 8 | 8 | 100% impl, 100% tested ✅ |
 
-**Overall**: 95% implementation, **93% tested**
+**Overall**: 95% implementation, **94% tested**
 
-**Test Suite**: **264 tests passing** ✅
+**Test Suite**: **282 tests passing** ✅
 
 **Recent Progress (Dec 2, 2025)**:
 - ✅ Added 12 property hooks advanced tests (constructor promotion, asymmetric visibility, etc.)
@@ -163,6 +165,8 @@
 - ✅ Added 15 match expression tests (edge cases, trailing commas, empty)
 - ✅ Added 12 anonymous class with attributes tests
 - ✅ Added 7 heredoc/nowdoc tests (basic, interpolation, empty, multiline, function args, multiple) - **No dead loop found!**
+- ✅ Added 10 asymmetric visibility validation tests (properties, constructor promotion, readonly, static, hooks)
+- ✅ Added 8 declare/enddeclare alternative syntax tests (strict_types, ticks, encoding, nested)
 
 ## 🎯 Priority Actions
 
@@ -177,11 +181,12 @@
 8. ~~**LOW**: Test anonymous classes with attributes~~ - **DONE** (12 tests added)
 
 9. ~~**LOW**: Test heredoc/nowdoc strings~~ - **DONE** (7 tests added, no dead loop issue found!)
+10. ~~**LOW**: Test modifier validation (asymmetric visibility context)~~ - **DONE** (10 tests added)
+11. ~~**LOW**: Add declare/enddeclare alternative syntax test~~ - **DONE** (8 tests added)
 
 ### Next Steps
-1. **LOW**: Test modifier validation (asymmetric visibility context)
-2. **LOW**: Add declare/enddeclare alternative syntax test
-3. **LOW**: Test additional edge cases as needed
+1. **LOW**: Test additional edge cases as needed
+2. **OPTIONAL**: Run corpus tests on large PHP projects to verify real-world compatibility
 
 ## 🐛 Dead Loop Investigation Results
 

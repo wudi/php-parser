@@ -1,0 +1,193 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 184
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 17,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 24,
+                                end: 30,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 31,
+                                end: 43,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 44,
+                                    end: 50,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 51,
+                                    end: 57,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 51,
+                                end: 57,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 24,
+                        end: 74,
+                    },
+                },
+                Method {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 68,
+                                end: 74,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 84,
+                            end: 92,
+                        },
+                    },
+                    params: [],
+                    return_type: None,
+                    body: [
+                        Return {
+                            expr: Some(
+                                New {
+                                    class: AnonymousClass {
+                                        attributes: [],
+                                        args: [],
+                                        extends: None,
+                                        implements: [],
+                                        members: [
+                                            Property {
+                                                attributes: [],
+                                                modifiers: [
+                                                    Token {
+                                                        kind: Public,
+                                                        span: Span {
+                                                            start: 136,
+                                                            end: 142,
+                                                        },
+                                                    },
+                                                    Token {
+                                                        kind: PrivateSet,
+                                                        span: Span {
+                                                            start: 143,
+                                                            end: 155,
+                                                        },
+                                                    },
+                                                ],
+                                                ty: Some(
+                                                    Simple(
+                                                        Token {
+                                                            kind: TypeString,
+                                                            span: Span {
+                                                                start: 156,
+                                                                end: 162,
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                                entries: [
+                                                    PropertyEntry {
+                                                        name: Token {
+                                                            kind: Variable,
+                                                            span: Span {
+                                                                start: 163,
+                                                                end: 169,
+                                                            },
+                                                        },
+                                                        default: None,
+                                                        span: Span {
+                                                            start: 163,
+                                                            end: 169,
+                                                        },
+                                                    },
+                                                ],
+                                                span: Span {
+                                                    start: 136,
+                                                    end: 180,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 116,
+                                            end: 181,
+                                        },
+                                    },
+                                    args: [],
+                                    span: Span {
+                                        start: 112,
+                                        end: 181,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 105,
+                                end: 187,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 68,
+                        end: 187,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 190,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 190,
+    },
+}

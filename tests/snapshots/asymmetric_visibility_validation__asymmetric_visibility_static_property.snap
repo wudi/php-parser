@@ -1,0 +1,106 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 144
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 26,
+                                end: 32,
+                            },
+                        },
+                        Token {
+                            kind: Static,
+                            span: Span {
+                                start: 33,
+                                end: 39,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 40,
+                                end: 52,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeInt,
+                                span: Span {
+                                    start: 53,
+                                    end: 56,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 57,
+                                    end: 63,
+                                },
+                            },
+                            default: Some(
+                                Integer {
+                                    value: [
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 66,
+                                        end: 67,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 57,
+                                end: 67,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 70,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 71,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 71,
+    },
+}

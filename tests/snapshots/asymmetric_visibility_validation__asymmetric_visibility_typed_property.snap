@@ -1,0 +1,219 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 162
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 22,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 29,
+                                end: 35,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 36,
+                                end: 48,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Union(
+                            [
+                                Simple(
+                                    Token {
+                                        kind: TypeInt,
+                                        span: Span {
+                                            start: 49,
+                                            end: 52,
+                                        },
+                                    },
+                                ),
+                                Simple(
+                                    Token {
+                                        kind: TypeString,
+                                        span: Span {
+                                            start: 53,
+                                            end: 59,
+                                        },
+                                    },
+                                ),
+                            ],
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 60,
+                                    end: 66,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 60,
+                                end: 66,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 29,
+                        end: 78,
+                    },
+                },
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 72,
+                                end: 78,
+                            },
+                        },
+                        Token {
+                            kind: ProtectedSet,
+                            span: Span {
+                                start: 79,
+                                end: 93,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Nullable(
+                            Simple(
+                                Token {
+                                    kind: Array,
+                                    span: Span {
+                                        start: 95,
+                                        end: 100,
+                                    },
+                                },
+                            ),
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 101,
+                                    end: 106,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 101,
+                                end: 106,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 72,
+                        end: 118,
+                    },
+                },
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 112,
+                                end: 118,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 119,
+                                end: 131,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Name(
+                            Name {
+                                parts: [
+                                    Token {
+                                        kind: NsSeparator,
+                                        span: Span {
+                                            start: 132,
+                                            end: 133,
+                                        },
+                                    },
+                                    Token {
+                                        kind: Identifier,
+                                        span: Span {
+                                            start: 133,
+                                            end: 141,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 132,
+                                    end: 141,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 142,
+                                    end: 152,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 142,
+                                end: 152,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 112,
+                        end: 155,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 156,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 156,
+    },
+}

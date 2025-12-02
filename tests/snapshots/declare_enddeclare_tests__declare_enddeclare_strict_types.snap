@@ -1,0 +1,176 @@
+---
+source: tests/declare_enddeclare_tests.rs
+assertion_line: 19
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Declare {
+            declares: [
+                DeclareItem {
+                    key: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 14,
+                            end: 26,
+                        },
+                    },
+                    value: Integer {
+                        value: [
+                            49,
+                        ],
+                        span: Span {
+                            start: 27,
+                            end: 28,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 28,
+                    },
+                },
+            ],
+            body: [
+                Function {
+                    attributes: [],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 44,
+                            end: 47,
+                        },
+                    },
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 52,
+                                    end: 54,
+                                },
+                            },
+                            ty: Some(
+                                Simple(
+                                    Token {
+                                        kind: TypeInt,
+                                        span: Span {
+                                            start: 48,
+                                            end: 51,
+                                        },
+                                    },
+                                ),
+                            ),
+                            default: None,
+                            by_ref: false,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 48,
+                                end: 54,
+                            },
+                        },
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 60,
+                                    end: 62,
+                                },
+                            },
+                            ty: Some(
+                                Simple(
+                                    Token {
+                                        kind: TypeInt,
+                                        span: Span {
+                                            start: 56,
+                                            end: 59,
+                                        },
+                                    },
+                                ),
+                            ),
+                            default: None,
+                            by_ref: false,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 56,
+                                end: 62,
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Simple(
+                            Token {
+                                kind: TypeInt,
+                                span: Span {
+                                    start: 65,
+                                    end: 68,
+                                },
+                            },
+                        ),
+                    ),
+                    body: [
+                        Return {
+                            expr: Some(
+                                Binary {
+                                    left: Variable {
+                                        name: Span {
+                                            start: 86,
+                                            end: 88,
+                                        },
+                                        span: Span {
+                                            start: 86,
+                                            end: 88,
+                                        },
+                                    },
+                                    op: Plus,
+                                    right: Variable {
+                                        name: Span {
+                                            start: 91,
+                                            end: 93,
+                                        },
+                                        span: Span {
+                                            start: 91,
+                                            end: 93,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 86,
+                                        end: 93,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 79,
+                                end: 100,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 35,
+                        end: 111,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 113,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 113,
+    },
+}

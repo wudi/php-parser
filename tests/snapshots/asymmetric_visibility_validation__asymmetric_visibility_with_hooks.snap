@@ -1,0 +1,277 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 128
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 21,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                PropertyHook {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 28,
+                                end: 34,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 35,
+                                end: 47,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 48,
+                                    end: 54,
+                                },
+                            },
+                        ),
+                    ),
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 55,
+                            end: 61,
+                        },
+                    },
+                    default: None,
+                    hooks: [
+                        PropertyHook {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 72,
+                                    end: 75,
+                                },
+                            },
+                            params: [],
+                            by_ref: false,
+                            body: Statements(
+                                [
+                                    If {
+                                        condition: Unary {
+                                            op: Not,
+                                            expr: Call {
+                                                func: Variable {
+                                                    name: Span {
+                                                        start: 95,
+                                                        end: 105,
+                                                    },
+                                                    span: Span {
+                                                        start: 95,
+                                                        end: 105,
+                                                    },
+                                                },
+                                                args: [
+                                                    Arg {
+                                                        name: None,
+                                                        value: Variable {
+                                                            name: Span {
+                                                                start: 106,
+                                                                end: 112,
+                                                            },
+                                                            span: Span {
+                                                                start: 106,
+                                                                end: 112,
+                                                            },
+                                                        },
+                                                        unpack: false,
+                                                        span: Span {
+                                                            start: 106,
+                                                            end: 112,
+                                                        },
+                                                    },
+                                                    Arg {
+                                                        name: None,
+                                                        value: Variable {
+                                                            name: Span {
+                                                                start: 114,
+                                                                end: 135,
+                                                            },
+                                                            span: Span {
+                                                                start: 114,
+                                                                end: 135,
+                                                            },
+                                                        },
+                                                        unpack: false,
+                                                        span: Span {
+                                                            start: 114,
+                                                            end: 135,
+                                                        },
+                                                    },
+                                                ],
+                                                span: Span {
+                                                    start: 95,
+                                                    end: 136,
+                                                },
+                                            },
+                                            span: Span {
+                                                start: 94,
+                                                end: 136,
+                                            },
+                                        },
+                                        then_block: [
+                                            Throw {
+                                                expr: New {
+                                                    class: Variable {
+                                                        name: Span {
+                                                            start: 166,
+                                                            end: 176,
+                                                        },
+                                                        span: Span {
+                                                            start: 166,
+                                                            end: 176,
+                                                        },
+                                                    },
+                                                    args: [
+                                                        Arg {
+                                                            name: None,
+                                                            value: String {
+                                                                value: [
+                                                                    34,
+                                                                    73,
+                                                                    110,
+                                                                    118,
+                                                                    97,
+                                                                    108,
+                                                                    105,
+                                                                    100,
+                                                                    32,
+                                                                    101,
+                                                                    109,
+                                                                    97,
+                                                                    105,
+                                                                    108,
+                                                                    34,
+                                                                ],
+                                                                span: Span {
+                                                                    start: 177,
+                                                                    end: 192,
+                                                                },
+                                                            },
+                                                            unpack: false,
+                                                            span: Span {
+                                                                start: 177,
+                                                                end: 192,
+                                                            },
+                                                        },
+                                                    ],
+                                                    span: Span {
+                                                        start: 162,
+                                                        end: 193,
+                                                    },
+                                                },
+                                                span: Span {
+                                                    start: 156,
+                                                    end: 208,
+                                                },
+                                            },
+                                        ],
+                                        else_block: None,
+                                        span: Span {
+                                            start: 90,
+                                            end: 226,
+                                        },
+                                    },
+                                    Expression {
+                                        expr: Assign {
+                                            var: PropertyFetch {
+                                                target: Variable {
+                                                    name: Span {
+                                                        start: 221,
+                                                        end: 226,
+                                                    },
+                                                    span: Span {
+                                                        start: 221,
+                                                        end: 226,
+                                                    },
+                                                },
+                                                property: Variable {
+                                                    name: Span {
+                                                        start: 228,
+                                                        end: 233,
+                                                    },
+                                                    span: Span {
+                                                        start: 228,
+                                                        end: 233,
+                                                    },
+                                                },
+                                                span: Span {
+                                                    start: 221,
+                                                    end: 233,
+                                                },
+                                            },
+                                            expr: Variable {
+                                                name: Span {
+                                                    start: 236,
+                                                    end: 242,
+                                                },
+                                                span: Span {
+                                                    start: 236,
+                                                    end: 242,
+                                                },
+                                            },
+                                            span: Span {
+                                                start: 221,
+                                                end: 242,
+                                            },
+                                        },
+                                        span: Span {
+                                            start: 221,
+                                            end: 253,
+                                        },
+                                    },
+                                ],
+                            ),
+                            span: Span {
+                                start: 72,
+                                end: 253,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 28,
+                        end: 261,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 262,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 262,
+    },
+}

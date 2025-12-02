@@ -1,0 +1,112 @@
+---
+source: tests/asymmetric_visibility_validation.rs
+assertion_line: 105
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [
+                Token {
+                    kind: Abstract,
+                    span: Span {
+                        start: 6,
+                        end: 14,
+                    },
+                },
+            ],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 21,
+                    end: 25,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Abstract,
+                            span: Span {
+                                start: 32,
+                                end: 40,
+                            },
+                        },
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 41,
+                                end: 47,
+                            },
+                        },
+                        Token {
+                            kind: PrivateSet,
+                            span: Span {
+                                start: 48,
+                                end: 60,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 61,
+                                    end: 67,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 68,
+                                    end: 73,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 68,
+                                end: 73,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 32,
+                        end: 76,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 77,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 32,
+                end: 40,
+            },
+            message: "Properties cannot be declared abstract",
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 77,
+    },
+}
