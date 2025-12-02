@@ -51,6 +51,25 @@ fn main() {
 }
 ```
 
+## Performance
+
+test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
+
+```
+➜  php-parser-rs git:(master) ✗ ./target/release/bench_file run-tests.php
+Benchmarking: run-tests.php
+File size: 139.63 KB
+Warming up...
+Running 200 iterations...
+Profile written to profile.pb
+Flamegraph written to flamegraph.svg
+Total time: 132.538ms
+Average time: 662.69µs
+Throughput: 205.76 MB/s
+```
+
+Machine specs: Apple M1 Pro, 32GB RAM
+
 ## Development
 
 ### Running Tests
