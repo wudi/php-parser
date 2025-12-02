@@ -43,7 +43,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
         let name = if matches!(
             self.current_token.kind,
-            TokenKind::Identifier | TokenKind::Enum
+            TokenKind::Identifier | TokenKind::Enum | TokenKind::Match
         ) {
             let token = self.arena.alloc(self.current_token);
             self.bump();
@@ -271,7 +271,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
         self.bump(); // Eat interface
 
-        let name = if self.current_token.kind == TokenKind::Identifier {
+        let name = if matches!(
+            self.current_token.kind,
+            TokenKind::Identifier | TokenKind::Match
+        ) {
             let token = self.arena.alloc(self.current_token);
             self.bump();
             token
@@ -364,7 +367,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         };
         self.bump(); // Eat trait
 
-        let name = if self.current_token.kind == TokenKind::Identifier {
+        let name = if matches!(
+            self.current_token.kind,
+            TokenKind::Identifier | TokenKind::Match
+        ) {
             let token = self.arena.alloc(self.current_token);
             self.bump();
             token

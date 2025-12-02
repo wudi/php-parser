@@ -25,3 +25,12 @@ fn interface_property_is_error() {
         "expected error for interface property"
     );
 }
+
+#[test]
+fn interface_name_match_allowed() {
+    let code = "<?php interface Match {}";
+    let arena = Bump::new();
+    let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
+    let program = parser.parse_program();
+    assert!(program.errors.is_empty(), "interface Match should be allowed");
+}

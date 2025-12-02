@@ -67,3 +67,21 @@ fn test_nested_braces_in_interpolation() {
 
     assert_eq!(lexer.next().unwrap().kind, TokenKind::DoubleQuote);
 }
+
+#[test]
+fn test_dollar_open_curly_braces_interpolation() {
+    let source = b"<?php \"hello ${name}\";";
+    let mut lexer = Lexer::new(source);
+
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::OpenTag);
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::DoubleQuote);
+
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::EncapsedAndWhitespace); // "hello "
+
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::DollarOpenCurlyBraces); // "${"
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::StringVarname); // "name"
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::CloseBrace); // "}"
+
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::DoubleQuote);
+    assert_eq!(lexer.next().unwrap().kind, TokenKind::SemiColon);
+}

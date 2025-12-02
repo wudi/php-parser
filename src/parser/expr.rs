@@ -1054,6 +1054,15 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 while self.current_token.kind != TokenKind::CloseBrace
                     && self.current_token.kind != TokenKind::Eof
                 {
+                    if self.current_token.kind == TokenKind::SemiColon {
+                        self.errors.push(ParseError {
+                            span: self.current_token.span,
+                            message: "Unexpected ';'",
+                        });
+                        self.bump();
+                        continue;
+                    }
+
                     let arm_start = self.current_token.span.start;
 
                     let conditions = if self.current_token.kind == TokenKind::Default {
@@ -1130,6 +1139,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         span,
                     })
                 }
+            }
+            TokenKind::StringVarname => {
+                self.bump();
+                self.arena.alloc(Expr::Variable {
+                    name: token.span,
+                    span: token.span,
+                })
             }
             TokenKind::Variable => {
                 self.bump();

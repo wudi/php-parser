@@ -1,0 +1,53 @@
+---
+source: tests/recovery_tests.rs
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Match {
+                condition: Error {
+                    span: Span {
+                        start: 16,
+                        end: 17,
+                    },
+                },
+                arms: [],
+                span: Span {
+                    start: 10,
+                    end: 38,
+                },
+            },
+            span: Span {
+                start: 10,
+                end: 38,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 16,
+                end: 17,
+            },
+            message: "Syntax error",
+        },
+        ParseError {
+            span: Span {
+                start: 26,
+                end: 27,
+            },
+            message: "Unexpected ';'",
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 38,
+    },
+}
