@@ -14,7 +14,7 @@ $static = MyClass::staticMethod(...);
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -31,7 +31,7 @@ $assoc = ['a' => 1, ...['b' => 2, 'c' => 3]];
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -47,7 +47,7 @@ function test((A&B)|C $param): (X&Y)|Z {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -63,7 +63,7 @@ function process(?((A&B)|C) $value): null|((X&Y)|Z) {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -87,7 +87,7 @@ enum Status: string {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -106,7 +106,7 @@ readonly class Point {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -123,7 +123,7 @@ trait HasVersion {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -147,7 +147,7 @@ function alwaysNull(): null {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -167,7 +167,7 @@ function complex(
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -192,7 +192,7 @@ class Example {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -210,7 +210,7 @@ function gen() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -228,6 +228,6 @@ $typed = fn(int|string $x): bool|int => is_int($x) ? $x : 0;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }

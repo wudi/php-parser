@@ -14,9 +14,12 @@ class Foo {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     // Should parse without errors
-    assert!(program.errors.is_empty(), "Asymmetric visibility should be valid on properties");
+    assert!(
+        program.errors.is_empty(),
+        "Asymmetric visibility should be valid on properties"
+    );
     insta::assert_debug_snapshot!(program);
 }
 
@@ -31,7 +34,7 @@ class Foo {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -50,7 +53,7 @@ class User {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -69,7 +72,7 @@ class Config {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -85,7 +88,7 @@ class Immutable {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     // This combination should parse (validation is semantic, not syntactic)
     insta::assert_debug_snapshot!(program);
 }
@@ -101,7 +104,7 @@ abstract class Base {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -123,7 +126,7 @@ class Validated {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -139,7 +142,7 @@ class Counter {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -157,7 +160,7 @@ class TypedProps {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }
@@ -179,7 +182,7 @@ class Outer {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     assert!(program.errors.is_empty());
     insta::assert_debug_snapshot!(program);
 }

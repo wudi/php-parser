@@ -15,7 +15,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -33,7 +33,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -48,7 +48,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -65,7 +65,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -82,7 +82,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -101,7 +101,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -115,7 +115,7 @@ enddeclare;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }
 
@@ -136,6 +136,6 @@ $after = false;
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
-    
+
     insta::assert_debug_snapshot!(program);
 }

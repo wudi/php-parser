@@ -465,13 +465,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                     let current_is_elvis = self.next_token.kind == TokenKind::Colon;
 
-                    if just_parsed_ternary {
-                        if !just_parsed_elvis || !current_is_elvis {
-                            self.errors.push(ParseError {
+                    if just_parsed_ternary && (!just_parsed_elvis || !current_is_elvis) {
+                        self.errors.push(ParseError {
                                 span: self.current_token.span,
                                 message: "Unparenthesized `a ? b : c ? d : e` is not supported. Use either `(a ? b : c) ? d : e` or `a ? b : (c ? d : e)`",
                             });
-                        }
                     }
 
                     self.bump();
@@ -532,10 +530,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     };
 
                     let l_bp = 35; // Same as Assignment
-                    if l_bp < min_bp {
-                        if min_bp >= 80 || !self.is_assignable(left) {
-                            break;
-                        }
+                    if l_bp < min_bp && (min_bp >= 80 || !self.is_assignable(left)) {
+                        break;
                     }
 
                     if !self.is_assignable(left) {
