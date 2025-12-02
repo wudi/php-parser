@@ -1,8 +1,8 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{ClassMember, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::lexer::token::TokenKind;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{ClassMember, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::lexer::token::TokenKind;
+use php_parser::parser::Parser;
 
 #[test]
 fn test_asymmetric_visibility() {

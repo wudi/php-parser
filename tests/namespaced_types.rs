@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{Stmt, Type};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{Stmt, Type};
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn parses_namespaced_types_in_params_and_returns() {
@@ -42,7 +42,7 @@ fn parses_union_with_namespaced_types() {
         .iter()
         .find_map(|s| match **s {
             Stmt::Class { members, .. } => members.iter().find_map(|m| match m {
-                php_parser_rs::ast::ClassMember::Method { params, .. } => params[0].ty,
+                php_parser::ast::ClassMember::Method { params, .. } => params[0].ty,
                 _ => None,
             }),
             _ => None,
@@ -71,7 +71,7 @@ fn parses_intersection_with_leading_separator() {
         .iter()
         .find_map(|s| match **s {
             Stmt::Class { members, .. } => members.iter().find_map(|m| match m {
-                php_parser_rs::ast::ClassMember::Method { params, .. } => params[0].ty,
+                php_parser::ast::ClassMember::Method { params, .. } => params[0].ty,
                 _ => None,
             }),
             _ => None,
@@ -106,7 +106,7 @@ fn parses_static_return_type() {
         .iter()
         .find_map(|s| match **s {
             Stmt::Class { members, .. } => members.iter().find_map(|m| match m {
-                php_parser_rs::ast::ClassMember::Method { return_type, .. } => *return_type,
+                php_parser::ast::ClassMember::Method { return_type, .. } => *return_type,
                 _ => None,
             }),
             _ => None,
@@ -114,7 +114,7 @@ fn parses_static_return_type() {
         .expect("expected class method return type");
 
     if let Type::Simple(tok) = return_type {
-        assert_eq!(tok.kind, php_parser_rs::lexer::token::TokenKind::Static);
+        assert_eq!(tok.kind, php_parser::lexer::token::TokenKind::Static);
     } else {
         panic!("expected static return type, got {:?}", return_type);
     }

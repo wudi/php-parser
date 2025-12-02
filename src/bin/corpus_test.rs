@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 use std::env;
 use std::fs;
 use std::time::Instant;

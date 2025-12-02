@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::Stmt;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::Stmt;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn parses_backed_enum_with_implements() {
@@ -29,7 +29,7 @@ fn parses_backed_enum_with_implements() {
             assert!(
                 members
                     .iter()
-                    .any(|m| matches!(m, php_parser_rs::ast::ClassMember::Case { .. }))
+                    .any(|m| matches!(m, php_parser::ast::ClassMember::Case { .. }))
             );
         }
         _ => panic!("expected enum stmt"),

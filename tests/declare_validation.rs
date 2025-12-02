@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn strict_types_must_be_0_or_1_literal() {

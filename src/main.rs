@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 fn main() {
     let source = b"<?php 
@@ -19,7 +19,7 @@ fn main() {
     let mut parser = Parser::new(lexer, &arena);
 
     let program = parser.parse_program();
-    php_parser_rs::span::with_session_globals(source, || {
+    php_parser::span::with_session_globals(source, || {
         println!("{:#?}", program);
     });
 }

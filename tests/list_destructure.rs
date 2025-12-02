@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{Expr, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{Expr, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn parses_list_destructuring_with_by_ref_and_skips() {

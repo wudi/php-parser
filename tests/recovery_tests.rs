@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use insta::assert_debug_snapshot;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn test_missing_semicolon() {

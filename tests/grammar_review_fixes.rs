@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn test_function_by_ref() {
@@ -20,10 +20,10 @@ fn test_function_by_ref() {
     let func_stmt = program
         .statements
         .iter()
-        .find(|stmt| matches!(**stmt, php_parser_rs::ast::Stmt::Function { .. }))
+        .find(|stmt| matches!(**stmt, php_parser::ast::Stmt::Function { .. }))
         .expect("Should find a Function statement");
 
-    if let php_parser_rs::ast::Stmt::Function { by_ref, .. } = **func_stmt {
+    if let php_parser::ast::Stmt::Function { by_ref, .. } = **func_stmt {
         assert!(by_ref, "Function should have by_ref=true");
     }
 }
@@ -51,18 +51,18 @@ fn test_anonymous_class_modifiers() {
     let expr_stmt = program
         .statements
         .iter()
-        .find(|stmt| matches!(**stmt, php_parser_rs::ast::Stmt::Expression { .. }))
+        .find(|stmt| matches!(**stmt, php_parser::ast::Stmt::Expression { .. }))
         .expect("Should find an Expression statement");
 
     // Check modifiers are parsed
-    if let php_parser_rs::ast::Stmt::Expression { expr, .. } = **expr_stmt {
-        if let php_parser_rs::ast::Expr::Assign { expr: right, .. } = *expr {
-            if let php_parser_rs::ast::Expr::New { class, .. } = *right {
-                if let php_parser_rs::ast::Expr::AnonymousClass { modifiers, .. } = *class {
+    if let php_parser::ast::Stmt::Expression { expr, .. } = **expr_stmt {
+        if let php_parser::ast::Expr::Assign { expr: right, .. } = *expr {
+            if let php_parser::ast::Expr::New { class, .. } = *right {
+                if let php_parser::ast::Expr::AnonymousClass { modifiers, .. } = *class {
                     assert_eq!(modifiers.len(), 1, "Should have one modifier");
                     assert_eq!(
                         modifiers[0].kind,
-                        php_parser_rs::lexer::token::TokenKind::Readonly
+                        php_parser::lexer::token::TokenKind::Readonly
                     );
                 } else {
                     panic!("Expected AnonymousClass");

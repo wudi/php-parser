@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::Expr;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::Expr;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn test_bang_assignment() {
@@ -21,12 +21,12 @@ fn test_bang_assignment() {
     // Should be ExprStmt(UnaryOp(Not, Assign(a, 1)))
 
     match stmt {
-        php_parser_rs::ast::Stmt::Expression { expr, .. } => {
+        php_parser::ast::Stmt::Expression { expr, .. } => {
             match expr {
                 Expr::Unary {
                     op, expr: inner, ..
                 } => {
-                    assert!(matches!(op, php_parser_rs::ast::UnaryOp::Not));
+                    assert!(matches!(op, php_parser::ast::UnaryOp::Not));
                     match inner {
                         Expr::Assign {
                             var, expr: _right, ..

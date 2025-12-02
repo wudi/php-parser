@@ -15,7 +15,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-php-parser-rs = { git = "https://github.com/wudi/php-parser-rs" }
+php-parser = { git = "https://github.com/wudi/php-parser" }
 bumpalo = "3.19.0"
 ```
 
@@ -25,8 +25,8 @@ Here is a basic example of how to parse a PHP script:
 
 ```rust
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 fn main() {
     // The source code to parse (as bytes)
@@ -56,7 +56,7 @@ fn main() {
 test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
 
 ```bash
-➜  php-parser-rs git:(master) ✗ ./target/release/bench_file run-tests.php
+➜  php-parser git:(master) ✗ ./target/release/bench_file run-tests.php
 Benchmarking: run-tests.php
 File size: 139.63 KB
 Warming up...

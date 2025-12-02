@@ -1,8 +1,8 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{Arg, Expr, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::lexer::token::TokenKind;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{Arg, Expr, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::lexer::token::TokenKind;
+use php_parser::parser::Parser;
 
 #[test]
 fn parses_named_and_unpack_args() {

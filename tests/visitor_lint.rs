@@ -1,9 +1,9 @@
 use bumpalo::Bump;
-use php_parser_rs::Span;
-use php_parser_rs::ast::visitor::{Visitor, walk_expr, walk_stmt};
-use php_parser_rs::ast::{Expr, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::Span;
+use php_parser::ast::visitor::{Visitor, walk_expr, walk_stmt};
+use php_parser::ast::{Expr, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[derive(Default)]
 struct LintVisitor {
@@ -12,7 +12,7 @@ struct LintVisitor {
 }
 
 impl<'ast> Visitor<'ast> for LintVisitor {
-    fn visit_stmt(&mut self, stmt: php_parser_rs::ast::StmtId<'ast>) {
+    fn visit_stmt(&mut self, stmt: php_parser::ast::StmtId<'ast>) {
         if let Stmt::Goto { span, .. } = stmt {
             self.gotos.push(*span);
         }
@@ -20,7 +20,7 @@ impl<'ast> Visitor<'ast> for LintVisitor {
         walk_stmt(self, stmt);
     }
 
-    fn visit_expr(&mut self, expr: php_parser_rs::ast::ExprId<'ast>) {
+    fn visit_expr(&mut self, expr: php_parser::ast::ExprId<'ast>) {
         if let Expr::Eval { span, .. } = expr {
             self.evals.push(*span);
         }

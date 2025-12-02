@@ -1,5 +1,5 @@
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
+use php_parser::lexer::token::TokenKind;
 
 #[test]
 fn test_namespaces() {
@@ -81,7 +81,7 @@ fn test_property_access_keyword() {
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Arrow);
 
     // Manually set mode as parser would
-    lexer.set_mode(php_parser_rs::lexer::LexerMode::LookingForProperty);
+    lexer.set_mode(php_parser::lexer::LexerMode::LookingForProperty);
 
     assert_eq!(lexer.next().unwrap().kind, TokenKind::Identifier); // class
     assert_eq!(lexer.next().unwrap().kind, TokenKind::SemiColon);

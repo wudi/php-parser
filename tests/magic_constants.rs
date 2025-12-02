@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{Expr, MagicConstKind, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{Expr, MagicConstKind, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn test_magic_constants() {

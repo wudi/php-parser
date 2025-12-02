@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::ast::{ClassMember, Stmt};
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::parser::Parser;
+use php_parser::ast::{ClassMember, Stmt};
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 
 #[test]
 fn parses_class_const_group_with_modifiers() {

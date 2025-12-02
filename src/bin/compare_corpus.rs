@@ -1,7 +1,7 @@
 use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::lexer::token::TokenKind;
-use php_parser_rs::parser::Parser;
+use php_parser::lexer::Lexer;
+use php_parser::lexer::token::TokenKind;
+use php_parser::parser::Parser;
 use rayon::prelude::*;
 use serde_json::Value;
 use std::env;
@@ -127,7 +127,7 @@ fn main() {
 
 fn compare_tokens(
     p_tokens: &[Value],
-    r_tokens: &[php_parser_rs::lexer::token::Token],
+    r_tokens: &[php_parser::lexer::token::Token],
     code: &str,
 ) -> bool {
     let mut p_idx = 0;
