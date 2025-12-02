@@ -1,0 +1,71 @@
+---
+source: tests/heredoc_nowdoc_tests.rs
+assertion_line: 215
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                67,
+                                111,
+                                110,
+                                116,
+                                101,
+                                110,
+                                116,
+                                32,
+                                104,
+                                101,
+                                114,
+                                101,
+                                10,
+                            ],
+                            span: Span {
+                                start: 21,
+                                end: 34,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 14,
+                        end: 37,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 37,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 39,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 39,
+    },
+}

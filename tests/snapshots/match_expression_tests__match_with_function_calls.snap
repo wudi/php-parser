@@ -1,0 +1,156 @@
+---
+source: tests/match_expression_tests.rs
+assertion_line: 148
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                },
+                expr: Match {
+                    condition: Variable {
+                        name: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                        span: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                    },
+                    arms: [
+                        MatchArm {
+                            conditions: Some(
+                                [
+                                    Integer {
+                                        value: [
+                                            49,
+                                        ],
+                                        span: Span {
+                                            start: 36,
+                                            end: 37,
+                                        },
+                                    },
+                                ],
+                            ),
+                            body: Call {
+                                func: Variable {
+                                    name: Span {
+                                        start: 41,
+                                        end: 46,
+                                    },
+                                    span: Span {
+                                        start: 41,
+                                        end: 46,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 41,
+                                    end: 48,
+                                },
+                            },
+                            span: Span {
+                                start: 36,
+                                end: 48,
+                            },
+                        },
+                        MatchArm {
+                            conditions: Some(
+                                [
+                                    Integer {
+                                        value: [
+                                            50,
+                                        ],
+                                        span: Span {
+                                            start: 54,
+                                            end: 55,
+                                        },
+                                    },
+                                ],
+                            ),
+                            body: Call {
+                                func: Variable {
+                                    name: Span {
+                                        start: 59,
+                                        end: 64,
+                                    },
+                                    span: Span {
+                                        start: 59,
+                                        end: 64,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 59,
+                                    end: 66,
+                                },
+                            },
+                            span: Span {
+                                start: 54,
+                                end: 66,
+                            },
+                        },
+                        MatchArm {
+                            conditions: None,
+                            body: Call {
+                                func: Variable {
+                                    name: Span {
+                                        start: 83,
+                                        end: 92,
+                                    },
+                                    span: Span {
+                                        start: 83,
+                                        end: 92,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 83,
+                                    end: 94,
+                                },
+                            },
+                            span: Span {
+                                start: 72,
+                                end: 94,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 16,
+                        end: 98,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 98,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 99,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 99,
+    },
+}

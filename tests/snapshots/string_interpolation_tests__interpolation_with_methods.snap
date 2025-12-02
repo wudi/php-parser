@@ -1,0 +1,95 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 164
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                82,
+                                101,
+                                115,
+                                117,
+                                108,
+                                116,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 20,
+                            },
+                        },
+                        PropertyFetch {
+                            target: MethodCall {
+                                target: Variable {
+                                    name: Span {
+                                        start: 21,
+                                        end: 25,
+                                    },
+                                    span: Span {
+                                        start: 21,
+                                        end: 25,
+                                    },
+                                },
+                                method: Variable {
+                                    name: Span {
+                                        start: 27,
+                                        end: 33,
+                                    },
+                                    span: Span {
+                                        start: 27,
+                                        end: 33,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 21,
+                                    end: 35,
+                                },
+                            },
+                            property: Variable {
+                                name: Span {
+                                    start: 37,
+                                    end: 41,
+                                },
+                                span: Span {
+                                    start: 37,
+                                    end: 41,
+                                },
+                            },
+                            span: Span {
+                                start: 21,
+                                end: 41,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 43,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 45,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 45,
+    },
+}

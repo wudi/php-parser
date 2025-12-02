@@ -1,0 +1,56 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 250
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                String {
+                    value: [
+                        34,
+                        34,
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 13,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 19,
+            },
+        },
+        Echo {
+            exprs: [
+                String {
+                    value: [
+                        39,
+                        39,
+                    ],
+                    span: Span {
+                        start: 20,
+                        end: 22,
+                    },
+                },
+            ],
+            span: Span {
+                start: 15,
+                end: 24,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 24,
+    },
+}

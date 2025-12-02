@@ -1,0 +1,155 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 29
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 19,
+                            },
+                        },
+                        ArrayDimFetch {
+                            array: Variable {
+                                name: Span {
+                                    start: 19,
+                                    end: 25,
+                                },
+                                span: Span {
+                                    start: 19,
+                                    end: 25,
+                                },
+                            },
+                            dim: Some(
+                                Integer {
+                                    value: [
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 26,
+                                        end: 27,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 19,
+                                end: 29,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 29,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 35,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                75,
+                                101,
+                                121,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 37,
+                                end: 42,
+                            },
+                        },
+                        ArrayDimFetch {
+                            array: Variable {
+                                name: Span {
+                                    start: 42,
+                                    end: 48,
+                                },
+                                span: Span {
+                                    start: 42,
+                                    end: 48,
+                                },
+                            },
+                            dim: Some(
+                                Error {
+                                    span: Span {
+                                        start: 49,
+                                        end: 50,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 42,
+                                end: 50,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 49,
+                                end: 50,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 50,
+                                end: 53,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 53,
+                                end: 54,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 54,
+                                end: 55,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 36,
+                        end: 56,
+                    },
+                },
+            ],
+            span: Span {
+                start: 31,
+                end: 58,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 58,
+    },
+}

@@ -1,0 +1,114 @@
+---
+source: tests/heredoc_nowdoc_tests.rs
+assertion_line: 48
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                72,
+                                101,
+                                108,
+                                108,
+                                111,
+                                32,
+                            ],
+                            span: Span {
+                                start: 21,
+                                end: 27,
+                            },
+                        },
+                        Variable {
+                            name: Span {
+                                start: 27,
+                                end: 32,
+                            },
+                            span: Span {
+                                start: 27,
+                                end: 32,
+                            },
+                        },
+                        String {
+                            value: [
+                                10,
+                                89,
+                                111,
+                                117,
+                                114,
+                                32,
+                                97,
+                                103,
+                                101,
+                                32,
+                                105,
+                                115,
+                                32,
+                            ],
+                            span: Span {
+                                start: 32,
+                                end: 45,
+                            },
+                        },
+                        Variable {
+                            name: Span {
+                                start: 45,
+                                end: 49,
+                            },
+                            span: Span {
+                                start: 45,
+                                end: 49,
+                            },
+                        },
+                        String {
+                            value: [
+                                10,
+                            ],
+                            span: Span {
+                                start: 49,
+                                end: 50,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 14,
+                        end: 53,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 53,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 55,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 55,
+    },
+}

@@ -1,0 +1,89 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 112
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 19,
+                            },
+                        },
+                        ArrayDimFetch {
+                            array: Variable {
+                                name: Span {
+                                    start: 19,
+                                    end: 25,
+                                },
+                                span: Span {
+                                    start: 19,
+                                    end: 25,
+                                },
+                            },
+                            dim: Some(
+                                Integer {
+                                    value: [
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 26,
+                                        end: 27,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 19,
+                                end: 31,
+                            },
+                        },
+                        String {
+                            value: [
+                                91,
+                                49,
+                                93,
+                            ],
+                            span: Span {
+                                start: 28,
+                                end: 31,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 32,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 34,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 34,
+    },
+}

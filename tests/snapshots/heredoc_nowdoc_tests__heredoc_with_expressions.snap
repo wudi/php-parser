@@ -1,0 +1,143 @@
+---
+source: tests/heredoc_nowdoc_tests.rs
+assertion_line: 134
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 21,
+                                end: 28,
+                            },
+                        },
+                        PropertyFetch {
+                            target: Variable {
+                                name: Span {
+                                    start: 29,
+                                    end: 33,
+                                },
+                                span: Span {
+                                    start: 29,
+                                    end: 33,
+                                },
+                            },
+                            property: Variable {
+                                name: Span {
+                                    start: 35,
+                                    end: 39,
+                                },
+                                span: Span {
+                                    start: 35,
+                                    end: 39,
+                                },
+                            },
+                            span: Span {
+                                start: 29,
+                                end: 39,
+                            },
+                        },
+                        String {
+                            value: [
+                                10,
+                                65,
+                                114,
+                                114,
+                                97,
+                                121,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 40,
+                                end: 48,
+                            },
+                        },
+                        ArrayDimFetch {
+                            array: Variable {
+                                name: Span {
+                                    start: 49,
+                                    end: 53,
+                                },
+                                span: Span {
+                                    start: 49,
+                                    end: 53,
+                                },
+                            },
+                            dim: Some(
+                                Integer {
+                                    value: [
+                                        48,
+                                    ],
+                                    span: Span {
+                                        start: 54,
+                                        end: 55,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 49,
+                                end: 56,
+                            },
+                        },
+                        String {
+                            value: [
+                                10,
+                            ],
+                            span: Span {
+                                start: 57,
+                                end: 58,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 14,
+                        end: 61,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 61,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 63,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 63,
+    },
+}

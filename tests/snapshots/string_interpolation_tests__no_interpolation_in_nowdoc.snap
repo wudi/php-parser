@@ -1,0 +1,94 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 210
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                76,
+                                105,
+                                116,
+                                101,
+                                114,
+                                97,
+                                108,
+                                32,
+                                36,
+                                110,
+                                97,
+                                109,
+                                101,
+                                10,
+                                78,
+                                111,
+                                116,
+                                32,
+                                105,
+                                110,
+                                116,
+                                101,
+                                114,
+                                112,
+                                111,
+                                108,
+                                97,
+                                116,
+                                101,
+                                100,
+                                32,
+                                36,
+                                118,
+                                97,
+                                114,
+                                10,
+                            ],
+                            span: Span {
+                                start: 23,
+                                end: 59,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 14,
+                        end: 62,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 62,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 64,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 64,
+    },
+}

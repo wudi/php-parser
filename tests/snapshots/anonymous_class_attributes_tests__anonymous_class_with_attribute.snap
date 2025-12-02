@@ -1,0 +1,135 @@
+---
+source: tests/anonymous_class_attributes_tests.rs
+assertion_line: 32
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 10,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 10,
+                    },
+                },
+                expr: New {
+                    class: AnonymousClass {
+                        attributes: [
+                            AttributeGroup {
+                                attributes: [
+                                    Attribute {
+                                        name: Name {
+                                            parts: [
+                                                Token {
+                                                    kind: Identifier,
+                                                    span: Span {
+                                                        start: 19,
+                                                        end: 23,
+                                                    },
+                                                },
+                                            ],
+                                            span: Span {
+                                                start: 19,
+                                                end: 23,
+                                            },
+                                        },
+                                        args: [],
+                                        span: Span {
+                                            start: 19,
+                                            end: 24,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 17,
+                                    end: 30,
+                                },
+                            },
+                        ],
+                        args: [],
+                        extends: None,
+                        implements: [],
+                        members: [
+                            Property {
+                                attributes: [],
+                                modifiers: [
+                                    Token {
+                                        kind: Public,
+                                        span: Span {
+                                            start: 37,
+                                            end: 43,
+                                        },
+                                    },
+                                ],
+                                ty: None,
+                                entries: [
+                                    PropertyEntry {
+                                        name: Token {
+                                            kind: Variable,
+                                            span: Span {
+                                                start: 44,
+                                                end: 49,
+                                            },
+                                        },
+                                        default: Some(
+                                            Integer {
+                                                value: [
+                                                    49,
+                                                ],
+                                                span: Span {
+                                                    start: 52,
+                                                    end: 53,
+                                                },
+                                            },
+                                        ),
+                                        span: Span {
+                                            start: 44,
+                                            end: 53,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 37,
+                                    end: 56,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 17,
+                            end: 57,
+                        },
+                    },
+                    args: [],
+                    span: Span {
+                        start: 13,
+                        end: 57,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 57,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 58,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 58,
+    },
+}

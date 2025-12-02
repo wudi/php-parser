@@ -1,0 +1,146 @@
+---
+source: tests/match_expression_tests.rs
+assertion_line: 19
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                },
+                expr: Match {
+                    condition: Variable {
+                        name: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                        span: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                    },
+                    arms: [
+                        MatchArm {
+                            conditions: Some(
+                                [
+                                    Integer {
+                                        value: [
+                                            49,
+                                        ],
+                                        span: Span {
+                                            start: 36,
+                                            end: 37,
+                                        },
+                                    },
+                                ],
+                            ),
+                            body: String {
+                                value: [
+                                    39,
+                                    111,
+                                    110,
+                                    101,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 41,
+                                    end: 46,
+                                },
+                            },
+                            span: Span {
+                                start: 36,
+                                end: 46,
+                            },
+                        },
+                        MatchArm {
+                            conditions: Some(
+                                [
+                                    Integer {
+                                        value: [
+                                            50,
+                                        ],
+                                        span: Span {
+                                            start: 52,
+                                            end: 53,
+                                        },
+                                    },
+                                ],
+                            ),
+                            body: String {
+                                value: [
+                                    39,
+                                    116,
+                                    119,
+                                    111,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 57,
+                                    end: 62,
+                                },
+                            },
+                            span: Span {
+                                start: 52,
+                                end: 62,
+                            },
+                        },
+                        MatchArm {
+                            conditions: None,
+                            body: String {
+                                value: [
+                                    39,
+                                    111,
+                                    116,
+                                    104,
+                                    101,
+                                    114,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 79,
+                                    end: 86,
+                                },
+                            },
+                            span: Span {
+                                start: 68,
+                                end: 86,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 16,
+                        end: 90,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 90,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 91,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 91,
+    },
+}

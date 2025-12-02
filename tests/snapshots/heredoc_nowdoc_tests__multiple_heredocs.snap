@@ -1,0 +1,109 @@
+---
+source: tests/heredoc_nowdoc_tests.rs
+assertion_line: 114
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 8,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 8,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                70,
+                                105,
+                                114,
+                                115,
+                                116,
+                                10,
+                            ],
+                            span: Span {
+                                start: 19,
+                                end: 25,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 29,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 29,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 33,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 31,
+                        end: 33,
+                    },
+                    span: Span {
+                        start: 31,
+                        end: 33,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                83,
+                                101,
+                                99,
+                                111,
+                                110,
+                                100,
+                                10,
+                            ],
+                            span: Span {
+                                start: 44,
+                                end: 51,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 36,
+                        end: 55,
+                    },
+                },
+                span: Span {
+                    start: 31,
+                    end: 55,
+                },
+            },
+            span: Span {
+                start: 31,
+                end: 57,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 57,
+    },
+}

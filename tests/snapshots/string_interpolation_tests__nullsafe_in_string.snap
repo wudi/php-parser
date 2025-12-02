@@ -1,0 +1,76 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 56
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 19,
+                            },
+                        },
+                        Variable {
+                            name: Span {
+                                start: 19,
+                                end: 23,
+                            },
+                            span: Span {
+                                start: 19,
+                                end: 23,
+                            },
+                        },
+                        String {
+                            value: [
+                                63,
+                                45,
+                                62,
+                                112,
+                                114,
+                                111,
+                                112,
+                            ],
+                            span: Span {
+                                start: 23,
+                                end: 30,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 31,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 33,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 33,
+    },
+}

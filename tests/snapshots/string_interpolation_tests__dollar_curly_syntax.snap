@@ -1,0 +1,131 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 85
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 19,
+                            },
+                        },
+                        Variable {
+                            name: Span {
+                                start: 21,
+                                end: 24,
+                            },
+                            span: Span {
+                                start: 21,
+                                end: 24,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 26,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 32,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                69,
+                                120,
+                                112,
+                                114,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 34,
+                                end: 40,
+                            },
+                        },
+                        Variable {
+                            name: Span {
+                                start: 42,
+                                end: 46,
+                            },
+                            span: Span {
+                                start: 42,
+                                end: 46,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 46,
+                                end: 47,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 47,
+                                end: 48,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 48,
+                                end: 49,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 49,
+                                end: 50,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 50,
+                                end: 51,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 33,
+                        end: 52,
+                    },
+                },
+            ],
+            span: Span {
+                start: 28,
+                end: 54,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 54,
+    },
+}

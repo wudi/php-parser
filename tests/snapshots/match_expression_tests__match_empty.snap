@@ -1,0 +1,59 @@
+---
+source: tests/match_expression_tests.rs
+assertion_line: 99
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                },
+                expr: Match {
+                    condition: Variable {
+                        name: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                        span: Span {
+                            start: 22,
+                            end: 28,
+                        },
+                    },
+                    arms: [],
+                    span: Span {
+                        start: 16,
+                        end: 34,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 34,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 35,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 35,
+    },
+}

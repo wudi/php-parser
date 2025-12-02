@@ -1,0 +1,87 @@
+---
+source: tests/heredoc_nowdoc_tests.rs
+assertion_line: 64
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                72,
+                                101,
+                                108,
+                                108,
+                                111,
+                                32,
+                                36,
+                                110,
+                                97,
+                                109,
+                                101,
+                                10,
+                                89,
+                                111,
+                                117,
+                                114,
+                                32,
+                                97,
+                                103,
+                                101,
+                                32,
+                                105,
+                                115,
+                                32,
+                                36,
+                                97,
+                                103,
+                                101,
+                                10,
+                            ],
+                            span: Span {
+                                start: 23,
+                                end: 52,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 14,
+                        end: 55,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 55,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 57,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 57,
+    },
+}

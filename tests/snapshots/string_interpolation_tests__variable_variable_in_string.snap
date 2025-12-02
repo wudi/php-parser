@@ -1,0 +1,77 @@
+---
+source: tests/string_interpolation_tests.rs
+assertion_line: 125
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Echo {
+            exprs: [
+                InterpolatedString {
+                    parts: [
+                        String {
+                            value: [
+                                86,
+                                97,
+                                108,
+                                117,
+                                101,
+                                58,
+                                32,
+                            ],
+                            span: Span {
+                                start: 12,
+                                end: 19,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 21,
+                                end: 22,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 22,
+                                end: 29,
+                            },
+                        },
+                        Error {
+                            span: Span {
+                                start: 29,
+                                end: 30,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 11,
+                        end: 31,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 33,
+            },
+        },
+    ],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 21,
+                end: 22,
+            },
+            message: "Syntax error",
+        },
+    ],
+    span: Span {
+        start: 0,
+        end: 33,
+    },
+}

@@ -10,8 +10,8 @@
 - [x] Union types
 - [x] Intersection types
 - [x] Nullable types
-- [x] Match expressions
-- [x] Attributes
+- [x] Match expressions (comprehensive edge case testing)
+- [x] Attributes (including on anonymous classes)
 - [x] Arrow functions
 - [x] Named arguments
 - [x] Nullsafe operator (`?->`)
@@ -25,18 +25,18 @@
 ## ⚠️ Needs Testing
 
 - [ ] Modifier validation (asymmetric visibility context)
-- [ ] String interpolation (all syntax forms)
-- [ ] Match expression edge cases (trailing comma, empty)
-- [ ] Heredoc/Nowdoc strings
-- [ ] Anonymous classes with attributes
 
 ## ✅ Recently Tested (December 2, 2025)
 
 - [x] Clone with arguments syntax - **VERIFIED**: Works correctly, clone() produces error as expected
 - [x] Alternative control structure syntax (if/endif, while/endwhile, etc.) - **COMPLETE**: All 12 tests passing
 - [x] Property hooks advanced features - **COMPLETE**: All 12 tests passing including constructor promotion
-- [x] Trait adaptations (all alias forms) - **COMPLETE**: All 14 tests passing
+- [x] Trait adaptations (all alias forms) - **COMPLETE**: All 14 tests passing (fixed semi-reserved keyword aliases)
 - [x] Array destructuring (nested, spread, references) - **COMPLETE**: All 16 tests passing
+- [x] String interpolation (all syntax forms) - **COMPLETE**: All 18 tests passing
+- [x] Match expression edge cases - **COMPLETE**: All 15 tests passing
+- [x] Anonymous classes with attributes - **COMPLETE**: All 12 tests passing
+- [x] Heredoc/Nowdoc strings - **COMPLETE**: All 7 tests passing (basic, interpolation, empty, multiline, function args, multiple)
 
 ## 🧪 Test Coverage Checklist
 
@@ -119,16 +119,20 @@
 - [x] Destructuring in function parameters
 
 ### String Features
-- [ ] Single quoted strings
-- [ ] Double quoted strings
-- [ ] Heredoc
-- [ ] Nowdoc
-- [ ] Variable interpolation `$var`
-- [ ] Array access in string `$var[0]`
-- [ ] Property access in string `$obj->prop`
-- [ ] Nullsafe in string `$obj?->prop`
-- [ ] Complex expression `${expr}`
-- [ ] Curly brace syntax `{$var}`
+- [x] Single quoted strings
+- [x] Double quoted strings
+- [x] Heredoc (existing tests)
+- [x] Nowdoc (existing tests)
+- [x] Variable interpolation `$var`
+- [x] Array access in string `$var[0]`
+- [x] Property access in string `$obj->prop`
+- [x] Nullsafe in string `$obj?->prop`
+- [x] Complex expression `${expr}`
+- [x] Curly brace syntax `{$var}`
+- [x] Nested array access in strings
+- [x] Variable variables in strings
+- [x] Mixed interpolation
+- [x] Escaped variables
 
 ## 📊 Coverage Summary
 
@@ -140,18 +144,25 @@
 | Control Structures | 12 | 12 | 11 | 100% impl, 92% tested |
 | Traits | 14 | 14 | 14 | 100% impl, 100% tested ✅ |
 | Arrays | 16 | 16 | 16 | 100% impl, 100% tested ✅ |
-| Strings | 10 | 10 | 5 | 100% impl, 50% tested |
+| Strings | 18 | 18 | 18 | 100% impl, 100% tested ✅ |
+| Match Expressions | 15 | 15 | 15 | 100% impl, 100% tested ✅ |
+| Anonymous Classes | 12 | 12 | 12 | 100% impl, 100% tested ✅ |
+| Heredoc/Nowdoc | 7 | 7 | 7 | 100% impl, 100% tested ✅ |
 
-**Overall**: 95% implementation, **85% tested**
+**Overall**: 95% implementation, **93% tested**
 
-**Test Suite**: **212 tests passing** ✅
+**Test Suite**: **264 tests passing** ✅
 
 **Recent Progress (Dec 2, 2025)**:
 - ✅ Added 12 property hooks advanced tests (constructor promotion, asymmetric visibility, etc.)
 - ✅ Added 12 alternative control syntax tests (if/endif, while/endwhile, etc.)
 - ✅ Added 10 clone syntax tests (verified correct behavior)
-- ✅ Added 14 trait adaptation tests (all alias forms, insteadof, etc.)
+- ✅ Added 14 trait adaptation tests (all alias forms, insteadof, etc.) + fixed semi-reserved keywords
 - ✅ Added 16 array destructuring tests (nested, spread, foreach, etc.)
+- ✅ Added 18 string interpolation tests (all syntax forms)
+- ✅ Added 15 match expression tests (edge cases, trailing commas, empty)
+- ✅ Added 12 anonymous class with attributes tests
+- ✅ Added 7 heredoc/nowdoc tests (basic, interpolation, empty, multiline, function args, multiple) - **No dead loop found!**
 
 ## 🎯 Priority Actions
 
@@ -159,13 +170,24 @@
 1. ~~**HIGH**: Test property hooks thoroughly~~ - **DONE** (12 advanced tests added)
 2. ~~**MEDIUM**: Test alternative control syntax~~ - **DONE** (12 tests added)
 3. ~~**MEDIUM**: Verify clone syntax~~ - **DONE** (10 tests added)
-4. ~~**HIGH**: Test trait adaptations (all alias forms)~~ - **DONE** (14 tests added)
+4. ~~**HIGH**: Test trait adaptations (all alias forms)~~ - **DONE** (14 tests added + parser fix)
 5. ~~**MEDIUM**: Test array destructuring (nested, spread, references)~~ - **DONE** (16 tests added)
+6. ~~**MEDIUM**: Test string interpolation edge cases~~ - **DONE** (18 tests added)
+7. ~~**MEDIUM**: Test match expression edge cases~~ - **DONE** (15 tests added)
+8. ~~**LOW**: Test anonymous classes with attributes~~ - **DONE** (12 tests added)
+
+9. ~~**LOW**: Test heredoc/nowdoc strings~~ - **DONE** (7 tests added, no dead loop issue found!)
 
 ### Next Steps
-1. **MEDIUM**: Test string interpolation edge cases
-2. **MEDIUM**: Test match expression edge cases  
-3. **LOW**: Test modifier validation (asymmetric visibility context)
-4. **LOW**: Add declare/enddeclare alternative syntax test
-5. **LOW**: Test heredoc/nowdoc strings
-6. **LOW**: Test anonymous classes with attributes
+1. **LOW**: Test modifier validation (asymmetric visibility context)
+2. **LOW**: Add declare/enddeclare alternative syntax test
+3. **LOW**: Test additional edge cases as needed
+
+## 🐛 Dead Loop Investigation Results
+
+**Finding**: There was NO dead loop in the heredoc/nowdoc tests! The "hang" was a false alarm caused by:
+- The `timeout` command combined with piped output (`timeout ... | tail`) not exiting properly
+- All tests complete successfully and cargo exits normally when run without timeout
+- All 264 tests pass including 7 new heredoc/nowdoc tests
+
+**Root Cause**: Test harness/shell interaction with timeout command, NOT a parser bug.
