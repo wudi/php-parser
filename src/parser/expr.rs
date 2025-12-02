@@ -257,9 +257,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn is_assignable(&self, expr: ExprId<'ast>) -> bool {
         match expr {
-            Expr::Variable { .. }
-            | Expr::ArrayDimFetch { .. }
-            | Expr::PropertyFetch { .. } => true,
+            Expr::Variable { .. } | Expr::ArrayDimFetch { .. } | Expr::PropertyFetch { .. } => true,
             Expr::ClassConstFetch { constant, .. } => {
                 if let Expr::Variable { span, .. } = constant {
                     let slice = self.lexer.slice(*span);
@@ -397,7 +395,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                     let l_bp = 35; // Same as Assignment
                     if l_bp < min_bp {
-                        if !self.is_assignable(left) {
+                        if min_bp >= 80 || !self.is_assignable(left) {
                             break;
                         }
                     }
@@ -428,7 +426,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         // Special check for PHP grammar quirk:
                         // If LHS is assignable, assignment binds tighter than anything (effectively),
                         // because "expr = ..." is invalid, only "var = ..." is valid.
-                        if !self.is_assignable(left) {
+                        // However, this only applies to lower precedence operators (<= &&).
+                        // Higher precedence operators (like &, |, +, ++, $) do not allow assignment on RHS.
+                        if min_bp >= 80 || !self.is_assignable(left) {
                             break;
                         }
                     }
@@ -905,7 +905,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             | TokenKind::ClassC
             | TokenKind::TraitC
             | TokenKind::MethodC
-            | TokenKind::NsC => {
+            | TokenKind::NsC
+            | TokenKind::PropertyC => {
                 let span = token.span;
                 self.bump();
                 self.arena.alloc(Expr::MagicConst {
@@ -918,6 +919,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         TokenKind::TraitC => MagicConstKind::Trait,
                         TokenKind::MethodC => MagicConstKind::Method,
                         TokenKind::NsC => MagicConstKind::Namespace,
+                        TokenKind::PropertyC => MagicConstKind::Property,
                         _ => unreachable!(),
                     },
                     span,

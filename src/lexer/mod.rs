@@ -107,6 +107,7 @@ fn keyword_lookup(text: &[u8]) -> TokenKind {
         b"__file__" => TokenKind::File,
         b"__dir__" => TokenKind::Dir,
         b"__namespace__" => TokenKind::NsC,
+        b"__property__" => TokenKind::PropertyC,
         b"array" => TokenKind::Array,
         b"callable" => TokenKind::TypeCallable,
         b"iterable" => TokenKind::TypeIterable,

@@ -850,4 +850,5 @@ pub enum MagicConstKind {
     Trait,
     Method,
     Namespace,
+    Property,
 }

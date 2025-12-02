@@ -107,6 +107,7 @@ pub enum TokenKind {
     MethodC,
     FuncC,
     NsC,
+    PropertyC,
 
     // Types (for type hints)
     TypeBool,
@@ -325,6 +326,7 @@ impl TokenKind {
                 | TokenKind::File
                 | TokenKind::Dir
                 | TokenKind::ClassC
+                | TokenKind::PropertyC
                 | TokenKind::TraitC
                 | TokenKind::MethodC
                 | TokenKind::FuncC

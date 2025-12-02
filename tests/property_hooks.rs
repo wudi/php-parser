@@ -4,41 +4,81 @@ use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;
 
 #[test]
-fn parses_property_hooks_get_set() {
-    let code = "<?php class C { public int $x { get => $this->x; set($v) { $this->x = $v; } } }";
-    let arena = Bump::new();
-    let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
+fn test_property_hooks() {
+    let source = b"<?php
+        class Foo {
+            public $bar {
+                get { return $this->bar; }
+                set { $this->bar = $value; }
+            }
+            public $baz {
+                get => $this->baz;
+                set => $value;
+            }
+        }
+    ";
+
+    let bump = Bump::new();
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer, &bump);
     let program = parser.parse_program();
 
-    let class_stmt = program
+    assert!(program.errors.is_empty());
+
+    let statements: Vec<&Stmt> = program
         .statements
         .iter()
-        .find(|s| matches!(**s, Stmt::Class { .. }))
-        .expect("expected class");
+        .map(|s| *s)
+        .filter(|s| !matches!(s, Stmt::Nop { .. }))
+        .collect();
 
-    let members = match class_stmt {
-        Stmt::Class { members, .. } => *members,
-        _ => unreachable!(),
-    };
+    if let Stmt::Class { members, .. } = statements[0] {
+        assert_eq!(members.len(), 2);
 
-    let hooks = members
-        .iter()
-        .find_map(|m| match m {
-            ClassMember::PropertyHook { hooks, .. } => Some(*hooks),
-            _ => None,
-        })
-        .expect("expected hooked property");
+        // Check first property (block hooks)
+        if let ClassMember::PropertyHook { name, hooks, .. } = &members[0] {
+            assert_eq!(name.text(source), b"$bar");
+            assert_eq!(hooks.len(), 2);
 
-    assert_eq!(hooks.len(), 2);
-    matches!(hooks[0].body, PropertyHookBody::Expr(_));
-    matches!(hooks[1].body, PropertyHookBody::Statements(_));
-}
+            assert_eq!(hooks[0].name.text(source), b"get");
+            if let PropertyHookBody::Statements(stmts) = hooks[0].body {
+                assert_eq!(stmts.len(), 1);
+            } else {
+                panic!("Expected Statements body for get");
+            }
 
-#[test]
-fn parses_property_hooks_with_default() {
-    let code = "<?php class C { public int $x = 1 { get { return $this->x; } } }";
-    let arena = Bump::new();
-    let mut parser = Parser::new(Lexer::new(code.as_bytes()), &arena);
-    let program = parser.parse_program();
-    assert!(program.errors.is_empty());
+            assert_eq!(hooks[1].name.text(source), b"set");
+            if let PropertyHookBody::Statements(stmts) = hooks[1].body {
+                assert_eq!(stmts.len(), 1);
+            } else {
+                panic!("Expected Statements body for set");
+            }
+        } else {
+            panic!("Expected PropertyHook member");
+        }
+
+        // Check second property (arrow hooks)
+        if let ClassMember::PropertyHook { name, hooks, .. } = &members[1] {
+            assert_eq!(name.text(source), b"$baz");
+            assert_eq!(hooks.len(), 2);
+
+            assert_eq!(hooks[0].name.text(source), b"get");
+            if let PropertyHookBody::Expr(_) = hooks[0].body {
+                // OK
+            } else {
+                panic!("Expected Expr body for get");
+            }
+
+            assert_eq!(hooks[1].name.text(source), b"set");
+            if let PropertyHookBody::Expr(_) = hooks[1].body {
+                // OK
+            } else {
+                panic!("Expected Expr body for set");
+            }
+        } else {
+            panic!("Expected PropertyHook member");
+        }
+    } else {
+        panic!("Expected Class statement");
+    }
 }
