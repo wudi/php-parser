@@ -1,0 +1,148 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 151
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 15,
+                    end: 25,
+                },
+            },
+            params: [],
+            return_type: Some(
+                Simple(
+                    Token {
+                        kind: TypeTrue,
+                        span: Span {
+                            start: 29,
+                            end: 33,
+                        },
+                    },
+                ),
+            ),
+            body: [
+                Return {
+                    expr: Some(
+                        Boolean {
+                            value: true,
+                            span: Span {
+                                start: 47,
+                                end: 51,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 40,
+                        end: 54,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 64,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 65,
+                    end: 76,
+                },
+            },
+            params: [],
+            return_type: Some(
+                Simple(
+                    Token {
+                        kind: TypeFalse,
+                        span: Span {
+                            start: 80,
+                            end: 85,
+                        },
+                    },
+                ),
+            ),
+            body: [
+                Return {
+                    expr: Some(
+                        Boolean {
+                            value: false,
+                            span: Span {
+                                start: 99,
+                                end: 104,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 92,
+                        end: 107,
+                    },
+                },
+            ],
+            span: Span {
+                start: 56,
+                end: 117,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 118,
+                    end: 128,
+                },
+            },
+            params: [],
+            return_type: Some(
+                Simple(
+                    Token {
+                        kind: TypeNull,
+                        span: Span {
+                            start: 132,
+                            end: 136,
+                        },
+                    },
+                ),
+            ),
+            body: [
+                Return {
+                    expr: Some(
+                        Null {
+                            span: Span {
+                                start: 150,
+                                end: 154,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 143,
+                        end: 157,
+                    },
+                },
+            ],
+            span: Span {
+                start: 109,
+                end: 158,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 158,
+    },
+}

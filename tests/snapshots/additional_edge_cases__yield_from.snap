@@ -1,0 +1,192 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 214
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 15,
+                    end: 18,
+                },
+            },
+            params: [],
+            return_type: None,
+            body: [
+                Expression {
+                    expr: Yield {
+                        key: None,
+                        value: Some(
+                            Array {
+                                items: [
+                                    ArrayItem {
+                                        key: None,
+                                        value: Integer {
+                                            value: [
+                                                49,
+                                            ],
+                                            span: Span {
+                                                start: 39,
+                                                end: 40,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 39,
+                                            end: 40,
+                                        },
+                                    },
+                                    ArrayItem {
+                                        key: None,
+                                        value: Integer {
+                                            value: [
+                                                50,
+                                            ],
+                                            span: Span {
+                                                start: 42,
+                                                end: 43,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 42,
+                                            end: 43,
+                                        },
+                                    },
+                                    ArrayItem {
+                                        key: None,
+                                        value: Integer {
+                                            value: [
+                                                51,
+                                            ],
+                                            span: Span {
+                                                start: 45,
+                                                end: 46,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 45,
+                                            end: 46,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 38,
+                                    end: 48,
+                                },
+                            },
+                        ),
+                        from: true,
+                        span: Span {
+                            start: 27,
+                            end: 48,
+                        },
+                    },
+                    span: Span {
+                        start: 27,
+                        end: 63,
+                    },
+                },
+                Expression {
+                    expr: Yield {
+                        key: None,
+                        value: Some(
+                            Call {
+                                func: Variable {
+                                    name: Span {
+                                        start: 64,
+                                        end: 73,
+                                    },
+                                    span: Span {
+                                        start: 64,
+                                        end: 73,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 64,
+                                    end: 75,
+                                },
+                            },
+                        ),
+                        from: true,
+                        span: Span {
+                            start: 53,
+                            end: 75,
+                        },
+                    },
+                    span: Span {
+                        start: 53,
+                        end: 91,
+                    },
+                },
+                Expression {
+                    expr: Yield {
+                        key: None,
+                        value: Some(
+                            MethodCall {
+                                target: Variable {
+                                    name: Span {
+                                        start: 92,
+                                        end: 96,
+                                    },
+                                    span: Span {
+                                        start: 92,
+                                        end: 96,
+                                    },
+                                },
+                                method: Variable {
+                                    name: Span {
+                                        start: 98,
+                                        end: 104,
+                                    },
+                                    span: Span {
+                                        start: 98,
+                                        end: 104,
+                                    },
+                                },
+                                args: [],
+                                span: Span {
+                                    start: 92,
+                                    end: 106,
+                                },
+                            },
+                        ),
+                        from: true,
+                        span: Span {
+                            start: 81,
+                            end: 106,
+                        },
+                    },
+                    span: Span {
+                        start: 81,
+                        end: 109,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 110,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 110,
+    },
+}

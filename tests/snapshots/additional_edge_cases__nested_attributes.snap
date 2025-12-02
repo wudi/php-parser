@@ -1,0 +1,472 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 196
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [
+                AttributeGroup {
+                    attributes: [
+                        Attribute {
+                            name: Name {
+                                parts: [
+                                    Token {
+                                        kind: Identifier,
+                                        span: Span {
+                                            start: 8,
+                                            end: 17,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 8,
+                                    end: 17,
+                                },
+                            },
+                            args: [
+                                Arg {
+                                    name: None,
+                                    value: ClassConstFetch {
+                                        class: Variable {
+                                            name: Span {
+                                                start: 18,
+                                                end: 27,
+                                            },
+                                            span: Span {
+                                                start: 18,
+                                                end: 27,
+                                            },
+                                        },
+                                        constant: Variable {
+                                            name: Span {
+                                                start: 29,
+                                                end: 41,
+                                            },
+                                            span: Span {
+                                                start: 29,
+                                                end: 41,
+                                            },
+                                        },
+                                        span: Span {
+                                            start: 18,
+                                            end: 41,
+                                        },
+                                    },
+                                    unpack: false,
+                                    span: Span {
+                                        start: 18,
+                                        end: 41,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 8,
+                                end: 43,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 6,
+                        end: 46,
+                    },
+                },
+                AttributeGroup {
+                    attributes: [
+                        Attribute {
+                            name: Name {
+                                parts: [
+                                    Token {
+                                        kind: Identifier,
+                                        span: Span {
+                                            start: 46,
+                                            end: 53,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 46,
+                                    end: 53,
+                                },
+                            },
+                            args: [
+                                Arg {
+                                    name: None,
+                                    value: String {
+                                        value: [
+                                            34,
+                                            118,
+                                            97,
+                                            108,
+                                            117,
+                                            101,
+                                            34,
+                                        ],
+                                        span: Span {
+                                            start: 54,
+                                            end: 61,
+                                        },
+                                    },
+                                    unpack: false,
+                                    span: Span {
+                                        start: 54,
+                                        end: 61,
+                                    },
+                                },
+                                Arg {
+                                    name: Some(
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 63,
+                                                end: 66,
+                                            },
+                                        },
+                                    ),
+                                    value: Integer {
+                                        value: [
+                                            49,
+                                            50,
+                                            51,
+                                        ],
+                                        span: Span {
+                                            start: 68,
+                                            end: 71,
+                                        },
+                                    },
+                                    unpack: false,
+                                    span: Span {
+                                        start: 63,
+                                        end: 71,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 46,
+                                end: 73,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 44,
+                        end: 79,
+                    },
+                },
+            ],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 80,
+                    end: 87,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                Property {
+                    attributes: [
+                        AttributeGroup {
+                            attributes: [
+                                Attribute {
+                                    name: Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 96,
+                                                    end: 101,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 96,
+                                            end: 101,
+                                        },
+                                    },
+                                    args: [],
+                                    span: Span {
+                                        start: 96,
+                                        end: 102,
+                                    },
+                                },
+                                Attribute {
+                                    name: Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 103,
+                                                    end: 111,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 103,
+                                            end: 111,
+                                        },
+                                    },
+                                    args: [
+                                        Arg {
+                                            name: None,
+                                            value: String {
+                                                value: [
+                                                    34,
+                                                    101,
+                                                    109,
+                                                    97,
+                                                    105,
+                                                    108,
+                                                    34,
+                                                ],
+                                                span: Span {
+                                                    start: 112,
+                                                    end: 119,
+                                                },
+                                            },
+                                            unpack: false,
+                                            span: Span {
+                                                start: 112,
+                                                end: 119,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 103,
+                                        end: 121,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 94,
+                                end: 132,
+                            },
+                        },
+                    ],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 126,
+                                end: 132,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 133,
+                                    end: 139,
+                                },
+                            },
+                        ),
+                    ),
+                    entries: [
+                        PropertyEntry {
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 140,
+                                    end: 146,
+                                },
+                            },
+                            default: None,
+                            span: Span {
+                                start: 140,
+                                end: 146,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 94,
+                        end: 159,
+                    },
+                },
+                Method {
+                    attributes: [
+                        AttributeGroup {
+                            attributes: [
+                                Attribute {
+                                    name: Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 159,
+                                                    end: 164,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 159,
+                                            end: 164,
+                                        },
+                                    },
+                                    args: [
+                                        Arg {
+                                            name: None,
+                                            value: String {
+                                                value: [
+                                                    34,
+                                                    47,
+                                                    97,
+                                                    112,
+                                                    105,
+                                                    47,
+                                                    117,
+                                                    115,
+                                                    101,
+                                                    114,
+                                                    115,
+                                                    34,
+                                                ],
+                                                span: Span {
+                                                    start: 165,
+                                                    end: 177,
+                                                },
+                                            },
+                                            unpack: false,
+                                            span: Span {
+                                                start: 165,
+                                                end: 177,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 159,
+                                        end: 179,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 157,
+                                end: 186,
+                            },
+                        },
+                        AttributeGroup {
+                            attributes: [
+                                Attribute {
+                                    name: Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 186,
+                                                    end: 190,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 186,
+                                            end: 190,
+                                        },
+                                    },
+                                    args: [
+                                        Arg {
+                                            name: Some(
+                                                Token {
+                                                    kind: Identifier,
+                                                    span: Span {
+                                                        start: 191,
+                                                        end: 199,
+                                                    },
+                                                },
+                                            ),
+                                            value: Boolean {
+                                                value: true,
+                                                span: Span {
+                                                    start: 201,
+                                                    end: 205,
+                                                },
+                                            },
+                                            unpack: false,
+                                            span: Span {
+                                                start: 191,
+                                                end: 205,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 186,
+                                        end: 207,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 184,
+                                end: 218,
+                            },
+                        },
+                    ],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 212,
+                                end: 218,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 228,
+                            end: 233,
+                        },
+                    },
+                    params: [],
+                    return_type: Some(
+                        Simple(
+                            Token {
+                                kind: Array,
+                                span: Span {
+                                    start: 237,
+                                    end: 242,
+                                },
+                            },
+                        ),
+                    ),
+                    body: [
+                        Return {
+                            expr: Some(
+                                Array {
+                                    items: [],
+                                    span: Span {
+                                        start: 260,
+                                        end: 263,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 253,
+                                end: 269,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 157,
+                        end: 269,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 272,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 272,
+    },
+}

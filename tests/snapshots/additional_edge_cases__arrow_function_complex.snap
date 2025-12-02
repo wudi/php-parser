@@ -1,0 +1,556 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 232
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 9,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 9,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: false,
+                    by_ref: false,
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 19,
+                                    end: 21,
+                                },
+                            },
+                            ty: Some(
+                                Simple(
+                                    Token {
+                                        kind: TypeInt,
+                                        span: Span {
+                                            start: 15,
+                                            end: 18,
+                                        },
+                                    },
+                                ),
+                            ),
+                            default: None,
+                            by_ref: false,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 15,
+                                end: 21,
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Simple(
+                            Token {
+                                kind: TypeInt,
+                                span: Span {
+                                    start: 24,
+                                    end: 27,
+                                },
+                            },
+                        ),
+                    ),
+                    expr: Binary {
+                        left: Variable {
+                            name: Span {
+                                start: 31,
+                                end: 33,
+                            },
+                            span: Span {
+                                start: 31,
+                                end: 33,
+                            },
+                        },
+                        op: Mul,
+                        right: Integer {
+                            value: [
+                                50,
+                            ],
+                            span: Span {
+                                start: 36,
+                                end: 37,
+                            },
+                        },
+                        span: Span {
+                            start: 31,
+                            end: 37,
+                        },
+                    },
+                    span: Span {
+                        start: 12,
+                        end: 37,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 37,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 46,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 39,
+                        end: 46,
+                    },
+                    span: Span {
+                        start: 39,
+                        end: 46,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: false,
+                    by_ref: false,
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 52,
+                                    end: 54,
+                                },
+                            },
+                            ty: None,
+                            default: None,
+                            by_ref: false,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 52,
+                                end: 54,
+                            },
+                        },
+                    ],
+                    return_type: None,
+                    expr: ArrowFunction {
+                        attributes: [],
+                        is_static: false,
+                        by_ref: false,
+                        params: [
+                            Param {
+                                attributes: [],
+                                modifiers: [],
+                                name: Token {
+                                    kind: Variable,
+                                    span: Span {
+                                        start: 62,
+                                        end: 64,
+                                    },
+                                },
+                                ty: None,
+                                default: None,
+                                by_ref: false,
+                                variadic: false,
+                                hooks: None,
+                                span: Span {
+                                    start: 62,
+                                    end: 64,
+                                },
+                            },
+                        ],
+                        return_type: None,
+                        expr: Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 69,
+                                    end: 71,
+                                },
+                                span: Span {
+                                    start: 69,
+                                    end: 71,
+                                },
+                            },
+                            op: Plus,
+                            right: Variable {
+                                name: Span {
+                                    start: 74,
+                                    end: 76,
+                                },
+                                span: Span {
+                                    start: 74,
+                                    end: 76,
+                                },
+                            },
+                            span: Span {
+                                start: 69,
+                                end: 76,
+                            },
+                        },
+                        span: Span {
+                            start: 59,
+                            end: 76,
+                        },
+                    },
+                    span: Span {
+                        start: 49,
+                        end: 76,
+                    },
+                },
+                span: Span {
+                    start: 39,
+                    end: 76,
+                },
+            },
+            span: Span {
+                start: 39,
+                end: 87,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 78,
+                        end: 87,
+                    },
+                    span: Span {
+                        start: 78,
+                        end: 87,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: false,
+                    by_ref: false,
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 94,
+                                    end: 96,
+                                },
+                            },
+                            ty: None,
+                            default: None,
+                            by_ref: true,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 93,
+                                end: 96,
+                            },
+                        },
+                    ],
+                    return_type: None,
+                    expr: PostInc {
+                        var: Variable {
+                            name: Span {
+                                start: 101,
+                                end: 103,
+                            },
+                            span: Span {
+                                start: 101,
+                                end: 103,
+                            },
+                        },
+                        span: Span {
+                            start: 101,
+                            end: 105,
+                        },
+                    },
+                    span: Span {
+                        start: 90,
+                        end: 105,
+                    },
+                },
+                span: Span {
+                    start: 78,
+                    end: 105,
+                },
+            },
+            span: Span {
+                start: 78,
+                end: 116,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 107,
+                        end: 116,
+                    },
+                    span: Span {
+                        start: 107,
+                        end: 116,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: false,
+                    by_ref: false,
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 125,
+                                    end: 130,
+                                },
+                            },
+                            ty: None,
+                            default: None,
+                            by_ref: false,
+                            variadic: true,
+                            hooks: None,
+                            span: Span {
+                                start: 122,
+                                end: 130,
+                            },
+                        },
+                    ],
+                    return_type: None,
+                    expr: Call {
+                        func: Variable {
+                            name: Span {
+                                start: 135,
+                                end: 144,
+                            },
+                            span: Span {
+                                start: 135,
+                                end: 144,
+                            },
+                        },
+                        args: [
+                            Arg {
+                                name: None,
+                                value: Variable {
+                                    name: Span {
+                                        start: 145,
+                                        end: 150,
+                                    },
+                                    span: Span {
+                                        start: 145,
+                                        end: 150,
+                                    },
+                                },
+                                unpack: false,
+                                span: Span {
+                                    start: 145,
+                                    end: 150,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 135,
+                            end: 151,
+                        },
+                    },
+                    span: Span {
+                        start: 119,
+                        end: 151,
+                    },
+                },
+                span: Span {
+                    start: 107,
+                    end: 151,
+                },
+            },
+            span: Span {
+                start: 107,
+                end: 159,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 153,
+                        end: 159,
+                    },
+                    span: Span {
+                        start: 153,
+                        end: 159,
+                    },
+                },
+                expr: ArrowFunction {
+                    attributes: [],
+                    is_static: false,
+                    by_ref: false,
+                    params: [
+                        Param {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Variable,
+                                span: Span {
+                                    start: 176,
+                                    end: 178,
+                                },
+                            },
+                            ty: Some(
+                                Union(
+                                    [
+                                        Simple(
+                                            Token {
+                                                kind: TypeInt,
+                                                span: Span {
+                                                    start: 165,
+                                                    end: 168,
+                                                },
+                                            },
+                                        ),
+                                        Simple(
+                                            Token {
+                                                kind: TypeString,
+                                                span: Span {
+                                                    start: 169,
+                                                    end: 175,
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                ),
+                            ),
+                            default: None,
+                            by_ref: false,
+                            variadic: false,
+                            hooks: None,
+                            span: Span {
+                                start: 165,
+                                end: 178,
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Union(
+                            [
+                                Simple(
+                                    Token {
+                                        kind: TypeBool,
+                                        span: Span {
+                                            start: 181,
+                                            end: 185,
+                                        },
+                                    },
+                                ),
+                                Simple(
+                                    Token {
+                                        kind: TypeInt,
+                                        span: Span {
+                                            start: 186,
+                                            end: 189,
+                                        },
+                                    },
+                                ),
+                            ],
+                        ),
+                    ),
+                    expr: Ternary {
+                        condition: Call {
+                            func: Variable {
+                                name: Span {
+                                    start: 193,
+                                    end: 199,
+                                },
+                                span: Span {
+                                    start: 193,
+                                    end: 199,
+                                },
+                            },
+                            args: [
+                                Arg {
+                                    name: None,
+                                    value: Variable {
+                                        name: Span {
+                                            start: 200,
+                                            end: 202,
+                                        },
+                                        span: Span {
+                                            start: 200,
+                                            end: 202,
+                                        },
+                                    },
+                                    unpack: false,
+                                    span: Span {
+                                        start: 200,
+                                        end: 202,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 193,
+                                end: 203,
+                            },
+                        },
+                        if_true: Some(
+                            Variable {
+                                name: Span {
+                                    start: 206,
+                                    end: 208,
+                                },
+                                span: Span {
+                                    start: 206,
+                                    end: 208,
+                                },
+                            },
+                        ),
+                        if_false: Integer {
+                            value: [
+                                48,
+                            ],
+                            span: Span {
+                                start: 211,
+                                end: 212,
+                            },
+                        },
+                        span: Span {
+                            start: 193,
+                            end: 212,
+                        },
+                    },
+                    span: Span {
+                        start: 162,
+                        end: 212,
+                    },
+                },
+                span: Span {
+                    start: 153,
+                    end: 212,
+                },
+            },
+            span: Span {
+                start: 153,
+                end: 214,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 214,
+    },
+}

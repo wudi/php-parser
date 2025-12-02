@@ -1,0 +1,197 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 51
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 15,
+                    end: 19,
+                },
+            },
+            params: [
+                Param {
+                    attributes: [],
+                    modifiers: [],
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 28,
+                            end: 34,
+                        },
+                    },
+                    ty: Some(
+                        Union(
+                            [
+                                Intersection(
+                                    [
+                                        Name(
+                                            Name {
+                                                parts: [
+                                                    Token {
+                                                        kind: Identifier,
+                                                        span: Span {
+                                                            start: 21,
+                                                            end: 22,
+                                                        },
+                                                    },
+                                                ],
+                                                span: Span {
+                                                    start: 21,
+                                                    end: 22,
+                                                },
+                                            },
+                                        ),
+                                        Name(
+                                            Name {
+                                                parts: [
+                                                    Token {
+                                                        kind: Identifier,
+                                                        span: Span {
+                                                            start: 23,
+                                                            end: 24,
+                                                        },
+                                                    },
+                                                ],
+                                                span: Span {
+                                                    start: 23,
+                                                    end: 24,
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                ),
+                                Name(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 26,
+                                                    end: 27,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 26,
+                                            end: 27,
+                                        },
+                                    },
+                                ),
+                            ],
+                        ),
+                    ),
+                    default: None,
+                    by_ref: false,
+                    variadic: false,
+                    hooks: None,
+                    span: Span {
+                        start: 20,
+                        end: 34,
+                    },
+                },
+            ],
+            return_type: Some(
+                Union(
+                    [
+                        Intersection(
+                            [
+                                Name(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 38,
+                                                    end: 39,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 38,
+                                            end: 39,
+                                        },
+                                    },
+                                ),
+                                Name(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 40,
+                                                    end: 41,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 40,
+                                            end: 41,
+                                        },
+                                    },
+                                ),
+                            ],
+                        ),
+                        Name(
+                            Name {
+                                parts: [
+                                    Token {
+                                        kind: Identifier,
+                                        span: Span {
+                                            start: 43,
+                                            end: 44,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 43,
+                                    end: 44,
+                                },
+                            },
+                        ),
+                    ],
+                ),
+            ),
+            body: [
+                Return {
+                    expr: Some(
+                        Variable {
+                            name: Span {
+                                start: 58,
+                                end: 64,
+                            },
+                            span: Span {
+                                start: 58,
+                                end: 64,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 51,
+                        end: 67,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 68,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 68,
+    },
+}

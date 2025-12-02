@@ -1,0 +1,281 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 91
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Enum {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 11,
+                    end: 17,
+                },
+            },
+            backed_type: Some(
+                Simple(
+                    Token {
+                        kind: TypeString,
+                        span: Span {
+                            start: 19,
+                            end: 25,
+                        },
+                    },
+                ),
+            ),
+            implements: [],
+            members: [
+                Case {
+                    attributes: [],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 37,
+                            end: 44,
+                        },
+                    },
+                    value: Some(
+                        String {
+                            value: [
+                                39,
+                                112,
+                                101,
+                                110,
+                                100,
+                                105,
+                                110,
+                                103,
+                                39,
+                            ],
+                            span: Span {
+                                start: 47,
+                                end: 56,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 32,
+                        end: 66,
+                    },
+                },
+                Case {
+                    attributes: [],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 67,
+                            end: 73,
+                        },
+                    },
+                    value: Some(
+                        String {
+                            value: [
+                                39,
+                                97,
+                                99,
+                                116,
+                                105,
+                                118,
+                                101,
+                                39,
+                            ],
+                            span: Span {
+                                start: 76,
+                                end: 84,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 62,
+                        end: 101,
+                    },
+                },
+                Method {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 95,
+                                end: 101,
+                            },
+                        },
+                    ],
+                    name: Token {
+                        kind: Identifier,
+                        span: Span {
+                            start: 111,
+                            end: 116,
+                        },
+                    },
+                    params: [],
+                    return_type: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 120,
+                                    end: 126,
+                                },
+                            },
+                        ),
+                    ),
+                    body: [
+                        Return {
+                            expr: Some(
+                                Match {
+                                    condition: Variable {
+                                        name: Span {
+                                            start: 150,
+                                            end: 155,
+                                        },
+                                        span: Span {
+                                            start: 150,
+                                            end: 155,
+                                        },
+                                    },
+                                    arms: [
+                                        MatchArm {
+                                            conditions: Some(
+                                                [
+                                                    ClassConstFetch {
+                                                        class: Variable {
+                                                            name: Span {
+                                                                start: 171,
+                                                                end: 175,
+                                                            },
+                                                            span: Span {
+                                                                start: 171,
+                                                                end: 175,
+                                                            },
+                                                        },
+                                                        constant: Variable {
+                                                            name: Span {
+                                                                start: 177,
+                                                                end: 184,
+                                                            },
+                                                            span: Span {
+                                                                start: 177,
+                                                                end: 184,
+                                                            },
+                                                        },
+                                                        span: Span {
+                                                            start: 171,
+                                                            end: 184,
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            body: String {
+                                                value: [
+                                                    39,
+                                                    80,
+                                                    101,
+                                                    110,
+                                                    100,
+                                                    105,
+                                                    110,
+                                                    103,
+                                                    39,
+                                                ],
+                                                span: Span {
+                                                    start: 188,
+                                                    end: 197,
+                                                },
+                                            },
+                                            span: Span {
+                                                start: 171,
+                                                end: 197,
+                                            },
+                                        },
+                                        MatchArm {
+                                            conditions: Some(
+                                                [
+                                                    ClassConstFetch {
+                                                        class: Variable {
+                                                            name: Span {
+                                                                start: 211,
+                                                                end: 215,
+                                                            },
+                                                            span: Span {
+                                                                start: 211,
+                                                                end: 215,
+                                                            },
+                                                        },
+                                                        constant: Variable {
+                                                            name: Span {
+                                                                start: 217,
+                                                                end: 223,
+                                                            },
+                                                            span: Span {
+                                                                start: 217,
+                                                                end: 223,
+                                                            },
+                                                        },
+                                                        span: Span {
+                                                            start: 211,
+                                                            end: 223,
+                                                        },
+                                                    },
+                                                ],
+                                            ),
+                                            body: String {
+                                                value: [
+                                                    39,
+                                                    65,
+                                                    99,
+                                                    116,
+                                                    105,
+                                                    118,
+                                                    101,
+                                                    39,
+                                                ],
+                                                span: Span {
+                                                    start: 227,
+                                                    end: 235,
+                                                },
+                                            },
+                                            span: Span {
+                                                start: 211,
+                                                end: 235,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 144,
+                                        end: 247,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 137,
+                                end: 253,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 95,
+                        end: 253,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 256,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 256,
+    },
+}

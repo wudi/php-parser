@@ -1,0 +1,122 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 127
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Trait {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 22,
+                },
+            },
+            members: [
+                Const {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 29,
+                                end: 35,
+                            },
+                        },
+                    ],
+                    ty: None,
+                    consts: [
+                        ClassConst {
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 42,
+                                    end: 49,
+                                },
+                            },
+                            value: String {
+                                value: [
+                                    39,
+                                    49,
+                                    46,
+                                    48,
+                                    46,
+                                    48,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 52,
+                                    end: 59,
+                                },
+                            },
+                            span: Span {
+                                start: 42,
+                                end: 59,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 29,
+                        end: 72,
+                    },
+                },
+                Const {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Private,
+                            span: Span {
+                                start: 65,
+                                end: 72,
+                            },
+                        },
+                    ],
+                    ty: None,
+                    consts: [
+                        ClassConst {
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 79,
+                                    end: 84,
+                                },
+                            },
+                            value: Boolean {
+                                value: true,
+                                span: Span {
+                                    start: 87,
+                                    end: 91,
+                                },
+                            },
+                            span: Span {
+                                start: 79,
+                                end: 91,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 65,
+                        end: 94,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 95,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 95,
+    },
+}

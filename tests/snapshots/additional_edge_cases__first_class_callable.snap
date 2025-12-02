@@ -1,0 +1,202 @@
+---
+source: tests/additional_edge_cases.rs
+assertion_line: 18
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 9,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 9,
+                    },
+                },
+                expr: Call {
+                    func: Variable {
+                        name: Span {
+                            start: 12,
+                            end: 18,
+                        },
+                        span: Span {
+                            start: 12,
+                            end: 18,
+                        },
+                    },
+                    args: [
+                        Arg {
+                            name: None,
+                            value: VariadicPlaceholder {
+                                span: Span {
+                                    start: 19,
+                                    end: 22,
+                                },
+                            },
+                            unpack: false,
+                            span: Span {
+                                start: 19,
+                                end: 22,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 12,
+                        end: 23,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 23,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 32,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 25,
+                        end: 32,
+                    },
+                    span: Span {
+                        start: 25,
+                        end: 32,
+                    },
+                },
+                expr: MethodCall {
+                    target: Variable {
+                        name: Span {
+                            start: 35,
+                            end: 39,
+                        },
+                        span: Span {
+                            start: 35,
+                            end: 39,
+                        },
+                    },
+                    method: Variable {
+                        name: Span {
+                            start: 41,
+                            end: 47,
+                        },
+                        span: Span {
+                            start: 41,
+                            end: 47,
+                        },
+                    },
+                    args: [
+                        Arg {
+                            name: None,
+                            value: VariadicPlaceholder {
+                                span: Span {
+                                    start: 48,
+                                    end: 51,
+                                },
+                            },
+                            unpack: false,
+                            span: Span {
+                                start: 48,
+                                end: 51,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 35,
+                        end: 52,
+                    },
+                },
+                span: Span {
+                    start: 25,
+                    end: 52,
+                },
+            },
+            span: Span {
+                start: 25,
+                end: 61,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 54,
+                        end: 61,
+                    },
+                    span: Span {
+                        start: 54,
+                        end: 61,
+                    },
+                },
+                expr: StaticCall {
+                    class: Variable {
+                        name: Span {
+                            start: 64,
+                            end: 71,
+                        },
+                        span: Span {
+                            start: 64,
+                            end: 71,
+                        },
+                    },
+                    method: Variable {
+                        name: Span {
+                            start: 73,
+                            end: 85,
+                        },
+                        span: Span {
+                            start: 73,
+                            end: 85,
+                        },
+                    },
+                    args: [
+                        Arg {
+                            name: None,
+                            value: VariadicPlaceholder {
+                                span: Span {
+                                    start: 86,
+                                    end: 89,
+                                },
+                            },
+                            unpack: false,
+                            span: Span {
+                                start: 86,
+                                end: 89,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 64,
+                        end: 90,
+                    },
+                },
+                span: Span {
+                    start: 54,
+                    end: 90,
+                },
+            },
+            span: Span {
+                start: 54,
+                end: 92,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 92,
+    },
+}
