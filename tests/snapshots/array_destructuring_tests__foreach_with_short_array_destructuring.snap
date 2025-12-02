@@ -1,0 +1,120 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 136
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Foreach {
+            expr: Variable {
+                name: Span {
+                    start: 15,
+                    end: 21,
+                },
+                span: Span {
+                    start: 15,
+                    end: 21,
+                },
+            },
+            key_var: None,
+            value_var: Array {
+                items: [
+                    ArrayItem {
+                        key: None,
+                        value: Variable {
+                            name: Span {
+                                start: 26,
+                                end: 28,
+                            },
+                            span: Span {
+                                start: 26,
+                                end: 28,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 26,
+                            end: 28,
+                        },
+                    },
+                    ArrayItem {
+                        key: None,
+                        value: Variable {
+                            name: Span {
+                                start: 30,
+                                end: 32,
+                            },
+                            span: Span {
+                                start: 30,
+                                end: 32,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 30,
+                            end: 32,
+                        },
+                    },
+                ],
+                span: Span {
+                    start: 25,
+                    end: 34,
+                },
+            },
+            body: [
+                Echo {
+                    exprs: [
+                        Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 46,
+                                    end: 48,
+                                },
+                                span: Span {
+                                    start: 46,
+                                    end: 48,
+                                },
+                            },
+                            op: Concat,
+                            right: Variable {
+                                name: Span {
+                                    start: 51,
+                                    end: 53,
+                                },
+                                span: Span {
+                                    start: 51,
+                                    end: 53,
+                                },
+                            },
+                            span: Span {
+                                start: 46,
+                                end: 53,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 41,
+                        end: 56,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 57,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 57,
+    },
+}

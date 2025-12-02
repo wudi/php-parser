@@ -1,0 +1,133 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 94
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                TraitUse {
+                    attributes: [],
+                    traits: [
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 30,
+                                        end: 36,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 38,
+                                        end: 44,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 38,
+                                end: 44,
+                            },
+                        },
+                    ],
+                    adaptations: [
+                        Precedence {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 55,
+                                                    end: 61,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 55,
+                                            end: 61,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 63,
+                                        end: 66,
+                                    },
+                                },
+                                span: Span {
+                                    start: 55,
+                                    end: 66,
+                                },
+                            },
+                            insteadof: [
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 77,
+                                                end: 83,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 77,
+                                        end: 83,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 55,
+                                end: 84,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 92,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 92,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 92,
+    },
+}

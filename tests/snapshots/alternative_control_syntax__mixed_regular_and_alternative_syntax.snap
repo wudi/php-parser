@@ -1,0 +1,102 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 123
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        If {
+            condition: Binary {
+                left: Variable {
+                    name: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                    span: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                },
+                op: Gt,
+                right: Integer {
+                    value: [
+                        48,
+                    ],
+                    span: Span {
+                        start: 15,
+                        end: 16,
+                    },
+                },
+                span: Span {
+                    start: 10,
+                    end: 16,
+                },
+            },
+            then_block: [
+                Foreach {
+                    expr: Variable {
+                        name: Span {
+                            start: 33,
+                            end: 39,
+                        },
+                        span: Span {
+                            start: 33,
+                            end: 39,
+                        },
+                    },
+                    key_var: None,
+                    value_var: Variable {
+                        name: Span {
+                            start: 43,
+                            end: 48,
+                        },
+                        span: Span {
+                            start: 43,
+                            end: 48,
+                        },
+                    },
+                    body: [
+                        Echo {
+                            exprs: [
+                                Variable {
+                                    name: Span {
+                                        start: 64,
+                                        end: 69,
+                                    },
+                                    span: Span {
+                                        start: 64,
+                                        end: 69,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 59,
+                                end: 85,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 24,
+                        end: 88,
+                    },
+                },
+            ],
+            else_block: None,
+            span: Span {
+                start: 6,
+                end: 89,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 89,
+    },
+}

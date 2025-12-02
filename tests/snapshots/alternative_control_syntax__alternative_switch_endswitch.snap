@@ -1,0 +1,164 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 89
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Switch {
+            condition: Variable {
+                name: Span {
+                    start: 14,
+                    end: 20,
+                },
+                span: Span {
+                    start: 14,
+                    end: 20,
+                },
+            },
+            cases: [
+                Case {
+                    condition: Some(
+                        Integer {
+                            value: [
+                                49,
+                            ],
+                            span: Span {
+                                start: 32,
+                                end: 33,
+                            },
+                        },
+                    ),
+                    body: [
+                        Echo {
+                            exprs: [
+                                String {
+                                    value: [
+                                        39,
+                                        111,
+                                        110,
+                                        101,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 48,
+                                        end: 53,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 43,
+                                end: 68,
+                            },
+                        },
+                        Break {
+                            level: None,
+                            span: Span {
+                                start: 63,
+                                end: 78,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 27,
+                        end: 78,
+                    },
+                },
+                Case {
+                    condition: Some(
+                        Integer {
+                            value: [
+                                50,
+                            ],
+                            span: Span {
+                                start: 79,
+                                end: 80,
+                            },
+                        },
+                    ),
+                    body: [
+                        Echo {
+                            exprs: [
+                                String {
+                                    value: [
+                                        39,
+                                        116,
+                                        119,
+                                        111,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 95,
+                                        end: 100,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 90,
+                                end: 115,
+                            },
+                        },
+                        Break {
+                            level: None,
+                            span: Span {
+                                start: 110,
+                                end: 128,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 74,
+                        end: 128,
+                    },
+                },
+                Case {
+                    condition: None,
+                    body: [
+                        Echo {
+                            exprs: [
+                                String {
+                                    value: [
+                                        39,
+                                        111,
+                                        116,
+                                        104,
+                                        101,
+                                        114,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 143,
+                                        end: 150,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 138,
+                                end: 161,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 121,
+                        end: 161,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 163,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 163,
+    },
+}

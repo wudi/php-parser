@@ -1,0 +1,154 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 225
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Function {
+            attributes: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 15,
+                    end: 18,
+                },
+            },
+            params: [
+                Param {
+                    attributes: [],
+                    modifiers: [],
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 19,
+                            end: 20,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    by_ref: false,
+                    variadic: false,
+                    hooks: None,
+                    span: Span {
+                        start: 19,
+                        end: 20,
+                    },
+                },
+                Param {
+                    attributes: [],
+                    modifiers: [],
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 20,
+                            end: 22,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    by_ref: false,
+                    variadic: false,
+                    hooks: None,
+                    span: Span {
+                        start: 20,
+                        end: 22,
+                    },
+                },
+                Param {
+                    attributes: [],
+                    modifiers: [],
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 24,
+                            end: 26,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    by_ref: false,
+                    variadic: false,
+                    hooks: None,
+                    span: Span {
+                        start: 24,
+                        end: 26,
+                    },
+                },
+                Param {
+                    attributes: [],
+                    modifiers: [],
+                    name: Token {
+                        kind: Error,
+                        span: Span {
+                            start: 26,
+                            end: 27,
+                        },
+                    },
+                    ty: None,
+                    default: None,
+                    by_ref: false,
+                    variadic: false,
+                    hooks: None,
+                    span: Span {
+                        start: 26,
+                        end: 27,
+                    },
+                },
+            ],
+            return_type: None,
+            body: [
+                Return {
+                    expr: Some(
+                        Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 42,
+                                    end: 44,
+                                },
+                                span: Span {
+                                    start: 42,
+                                    end: 44,
+                                },
+                            },
+                            op: Plus,
+                            right: Variable {
+                                name: Span {
+                                    start: 47,
+                                    end: 49,
+                                },
+                                span: Span {
+                                    start: 47,
+                                    end: 49,
+                                },
+                            },
+                            span: Span {
+                                start: 42,
+                                end: 49,
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: 35,
+                        end: 52,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 53,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 53,
+    },
+}

@@ -1,0 +1,170 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 21
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        If {
+            condition: Binary {
+                left: Variable {
+                    name: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                    span: Span {
+                        start: 10,
+                        end: 12,
+                    },
+                },
+                op: Gt,
+                right: Integer {
+                    value: [
+                        48,
+                    ],
+                    span: Span {
+                        start: 15,
+                        end: 16,
+                    },
+                },
+                span: Span {
+                    start: 10,
+                    end: 16,
+                },
+            },
+            then_block: [
+                Echo {
+                    exprs: [
+                        String {
+                            value: [
+                                39,
+                                112,
+                                111,
+                                115,
+                                105,
+                                116,
+                                105,
+                                118,
+                                101,
+                                39,
+                            ],
+                            span: Span {
+                                start: 28,
+                                end: 38,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 23,
+                        end: 46,
+                    },
+                },
+            ],
+            else_block: Some(
+                [
+                    If {
+                        condition: Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 48,
+                                    end: 50,
+                                },
+                                span: Span {
+                                    start: 48,
+                                    end: 50,
+                                },
+                            },
+                            op: Lt,
+                            right: Integer {
+                                value: [
+                                    48,
+                                ],
+                                span: Span {
+                                    start: 53,
+                                    end: 54,
+                                },
+                            },
+                            span: Span {
+                                start: 48,
+                                end: 54,
+                            },
+                        },
+                        then_block: [
+                            Echo {
+                                exprs: [
+                                    String {
+                                        value: [
+                                            39,
+                                            110,
+                                            101,
+                                            103,
+                                            97,
+                                            116,
+                                            105,
+                                            118,
+                                            101,
+                                            39,
+                                        ],
+                                        span: Span {
+                                            start: 66,
+                                            end: 76,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 61,
+                                    end: 82,
+                                },
+                            },
+                        ],
+                        else_block: Some(
+                            [
+                                Echo {
+                                    exprs: [
+                                        String {
+                                            value: [
+                                                39,
+                                                122,
+                                                101,
+                                                114,
+                                                111,
+                                                39,
+                                            ],
+                                            span: Span {
+                                                start: 93,
+                                                end: 99,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 88,
+                                        end: 106,
+                                    },
+                                },
+                            ],
+                        ),
+                        span: Span {
+                            start: 40,
+                            end: 108,
+                        },
+                    },
+                ],
+            ),
+            span: Span {
+                start: 6,
+                end: 108,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 108,
+    },
+}

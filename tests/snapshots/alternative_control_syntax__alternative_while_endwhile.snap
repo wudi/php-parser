@@ -1,0 +1,95 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 37
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        While {
+            condition: Binary {
+                left: Variable {
+                    name: Span {
+                        start: 13,
+                        end: 15,
+                    },
+                    span: Span {
+                        start: 13,
+                        end: 15,
+                    },
+                },
+                op: Lt,
+                right: Integer {
+                    value: [
+                        49,
+                        48,
+                    ],
+                    span: Span {
+                        start: 18,
+                        end: 20,
+                    },
+                },
+                span: Span {
+                    start: 13,
+                    end: 20,
+                },
+            },
+            body: [
+                Echo {
+                    exprs: [
+                        Variable {
+                            name: Span {
+                                start: 32,
+                                end: 34,
+                            },
+                            span: Span {
+                                start: 32,
+                                end: 34,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 27,
+                        end: 42,
+                    },
+                },
+                Expression {
+                    expr: PostInc {
+                        var: Variable {
+                            name: Span {
+                                start: 40,
+                                end: 42,
+                            },
+                            span: Span {
+                                start: 40,
+                                end: 42,
+                            },
+                        },
+                        span: Span {
+                            start: 40,
+                            end: 44,
+                        },
+                    },
+                    span: Span {
+                        start: 40,
+                        end: 54,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 56,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 56,
+    },
+}

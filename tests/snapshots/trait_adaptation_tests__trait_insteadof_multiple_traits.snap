@@ -1,0 +1,193 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 178
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                TraitUse {
+                    attributes: [],
+                    traits: [
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 30,
+                                        end: 36,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 38,
+                                        end: 44,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 38,
+                                end: 44,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 46,
+                                        end: 52,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 46,
+                                end: 52,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 54,
+                                        end: 60,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 54,
+                                end: 60,
+                            },
+                        },
+                    ],
+                    adaptations: [
+                        Precedence {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 71,
+                                                    end: 77,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 71,
+                                            end: 77,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 79,
+                                        end: 82,
+                                    },
+                                },
+                                span: Span {
+                                    start: 71,
+                                    end: 82,
+                                },
+                            },
+                            insteadof: [
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 93,
+                                                end: 99,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 93,
+                                        end: 99,
+                                    },
+                                },
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 101,
+                                                end: 107,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 101,
+                                        end: 107,
+                                    },
+                                },
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 109,
+                                                end: 115,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 109,
+                                        end: 115,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 71,
+                                end: 116,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 124,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 124,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 124,
+    },
+}

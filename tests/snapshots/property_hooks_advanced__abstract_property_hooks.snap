@@ -1,0 +1,127 @@
+---
+source: tests/property_hooks_advanced.rs
+assertion_line: 161
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [
+                Token {
+                    kind: Abstract,
+                    span: Span {
+                        start: 6,
+                        end: 14,
+                    },
+                },
+            ],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 21,
+                    end: 34,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                PropertyHook {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Abstract,
+                            span: Span {
+                                start: 41,
+                                end: 49,
+                            },
+                        },
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 50,
+                                end: 56,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 57,
+                                    end: 63,
+                                },
+                            },
+                        ),
+                    ),
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 64,
+                            end: 69,
+                        },
+                    },
+                    default: None,
+                    hooks: [
+                        PropertyHook {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 80,
+                                    end: 83,
+                                },
+                            },
+                            params: [],
+                            by_ref: false,
+                            body: None,
+                            span: Span {
+                                start: 80,
+                                end: 83,
+                            },
+                        },
+                        PropertyHook {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 93,
+                                    end: 96,
+                                },
+                            },
+                            params: [],
+                            by_ref: false,
+                            body: None,
+                            span: Span {
+                                start: 93,
+                                end: 96,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 41,
+                        end: 105,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 105,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 105,
+    },
+}

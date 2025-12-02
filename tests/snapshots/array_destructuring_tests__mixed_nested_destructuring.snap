@@ -1,0 +1,222 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 210
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Array {
+                    items: [
+                        ArrayItem {
+                            key: Some(
+                                String {
+                                    value: [
+                                        39,
+                                        117,
+                                        115,
+                                        101,
+                                        114,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 12,
+                                        end: 18,
+                                    },
+                                },
+                            ),
+                            value: Array {
+                                items: [
+                                    ArrayItem {
+                                        key: Some(
+                                            String {
+                                                value: [
+                                                    39,
+                                                    110,
+                                                    97,
+                                                    109,
+                                                    101,
+                                                    39,
+                                                ],
+                                                span: Span {
+                                                    start: 23,
+                                                    end: 29,
+                                                },
+                                            },
+                                        ),
+                                        value: Variable {
+                                            name: Span {
+                                                start: 33,
+                                                end: 38,
+                                            },
+                                            span: Span {
+                                                start: 33,
+                                                end: 38,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 23,
+                                            end: 38,
+                                        },
+                                    },
+                                    ArrayItem {
+                                        key: Some(
+                                            String {
+                                                value: [
+                                                    39,
+                                                    101,
+                                                    109,
+                                                    97,
+                                                    105,
+                                                    108,
+                                                    39,
+                                                ],
+                                                span: Span {
+                                                    start: 40,
+                                                    end: 47,
+                                                },
+                                            },
+                                        ),
+                                        value: Variable {
+                                            name: Span {
+                                                start: 51,
+                                                end: 57,
+                                            },
+                                            span: Span {
+                                                start: 51,
+                                                end: 57,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 40,
+                                            end: 57,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 22,
+                                    end: 59,
+                                },
+                            },
+                            by_ref: false,
+                            unpack: false,
+                            span: Span {
+                                start: 12,
+                                end: 59,
+                            },
+                        },
+                        ArrayItem {
+                            key: Some(
+                                String {
+                                    value: [
+                                        39,
+                                        112,
+                                        111,
+                                        115,
+                                        116,
+                                        115,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 64,
+                                        end: 71,
+                                    },
+                                },
+                            ),
+                            value: Array {
+                                items: [
+                                    ArrayItem {
+                                        key: None,
+                                        value: Variable {
+                                            name: Span {
+                                                start: 76,
+                                                end: 86,
+                                            },
+                                            span: Span {
+                                                start: 76,
+                                                end: 86,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: false,
+                                        span: Span {
+                                            start: 76,
+                                            end: 86,
+                                        },
+                                    },
+                                    ArrayItem {
+                                        key: None,
+                                        value: Variable {
+                                            name: Span {
+                                                start: 91,
+                                                end: 102,
+                                            },
+                                            span: Span {
+                                                start: 91,
+                                                end: 102,
+                                            },
+                                        },
+                                        by_ref: false,
+                                        unpack: true,
+                                        span: Span {
+                                            start: 91,
+                                            end: 102,
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: 75,
+                                    end: 105,
+                                },
+                            },
+                            by_ref: false,
+                            unpack: false,
+                            span: Span {
+                                start: 64,
+                                end: 105,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 6,
+                        end: 107,
+                    },
+                },
+                expr: Variable {
+                    name: Span {
+                        start: 108,
+                        end: 113,
+                    },
+                    span: Span {
+                        start: 108,
+                        end: 113,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 113,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 115,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 115,
+    },
+}

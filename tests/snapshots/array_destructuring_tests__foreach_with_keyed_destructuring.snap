@@ -1,0 +1,170 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 151
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Foreach {
+            expr: Variable {
+                name: Span {
+                    start: 15,
+                    end: 22,
+                },
+                span: Span {
+                    start: 15,
+                    end: 22,
+                },
+            },
+            key_var: None,
+            value_var: Array {
+                items: [
+                    ArrayItem {
+                        key: Some(
+                            String {
+                                value: [
+                                    39,
+                                    110,
+                                    97,
+                                    109,
+                                    101,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 27,
+                                    end: 33,
+                                },
+                            },
+                        ),
+                        value: Variable {
+                            name: Span {
+                                start: 37,
+                                end: 42,
+                            },
+                            span: Span {
+                                start: 37,
+                                end: 42,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 27,
+                            end: 42,
+                        },
+                    },
+                    ArrayItem {
+                        key: Some(
+                            String {
+                                value: [
+                                    39,
+                                    97,
+                                    103,
+                                    101,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 44,
+                                    end: 49,
+                                },
+                            },
+                        ),
+                        value: Variable {
+                            name: Span {
+                                start: 53,
+                                end: 57,
+                            },
+                            span: Span {
+                                start: 53,
+                                end: 57,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 44,
+                            end: 57,
+                        },
+                    },
+                ],
+                span: Span {
+                    start: 26,
+                    end: 59,
+                },
+            },
+            body: [
+                Echo {
+                    exprs: [
+                        Binary {
+                            left: Binary {
+                                left: Variable {
+                                    name: Span {
+                                        start: 71,
+                                        end: 76,
+                                    },
+                                    span: Span {
+                                        start: 71,
+                                        end: 76,
+                                    },
+                                },
+                                op: Concat,
+                                right: String {
+                                    value: [
+                                        39,
+                                        32,
+                                        105,
+                                        115,
+                                        32,
+                                        39,
+                                    ],
+                                    span: Span {
+                                        start: 79,
+                                        end: 85,
+                                    },
+                                },
+                                span: Span {
+                                    start: 71,
+                                    end: 85,
+                                },
+                            },
+                            op: Concat,
+                            right: Variable {
+                                name: Span {
+                                    start: 88,
+                                    end: 92,
+                                },
+                                span: Span {
+                                    start: 88,
+                                    end: 92,
+                                },
+                            },
+                            span: Span {
+                                start: 71,
+                                end: 92,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 66,
+                        end: 95,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 96,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 96,
+    },
+}

@@ -1,0 +1,37 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 179
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        While {
+            condition: Variable {
+                name: Span {
+                    start: 13,
+                    end: 23,
+                },
+                span: Span {
+                    start: 13,
+                    end: 23,
+                },
+            },
+            body: [],
+            span: Span {
+                start: 6,
+                end: 36,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 36,
+    },
+}

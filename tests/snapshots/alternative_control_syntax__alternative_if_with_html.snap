@@ -1,0 +1,89 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 136
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        If {
+            condition: Variable {
+                name: Span {
+                    start: 10,
+                    end: 15,
+                },
+                span: Span {
+                    start: 10,
+                    end: 15,
+                },
+            },
+            then_block: [
+                Nop {
+                    span: Span {
+                        start: 18,
+                        end: 20,
+                    },
+                },
+                InlineHtml {
+                    value: [
+                        10,
+                        32,
+                        32,
+                        32,
+                        32,
+                        60,
+                        100,
+                        105,
+                        118,
+                        62,
+                        67,
+                        111,
+                        110,
+                        116,
+                        101,
+                        110,
+                        116,
+                        60,
+                        47,
+                        100,
+                        105,
+                        118,
+                        62,
+                        10,
+                    ],
+                    span: Span {
+                        start: 20,
+                        end: 50,
+                    },
+                },
+                Nop {
+                    span: Span {
+                        start: 44,
+                        end: 50,
+                    },
+                },
+            ],
+            else_block: None,
+            span: Span {
+                start: 6,
+                end: 59,
+            },
+        },
+        Nop {
+            span: Span {
+                start: 57,
+                end: 59,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 59,
+    },
+}

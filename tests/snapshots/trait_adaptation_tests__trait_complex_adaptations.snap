@@ -1,0 +1,309 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 113
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                TraitUse {
+                    attributes: [],
+                    traits: [
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 30,
+                                        end: 36,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 38,
+                                        end: 44,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 38,
+                                end: 44,
+                            },
+                        },
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 46,
+                                        end: 52,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 46,
+                                end: 52,
+                            },
+                        },
+                    ],
+                    adaptations: [
+                        Precedence {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 63,
+                                                    end: 69,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 63,
+                                            end: 69,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 71,
+                                        end: 74,
+                                    },
+                                },
+                                span: Span {
+                                    start: 63,
+                                    end: 74,
+                                },
+                            },
+                            insteadof: [
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 85,
+                                                end: 91,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 85,
+                                        end: 91,
+                                    },
+                                },
+                                Name {
+                                    parts: [
+                                        Token {
+                                            kind: Identifier,
+                                            span: Span {
+                                                start: 93,
+                                                end: 99,
+                                            },
+                                        },
+                                    ],
+                                    span: Span {
+                                        start: 93,
+                                        end: 99,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 63,
+                                end: 100,
+                            },
+                        },
+                        Alias {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 109,
+                                                    end: 115,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 109,
+                                            end: 115,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 117,
+                                        end: 120,
+                                    },
+                                },
+                                span: Span {
+                                    start: 109,
+                                    end: 120,
+                                },
+                            },
+                            alias: Some(
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 124,
+                                        end: 127,
+                                    },
+                                },
+                            ),
+                            visibility: None,
+                            span: Span {
+                                start: 109,
+                                end: 128,
+                            },
+                        },
+                        Alias {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 137,
+                                                    end: 143,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 137,
+                                            end: 143,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 145,
+                                        end: 148,
+                                    },
+                                },
+                                span: Span {
+                                    start: 137,
+                                    end: 148,
+                                },
+                            },
+                            alias: None,
+                            visibility: Some(
+                                Token {
+                                    kind: Protected,
+                                    span: Span {
+                                        start: 152,
+                                        end: 161,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 137,
+                                end: 162,
+                            },
+                        },
+                        Alias {
+                            method: TraitMethodRef {
+                                trait_name: Some(
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 171,
+                                                    end: 177,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 171,
+                                            end: 177,
+                                        },
+                                    },
+                                ),
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 179,
+                                        end: 182,
+                                    },
+                                },
+                                span: Span {
+                                    start: 171,
+                                    end: 182,
+                                },
+                            },
+                            alias: Some(
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 193,
+                                        end: 199,
+                                    },
+                                },
+                            ),
+                            visibility: Some(
+                                Token {
+                                    kind: Public,
+                                    span: Span {
+                                        start: 186,
+                                        end: 192,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 171,
+                                end: 200,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 208,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 208,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 208,
+    },
+}

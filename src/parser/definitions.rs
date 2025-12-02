@@ -660,7 +660,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             None
                         };
 
-                        let alias = if self.current_token.kind == TokenKind::Identifier {
+                        let alias = if self.current_token.kind == TokenKind::Identifier
+                            || self.current_token.kind.is_semi_reserved()
+                        {
                             let a = self.arena.alloc(self.current_token);
                             self.bump();
                             Some(a)

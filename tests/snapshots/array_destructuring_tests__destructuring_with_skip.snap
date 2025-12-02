@@ -1,0 +1,103 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 93
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Array {
+                    items: [
+                        ArrayItem {
+                            key: None,
+                            value: Variable {
+                                name: Span {
+                                    start: 7,
+                                    end: 9,
+                                },
+                                span: Span {
+                                    start: 7,
+                                    end: 9,
+                                },
+                            },
+                            by_ref: false,
+                            unpack: false,
+                            span: Span {
+                                start: 7,
+                                end: 9,
+                            },
+                        },
+                        ArrayItem {
+                            key: None,
+                            value: Error {
+                                span: Span {
+                                    start: 11,
+                                    end: 12,
+                                },
+                            },
+                            by_ref: false,
+                            unpack: false,
+                            span: Span {
+                                start: 11,
+                                end: 12,
+                            },
+                        },
+                        ArrayItem {
+                            key: None,
+                            value: Variable {
+                                name: Span {
+                                    start: 13,
+                                    end: 15,
+                                },
+                                span: Span {
+                                    start: 13,
+                                    end: 15,
+                                },
+                            },
+                            by_ref: false,
+                            unpack: false,
+                            span: Span {
+                                start: 13,
+                                end: 15,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 6,
+                        end: 18,
+                    },
+                },
+                expr: Variable {
+                    name: Span {
+                        start: 19,
+                        end: 25,
+                    },
+                    span: Span {
+                        start: 19,
+                        end: 25,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 25,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 27,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 27,
+    },
+}

@@ -1,0 +1,75 @@
+---
+source: tests/clone_syntax.rs
+assertion_line: 56
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: Clone {
+                    expr: MethodCall {
+                        target: Variable {
+                            name: Span {
+                                start: 20,
+                                end: 28,
+                            },
+                            span: Span {
+                                start: 20,
+                                end: 28,
+                            },
+                        },
+                        method: Variable {
+                            name: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                            span: Span {
+                                start: 30,
+                                end: 36,
+                            },
+                        },
+                        args: [],
+                        span: Span {
+                            start: 20,
+                            end: 38,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 38,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 38,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 40,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 40,
+    },
+}

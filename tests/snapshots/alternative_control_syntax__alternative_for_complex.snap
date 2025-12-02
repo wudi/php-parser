@@ -1,0 +1,179 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 194
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        For {
+            init: [
+                Assign {
+                    var: Variable {
+                        name: Span {
+                            start: 11,
+                            end: 13,
+                        },
+                        span: Span {
+                            start: 11,
+                            end: 13,
+                        },
+                    },
+                    expr: Integer {
+                        value: [
+                            48,
+                        ],
+                        span: Span {
+                            start: 16,
+                            end: 17,
+                        },
+                    },
+                    span: Span {
+                        start: 11,
+                        end: 17,
+                    },
+                },
+                Assign {
+                    var: Variable {
+                        name: Span {
+                            start: 19,
+                            end: 21,
+                        },
+                        span: Span {
+                            start: 19,
+                            end: 21,
+                        },
+                    },
+                    expr: Integer {
+                        value: [
+                            49,
+                            48,
+                        ],
+                        span: Span {
+                            start: 24,
+                            end: 26,
+                        },
+                    },
+                    span: Span {
+                        start: 19,
+                        end: 26,
+                    },
+                },
+            ],
+            condition: [
+                Binary {
+                    left: Variable {
+                        name: Span {
+                            start: 28,
+                            end: 30,
+                        },
+                        span: Span {
+                            start: 28,
+                            end: 30,
+                        },
+                    },
+                    op: Lt,
+                    right: Variable {
+                        name: Span {
+                            start: 33,
+                            end: 35,
+                        },
+                        span: Span {
+                            start: 33,
+                            end: 35,
+                        },
+                    },
+                    span: Span {
+                        start: 28,
+                        end: 35,
+                    },
+                },
+            ],
+            loop_expr: [
+                PostInc {
+                    var: Variable {
+                        name: Span {
+                            start: 37,
+                            end: 39,
+                        },
+                        span: Span {
+                            start: 37,
+                            end: 39,
+                        },
+                    },
+                    span: Span {
+                        start: 37,
+                        end: 41,
+                    },
+                },
+                PostDec {
+                    var: Variable {
+                        name: Span {
+                            start: 43,
+                            end: 45,
+                        },
+                        span: Span {
+                            start: 43,
+                            end: 45,
+                        },
+                    },
+                    span: Span {
+                        start: 43,
+                        end: 47,
+                    },
+                },
+            ],
+            body: [
+                Echo {
+                    exprs: [
+                        Binary {
+                            left: Variable {
+                                name: Span {
+                                    start: 59,
+                                    end: 61,
+                                },
+                                span: Span {
+                                    start: 59,
+                                    end: 61,
+                                },
+                            },
+                            op: Plus,
+                            right: Variable {
+                                name: Span {
+                                    start: 64,
+                                    end: 66,
+                                },
+                                span: Span {
+                                    start: 64,
+                                    end: 66,
+                                },
+                            },
+                            span: Span {
+                                start: 59,
+                                end: 66,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 54,
+                        end: 74,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 76,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 76,
+    },
+}

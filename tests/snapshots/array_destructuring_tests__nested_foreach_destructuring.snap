@@ -1,0 +1,226 @@
+---
+source: tests/array_destructuring_tests.rs
+assertion_line: 181
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Foreach {
+            expr: Variable {
+                name: Span {
+                    start: 15,
+                    end: 22,
+                },
+                span: Span {
+                    start: 15,
+                    end: 22,
+                },
+            },
+            key_var: None,
+            value_var: Array {
+                items: [
+                    ArrayItem {
+                        key: None,
+                        value: Array {
+                            items: [
+                                ArrayItem {
+                                    key: None,
+                                    value: Variable {
+                                        name: Span {
+                                            start: 28,
+                                            end: 30,
+                                        },
+                                        span: Span {
+                                            start: 28,
+                                            end: 30,
+                                        },
+                                    },
+                                    by_ref: false,
+                                    unpack: false,
+                                    span: Span {
+                                        start: 28,
+                                        end: 30,
+                                    },
+                                },
+                                ArrayItem {
+                                    key: None,
+                                    value: Variable {
+                                        name: Span {
+                                            start: 32,
+                                            end: 34,
+                                        },
+                                        span: Span {
+                                            start: 32,
+                                            end: 34,
+                                        },
+                                    },
+                                    by_ref: false,
+                                    unpack: false,
+                                    span: Span {
+                                        start: 32,
+                                        end: 34,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 27,
+                                end: 36,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 27,
+                            end: 36,
+                        },
+                    },
+                    ArrayItem {
+                        key: None,
+                        value: Array {
+                            items: [
+                                ArrayItem {
+                                    key: None,
+                                    value: Variable {
+                                        name: Span {
+                                            start: 38,
+                                            end: 40,
+                                        },
+                                        span: Span {
+                                            start: 38,
+                                            end: 40,
+                                        },
+                                    },
+                                    by_ref: false,
+                                    unpack: false,
+                                    span: Span {
+                                        start: 38,
+                                        end: 40,
+                                    },
+                                },
+                                ArrayItem {
+                                    key: None,
+                                    value: Variable {
+                                        name: Span {
+                                            start: 42,
+                                            end: 44,
+                                        },
+                                        span: Span {
+                                            start: 42,
+                                            end: 44,
+                                        },
+                                    },
+                                    by_ref: false,
+                                    unpack: false,
+                                    span: Span {
+                                        start: 42,
+                                        end: 44,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 37,
+                                end: 46,
+                            },
+                        },
+                        by_ref: false,
+                        unpack: false,
+                        span: Span {
+                            start: 37,
+                            end: 46,
+                        },
+                    },
+                ],
+                span: Span {
+                    start: 26,
+                    end: 47,
+                },
+            },
+            body: [
+                Echo {
+                    exprs: [
+                        Binary {
+                            left: Binary {
+                                left: Binary {
+                                    left: Variable {
+                                        name: Span {
+                                            start: 59,
+                                            end: 61,
+                                        },
+                                        span: Span {
+                                            start: 59,
+                                            end: 61,
+                                        },
+                                    },
+                                    op: Plus,
+                                    right: Variable {
+                                        name: Span {
+                                            start: 64,
+                                            end: 66,
+                                        },
+                                        span: Span {
+                                            start: 64,
+                                            end: 66,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 59,
+                                        end: 66,
+                                    },
+                                },
+                                op: Plus,
+                                right: Variable {
+                                    name: Span {
+                                        start: 69,
+                                        end: 71,
+                                    },
+                                    span: Span {
+                                        start: 69,
+                                        end: 71,
+                                    },
+                                },
+                                span: Span {
+                                    start: 59,
+                                    end: 71,
+                                },
+                            },
+                            op: Plus,
+                            right: Variable {
+                                name: Span {
+                                    start: 74,
+                                    end: 76,
+                                },
+                                span: Span {
+                                    start: 74,
+                                    end: 76,
+                                },
+                            },
+                            span: Span {
+                                start: 59,
+                                end: 76,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 54,
+                        end: 79,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 80,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 80,
+    },
+}

@@ -1,0 +1,99 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 145
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                TraitUse {
+                    attributes: [],
+                    traits: [
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: NsSeparator,
+                                    span: Span {
+                                        start: 30,
+                                        end: 31,
+                                    },
+                                },
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 31,
+                                        end: 37,
+                                    },
+                                },
+                                Token {
+                                    kind: NsSeparator,
+                                    span: Span {
+                                        start: 37,
+                                        end: 38,
+                                    },
+                                },
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 38,
+                                        end: 45,
+                                    },
+                                },
+                                Token {
+                                    kind: NsSeparator,
+                                    span: Span {
+                                        start: 45,
+                                        end: 46,
+                                    },
+                                },
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 46,
+                                        end: 53,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 53,
+                            },
+                        },
+                    ],
+                    adaptations: [],
+                    span: Span {
+                        start: 26,
+                        end: 56,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 56,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 56,
+    },
+}

@@ -1,0 +1,74 @@
+---
+source: tests/clone_syntax.rs
+assertion_line: 95
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: Clone {
+                    expr: PropertyFetch {
+                        target: Variable {
+                            name: Span {
+                                start: 20,
+                                end: 30,
+                            },
+                            span: Span {
+                                start: 20,
+                                end: 30,
+                            },
+                        },
+                        property: Variable {
+                            name: Span {
+                                start: 32,
+                                end: 35,
+                            },
+                            span: Span {
+                                start: 32,
+                                end: 35,
+                            },
+                        },
+                        span: Span {
+                            start: 20,
+                            end: 35,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 35,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 35,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 37,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 37,
+    },
+}

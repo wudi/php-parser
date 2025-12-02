@@ -1,0 +1,177 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 225
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Namespace {
+            name: Some(
+                Name {
+                    parts: [
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 16,
+                                end: 22,
+                            },
+                        },
+                        Token {
+                            kind: NsSeparator,
+                            span: Span {
+                                start: 22,
+                                end: 23,
+                            },
+                        },
+                        Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 23,
+                                end: 30,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 16,
+                        end: 30,
+                    },
+                },
+            ),
+            body: Some(
+                [
+                    Class {
+                        attributes: [],
+                        modifiers: [],
+                        name: Token {
+                            kind: Identifier,
+                            span: Span {
+                                start: 43,
+                                end: 50,
+                            },
+                        },
+                        extends: None,
+                        implements: [],
+                        members: [
+                            TraitUse {
+                                attributes: [],
+                                traits: [
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 65,
+                                                    end: 71,
+                                                },
+                                            },
+                                            Token {
+                                                kind: NsSeparator,
+                                                span: Span {
+                                                    start: 71,
+                                                    end: 72,
+                                                },
+                                            },
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 72,
+                                                    end: 78,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 65,
+                                            end: 78,
+                                        },
+                                    },
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 80,
+                                                    end: 86,
+                                                },
+                                            },
+                                            Token {
+                                                kind: NsSeparator,
+                                                span: Span {
+                                                    start: 86,
+                                                    end: 87,
+                                                },
+                                            },
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 87,
+                                                    end: 93,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 80,
+                                            end: 93,
+                                        },
+                                    },
+                                    Name {
+                                        parts: [
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 95,
+                                                    end: 101,
+                                                },
+                                            },
+                                            Token {
+                                                kind: NsSeparator,
+                                                span: Span {
+                                                    start: 101,
+                                                    end: 102,
+                                                },
+                                            },
+                                            Token {
+                                                kind: Identifier,
+                                                span: Span {
+                                                    start: 102,
+                                                    end: 108,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 95,
+                                            end: 108,
+                                        },
+                                    },
+                                ],
+                                adaptations: [],
+                                span: Span {
+                                    start: 61,
+                                    end: 115,
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: 37,
+                            end: 117,
+                        },
+                    },
+                ],
+            ),
+            span: Span {
+                start: 6,
+                end: 117,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 117,
+    },
+}

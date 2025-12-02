@@ -1,0 +1,122 @@
+---
+source: tests/alternative_control_syntax.rs
+assertion_line: 149
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Foreach {
+            expr: Variable {
+                name: Span {
+                    start: 15,
+                    end: 21,
+                },
+                span: Span {
+                    start: 15,
+                    end: 21,
+                },
+            },
+            key_var: None,
+            value_var: Variable {
+                name: Span {
+                    start: 25,
+                    end: 30,
+                },
+                span: Span {
+                    start: 25,
+                    end: 30,
+                },
+            },
+            body: [
+                Nop {
+                    span: Span {
+                        start: 33,
+                        end: 35,
+                    },
+                },
+                InlineHtml {
+                    value: [
+                        10,
+                        32,
+                        32,
+                        32,
+                        32,
+                        60,
+                        108,
+                        105,
+                        62,
+                    ],
+                    span: Span {
+                        start: 35,
+                        end: 47,
+                    },
+                },
+                Echo {
+                    exprs: [
+                        Variable {
+                            name: Span {
+                                start: 48,
+                                end: 53,
+                            },
+                            span: Span {
+                                start: 48,
+                                end: 53,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 44,
+                        end: 56,
+                    },
+                },
+                Nop {
+                    span: Span {
+                        start: 54,
+                        end: 56,
+                    },
+                },
+                InlineHtml {
+                    value: [
+                        60,
+                        47,
+                        108,
+                        105,
+                        62,
+                        10,
+                    ],
+                    span: Span {
+                        start: 56,
+                        end: 68,
+                    },
+                },
+                Nop {
+                    span: Span {
+                        start: 62,
+                        end: 68,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 82,
+            },
+        },
+        Nop {
+            span: Span {
+                start: 80,
+                end: 82,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 82,
+    },
+}

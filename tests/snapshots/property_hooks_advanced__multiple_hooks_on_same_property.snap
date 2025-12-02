@@ -1,0 +1,263 @@
+---
+source: tests/property_hooks_advanced.rs
+assertion_line: 68
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                PropertyHook {
+                    attributes: [],
+                    modifiers: [
+                        Token {
+                            kind: Public,
+                            span: Span {
+                                start: 26,
+                                end: 32,
+                            },
+                        },
+                    ],
+                    ty: Some(
+                        Simple(
+                            Token {
+                                kind: TypeString,
+                                span: Span {
+                                    start: 33,
+                                    end: 39,
+                                },
+                            },
+                        ),
+                    ),
+                    name: Token {
+                        kind: Variable,
+                        span: Span {
+                            start: 40,
+                            end: 46,
+                        },
+                    },
+                    default: None,
+                    hooks: [
+                        PropertyHook {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 57,
+                                    end: 60,
+                                },
+                            },
+                            params: [],
+                            by_ref: false,
+                            body: Expr(
+                                Binary {
+                                    left: PropertyFetch {
+                                        target: Variable {
+                                            name: Span {
+                                                start: 64,
+                                                end: 69,
+                                            },
+                                            span: Span {
+                                                start: 64,
+                                                end: 69,
+                                            },
+                                        },
+                                        property: Variable {
+                                            name: Span {
+                                                start: 71,
+                                                end: 76,
+                                            },
+                                            span: Span {
+                                                start: 71,
+                                                end: 76,
+                                            },
+                                        },
+                                        span: Span {
+                                            start: 64,
+                                            end: 76,
+                                        },
+                                    },
+                                    op: Coalesce,
+                                    right: String {
+                                        value: [
+                                            39,
+                                            100,
+                                            101,
+                                            102,
+                                            97,
+                                            117,
+                                            108,
+                                            116,
+                                            39,
+                                        ],
+                                        span: Span {
+                                            start: 80,
+                                            end: 89,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 64,
+                                        end: 89,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 57,
+                                end: 89,
+                            },
+                        },
+                        PropertyHook {
+                            attributes: [],
+                            modifiers: [],
+                            name: Token {
+                                kind: Identifier,
+                                span: Span {
+                                    start: 99,
+                                    end: 102,
+                                },
+                            },
+                            params: [
+                                Param {
+                                    attributes: [],
+                                    modifiers: [],
+                                    name: Token {
+                                        kind: Variable,
+                                        span: Span {
+                                            start: 110,
+                                            end: 114,
+                                        },
+                                    },
+                                    ty: Some(
+                                        Simple(
+                                            Token {
+                                                kind: TypeString,
+                                                span: Span {
+                                                    start: 103,
+                                                    end: 109,
+                                                },
+                                            },
+                                        ),
+                                    ),
+                                    default: None,
+                                    by_ref: false,
+                                    variadic: false,
+                                    hooks: None,
+                                    span: Span {
+                                        start: 103,
+                                        end: 114,
+                                    },
+                                },
+                            ],
+                            by_ref: false,
+                            body: Expr(
+                                Assign {
+                                    var: PropertyFetch {
+                                        target: Variable {
+                                            name: Span {
+                                                start: 119,
+                                                end: 124,
+                                            },
+                                            span: Span {
+                                                start: 119,
+                                                end: 124,
+                                            },
+                                        },
+                                        property: Variable {
+                                            name: Span {
+                                                start: 126,
+                                                end: 131,
+                                            },
+                                            span: Span {
+                                                start: 126,
+                                                end: 131,
+                                            },
+                                        },
+                                        span: Span {
+                                            start: 119,
+                                            end: 131,
+                                        },
+                                    },
+                                    expr: Call {
+                                        func: Variable {
+                                            name: Span {
+                                                start: 134,
+                                                end: 138,
+                                            },
+                                            span: Span {
+                                                start: 134,
+                                                end: 138,
+                                            },
+                                        },
+                                        args: [
+                                            Arg {
+                                                name: None,
+                                                value: Variable {
+                                                    name: Span {
+                                                        start: 139,
+                                                        end: 143,
+                                                    },
+                                                    span: Span {
+                                                        start: 139,
+                                                        end: 143,
+                                                    },
+                                                },
+                                                unpack: false,
+                                                span: Span {
+                                                    start: 139,
+                                                    end: 143,
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: 134,
+                                            end: 144,
+                                        },
+                                    },
+                                    span: Span {
+                                        start: 119,
+                                        end: 144,
+                                    },
+                                },
+                            ),
+                            span: Span {
+                                start: 99,
+                                end: 144,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 153,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 153,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 153,
+    },
+}

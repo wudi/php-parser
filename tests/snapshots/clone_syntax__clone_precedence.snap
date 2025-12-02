@@ -1,0 +1,75 @@
+---
+source: tests/clone_syntax.rs
+assertion_line: 134
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 13,
+                    },
+                },
+                expr: Binary {
+                    left: Clone {
+                        expr: Variable {
+                            name: Span {
+                                start: 22,
+                                end: 27,
+                            },
+                            span: Span {
+                                start: 22,
+                                end: 27,
+                            },
+                        },
+                        span: Span {
+                            start: 16,
+                            end: 27,
+                        },
+                    },
+                    op: Coalesce,
+                    right: Variable {
+                        name: Span {
+                            start: 31,
+                            end: 36,
+                        },
+                        span: Span {
+                            start: 31,
+                            end: 36,
+                        },
+                    },
+                    span: Span {
+                        start: 16,
+                        end: 36,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 36,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 38,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 38,
+    },
+}

@@ -1,0 +1,125 @@
+---
+source: tests/trait_adaptation_tests.rs
+assertion_line: 131
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Class {
+            attributes: [],
+            modifiers: [],
+            name: Token {
+                kind: Identifier,
+                span: Span {
+                    start: 12,
+                    end: 19,
+                },
+            },
+            extends: None,
+            implements: [],
+            members: [
+                TraitUse {
+                    attributes: [],
+                    traits: [
+                        Name {
+                            parts: [
+                                Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 30,
+                                        end: 37,
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: 30,
+                                end: 37,
+                            },
+                        },
+                    ],
+                    adaptations: [
+                        Alias {
+                            method: TraitMethodRef {
+                                trait_name: None,
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 48,
+                                        end: 51,
+                                    },
+                                },
+                                span: Span {
+                                    start: 48,
+                                    end: 51,
+                                },
+                            },
+                            alias: Some(
+                                Token {
+                                    kind: TypeString,
+                                    span: Span {
+                                        start: 55,
+                                        end: 61,
+                                    },
+                                },
+                            ),
+                            visibility: None,
+                            span: Span {
+                                start: 48,
+                                end: 62,
+                            },
+                        },
+                        Alias {
+                            method: TraitMethodRef {
+                                trait_name: None,
+                                method: Token {
+                                    kind: Identifier,
+                                    span: Span {
+                                        start: 71,
+                                        end: 74,
+                                    },
+                                },
+                                span: Span {
+                                    start: 71,
+                                    end: 74,
+                                },
+                            },
+                            alias: Some(
+                                Token {
+                                    kind: TypeInt,
+                                    span: Span {
+                                        start: 78,
+                                        end: 81,
+                                    },
+                                },
+                            ),
+                            visibility: None,
+                            span: Span {
+                                start: 71,
+                                end: 82,
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: 26,
+                        end: 90,
+                    },
+                },
+            ],
+            span: Span {
+                start: 6,
+                end: 90,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 90,
+    },
+}

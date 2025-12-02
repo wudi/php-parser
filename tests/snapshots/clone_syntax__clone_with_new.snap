@@ -1,0 +1,65 @@
+---
+source: tests/clone_syntax.rs
+assertion_line: 69
+expression: program
+---
+Program {
+    statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
+        Expression {
+            expr: Assign {
+                var: Variable {
+                    name: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                    span: Span {
+                        start: 6,
+                        end: 11,
+                    },
+                },
+                expr: Clone {
+                    expr: New {
+                        class: Variable {
+                            name: Span {
+                                start: 24,
+                                end: 31,
+                            },
+                            span: Span {
+                                start: 24,
+                                end: 31,
+                            },
+                        },
+                        args: [],
+                        span: Span {
+                            start: 20,
+                            end: 33,
+                        },
+                    },
+                    span: Span {
+                        start: 14,
+                        end: 33,
+                    },
+                },
+                span: Span {
+                    start: 6,
+                    end: 33,
+                },
+            },
+            span: Span {
+                start: 6,
+                end: 35,
+            },
+        },
+    ],
+    errors: [],
+    span: Span {
+        start: 0,
+        end: 35,
+    },
+}
