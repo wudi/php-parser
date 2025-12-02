@@ -84,6 +84,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
             }
             TokenKind::HaltCompiler => {
+                if !top_level {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "__halt_compiler() can only be used from the outermost scope",
+                    });
+                }
                 let start = self.current_token.span.start;
                 self.bump();
                 if self.current_token.kind == TokenKind::OpenParen {

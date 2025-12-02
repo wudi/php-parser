@@ -15,6 +15,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.bump(); // consume (
 
         let mut args = bumpalo::collections::Vec::new_in(self.arena);
+        let mut has_named = false;
         while self.current_token.kind != TokenKind::CloseParen
             && self.current_token.kind != TokenKind::Eof
         {
@@ -30,6 +31,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 name = Some(self.arena.alloc(self.current_token));
                 self.bump(); // Identifier
                 self.bump(); // Colon
+                has_named = true;
             } else if self.current_token.kind == TokenKind::Ellipsis {
                 if self.next_token.kind == TokenKind::CloseParen {
                     let span = self.current_token.span;
@@ -45,6 +47,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 unpack = true;
                 self.bump();
+            } else if has_named {
+                self.errors.push(ParseError {
+                    span: self.current_token.span,
+                    message: "Cannot use positional argument after named argument",
+                });
             }
 
             let value = self.parse_expr(0);
@@ -248,8 +255,37 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         })
     }
 
+    fn is_assignable(&self, expr: ExprId<'ast>) -> bool {
+        match expr {
+            Expr::Variable { .. }
+            | Expr::ArrayDimFetch { .. }
+            | Expr::PropertyFetch { .. } => true,
+            Expr::ClassConstFetch { constant, .. } => {
+                if let Expr::Variable { span, .. } = constant {
+                    let slice = self.lexer.slice(*span);
+                    return slice.first() == Some(&b'$');
+                }
+                false
+            }
+            Expr::Array { items, .. } => {
+                for item in items.iter() {
+                    if let Expr::Error { .. } = item.value {
+                        continue;
+                    }
+                    if !self.is_assignable(item.value) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(super) fn parse_expr(&mut self, min_bp: u8) -> ExprId<'ast> {
         let mut left = self.parse_nud();
+        let mut just_parsed_ternary = false;
+        let mut just_parsed_elvis = false;
 
         loop {
             let op = match self.current_token.kind {
@@ -290,6 +326,18 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     if l_bp < min_bp {
                         break;
                     }
+
+                    let current_is_elvis = self.next_token.kind == TokenKind::Colon;
+
+                    if just_parsed_ternary {
+                        if !just_parsed_elvis || !current_is_elvis {
+                            self.errors.push(ParseError {
+                                span: self.current_token.span,
+                                message: "Unparenthesized `a ? b : c ? d : e` is not supported. Use either `(a ? b : c) ? d : e` or `a ? b : (c ? d : e)`",
+                            });
+                        }
+                    }
+
                     self.bump();
 
                     let if_true = if self.current_token.kind != TokenKind::Colon {
@@ -313,6 +361,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         if_false,
                         span,
                     });
+                    just_parsed_ternary = true;
+                    just_parsed_elvis = current_is_elvis;
                     continue;
                 }
                 TokenKind::PlusEq
@@ -347,8 +397,18 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                     let l_bp = 35; // Same as Assignment
                     if l_bp < min_bp {
-                        break;
+                        if !self.is_assignable(left) {
+                            break;
+                        }
                     }
+
+                    if !self.is_assignable(left) {
+                        self.errors.push(ParseError {
+                            span: left.span(),
+                            message: "Assignments can only happen to writable values",
+                        });
+                    }
+
                     self.bump();
                     let right = self.parse_expr(l_bp - 1);
                     let span = Span::new(left.span().start, right.span().end);
@@ -358,14 +418,28 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         expr: right,
                         span,
                     });
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::Eq => {
                     // Assignment: $a = 1
                     let l_bp = 35; // Higher than 'and' (30), lower than 'ternary' (40)
                     if l_bp < min_bp {
-                        break;
+                        // Special check for PHP grammar quirk:
+                        // If LHS is assignable, assignment binds tighter than anything (effectively),
+                        // because "expr = ..." is invalid, only "var = ..." is valid.
+                        if !self.is_assignable(left) {
+                            break;
+                        }
                     }
+
+                    if !self.is_assignable(left) {
+                        self.errors.push(ParseError {
+                            span: left.span(),
+                            message: "Assignments can only happen to writable values",
+                        });
+                    }
+
                     self.bump();
 
                     // Assignment by reference: $a =& $b
@@ -395,6 +469,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         expr: right,
                         span,
                     });
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::OpenBracket => {
@@ -425,6 +500,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         dim,
                         span,
                     });
+                    just_parsed_ternary = false;
                     continue;
                 }
 
@@ -580,6 +656,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             span,
                         });
                     }
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::DoubleColon => {
@@ -656,6 +733,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                             span,
                         });
                     }
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::OpenParen => {
@@ -673,6 +751,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         args,
                         span,
                     });
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::Inc => {
@@ -685,6 +764,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                     let span = Span::new(left.span().start, end);
                     left = self.arena.alloc(Expr::PostInc { var: left, span });
+                    just_parsed_ternary = false;
                     continue;
                 }
                 TokenKind::Dec => {
@@ -697,6 +777,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                     let span = Span::new(left.span().start, end);
                     left = self.arena.alloc(Expr::PostDec { var: left, span });
+                    just_parsed_ternary = false;
                     continue;
                 }
                 _ => break,
@@ -717,6 +798,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 right,
                 span,
             });
+            just_parsed_ternary = false;
         }
 
         left
