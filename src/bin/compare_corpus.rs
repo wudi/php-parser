@@ -176,39 +176,37 @@ fn compare_tokens(
         let r_text_str = String::from_utf8_lossy(r_text);
 
         // Handle T_CLOSE_TAG with newline
-        if p_kind == "T_CLOSE_TAG" && r_kind == TokenKind::CloseTag
-            && p_text.len() > r_text.len() {
-                // PHP token includes trailing newline(s)
-                // Check if next Rust token is InlineHtml and matches the difference
-                if r_idx + 1 < r_tokens.len() {
-                    let next_r_tok = r_tokens[r_idx + 1];
-                    if next_r_tok.kind == TokenKind::InlineHtml {
-                        let next_r_text = next_r_tok.span.as_str(code.as_bytes());
-                        let next_r_text_str = String::from_utf8_lossy(next_r_text);
+        if p_kind == "T_CLOSE_TAG" && r_kind == TokenKind::CloseTag && p_text.len() > r_text.len() {
+            // PHP token includes trailing newline(s)
+            // Check if next Rust token is InlineHtml and matches the difference
+            if r_idx + 1 < r_tokens.len() {
+                let next_r_tok = r_tokens[r_idx + 1];
+                if next_r_tok.kind == TokenKind::InlineHtml {
+                    let next_r_text = next_r_tok.span.as_str(code.as_bytes());
+                    let next_r_text_str = String::from_utf8_lossy(next_r_text);
 
-                        let combined = format!("{}{}", r_text_str, next_r_text_str);
-                        if combined == p_text {
-                            r_idx += 1; // Skip next token
-                            // Update r_text_str for comparison?
-                            // Actually, we can just continue to map_kind check,
-                            // but we need to be careful.
-                            // If we skip, we are effectively merging.
-                            // But we need to make sure the current r_kind (CloseTag) matches p_kind (T_CLOSE_TAG).
-                            // map_kind(CloseTag) -> T_CLOSE_TAG.
-                            // So it will match.
-                            // But is_acceptable_mismatch might check text.
-                            // We should probably update r_text_str or just let it pass if we verified the combined text.
-                        }
+                    let combined = format!("{}{}", r_text_str, next_r_text_str);
+                    if combined == p_text {
+                        r_idx += 1; // Skip next token
+                        // Update r_text_str for comparison?
+                        // Actually, we can just continue to map_kind check,
+                        // but we need to be careful.
+                        // If we skip, we are effectively merging.
+                        // But we need to make sure the current r_kind (CloseTag) matches p_kind (T_CLOSE_TAG).
+                        // map_kind(CloseTag) -> T_CLOSE_TAG.
+                        // So it will match.
+                        // But is_acceptable_mismatch might check text.
+                        // We should probably update r_text_str or just let it pass if we verified the combined text.
                     }
                 }
             }
+        }
 
         let r_kind_mapped = map_kind(r_kind);
 
-        if r_kind_mapped != p_kind
-            && !is_acceptable_mismatch(r_kind, p_kind, &r_text_str, p_text) {
-                return false;
-            }
+        if r_kind_mapped != p_kind && !is_acceptable_mismatch(r_kind, p_kind, &r_text_str, p_text) {
+            return false;
+        }
 
         p_idx += 1;
         r_idx += 1;
@@ -456,9 +454,11 @@ fn is_acceptable_mismatch(r_kind: TokenKind, p_kind: &str, r_text: &str, p_text:
         && (p_kind == "&"
             || p_kind == "T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG"
             || p_kind == "T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG")
-        && r_text == "&" && p_text == "&" {
-            return true;
-        }
+        && r_text == "&"
+        && p_text == "&"
+    {
+        return true;
+    }
 
     if p_kind == "T_STRING" && r_text == p_text {
         return true;
@@ -478,15 +478,16 @@ fn is_acceptable_mismatch(r_kind: TokenKind, p_kind: &str, r_text: &str, p_text:
 fn find_php_files(dir: &Path) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     if dir.is_dir()
-        && let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    files.extend(find_php_files(&path));
-                } else if path.extension().is_some_and(|ext| ext == "php") {
-                    files.push(path);
-                }
+        && let Ok(entries) = fs::read_dir(dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(find_php_files(&path));
+            } else if path.extension().is_some_and(|ext| ext == "php") {
+                files.push(path);
             }
         }
+    }
     files
 }

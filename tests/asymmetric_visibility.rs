@@ -1,8 +1,8 @@
+use bumpalo::Bump;
+use php_parser_rs::ast::{ClassMember, Stmt};
+use php_parser_rs::lexer::Lexer;
 use php_parser_rs::lexer::token::TokenKind;
 use php_parser_rs::parser::Parser;
-use bumpalo::Bump;
-use php_parser_rs::lexer::Lexer;
-use php_parser_rs::ast::{Stmt, ClassMember};
 
 #[test]
 fn test_asymmetric_visibility() {
@@ -20,7 +20,11 @@ class Test {
 
     assert!(result.errors.is_empty());
 
-    let stmt = result.statements.iter().find(|s| matches!(s, Stmt::Class { .. })).expect("Expected class");
+    let stmt = result
+        .statements
+        .iter()
+        .find(|s| matches!(s, Stmt::Class { .. }))
+        .expect("Expected class");
     if let Stmt::Class { members, .. } = stmt {
         assert_eq!(members.len(), 3);
 

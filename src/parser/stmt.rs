@@ -1,4 +1,6 @@
-use crate::ast::{AttributeGroup, Catch, ClassConst, ParseError, StaticVar, Stmt, StmtId, UseItem, UseKind};
+use crate::ast::{
+    AttributeGroup, Catch, ClassConst, ParseError, StaticVar, Stmt, StmtId, UseItem, UseKind,
+};
 use crate::lexer::token::TokenKind;
 use crate::parser::{LexerMode, Parser, Token};
 use crate::span::Span;

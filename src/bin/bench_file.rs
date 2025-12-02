@@ -1,12 +1,12 @@
 use bumpalo::Bump;
 use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;
+use pprof::protos::Message;
 use std::env;
 use std::fs;
-use std::time::Instant;
 use std::fs::File;
 use std::io::Write;
-use pprof::protos::Message;
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -34,20 +34,24 @@ fn main() {
     // Benchmark
     let iterations = 200;
     println!("Running {} iterations...", iterations);
-    
-    let guard = pprof::ProfilerGuardBuilder::default().frequency(1000).blocklist(&["libc", "libgcc", "pthread", "vdso"]).build().unwrap();
-    
+
+    let guard = pprof::ProfilerGuardBuilder::default()
+        .frequency(1000)
+        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+        .build()
+        .unwrap();
+
     let start = Instant::now();
-    
+
     for _ in 0..iterations {
         let bump = Bump::new();
         let lexer = Lexer::new(bytes);
         let mut parser = Parser::new(lexer, &bump);
         let _ = parser.parse_program();
     }
-    
+
     let duration = start.elapsed();
-    
+
     if let Ok(report) = guard.report().build() {
         let file = File::create("profile.pb").unwrap();
         let profile = report.pprof().unwrap();
@@ -63,7 +67,8 @@ fn main() {
     };
 
     let avg_time = duration / iterations as u32;
-    let throughput = (bytes.len() as f64 * iterations as f64) / duration.as_secs_f64() / 1_024.0 / 1_024.0;
+    let throughput =
+        (bytes.len() as f64 * iterations as f64) / duration.as_secs_f64() / 1_024.0 / 1_024.0;
 
     println!("Total time: {:?}", duration);
     println!("Average time: {:?}", avg_time);

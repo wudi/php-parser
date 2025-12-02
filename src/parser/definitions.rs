@@ -992,9 +992,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             );
             let mut ty = None;
             if self.current_token.kind != TokenKind::Variable
-                && let Some(t) = self.parse_type() {
-                    ty = Some(self.arena.alloc(t) as &'ast Type<'ast>);
-                }
+                && let Some(t) = self.parse_type()
+            {
+                ty = Some(self.arena.alloc(t) as &'ast Type<'ast>);
+            }
 
             let name = if self.current_token.kind == TokenKind::Variable {
                 let token = self.arena.alloc(self.current_token);
@@ -1008,7 +1009,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                 let is_terminator = matches!(
                     self.current_token.kind,
-                    TokenKind::SemiColon | TokenKind::CloseBrace | TokenKind::CloseTag | TokenKind::Eof
+                    TokenKind::SemiColon
+                        | TokenKind::CloseBrace
+                        | TokenKind::CloseTag
+                        | TokenKind::Eof
                 );
 
                 if !is_terminator {

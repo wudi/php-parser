@@ -79,4 +79,3 @@ fn parses_short_array_destructuring_with_skips() {
         other => panic!("expected array structure, got {:?}", other),
     }
 }
-

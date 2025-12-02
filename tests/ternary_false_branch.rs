@@ -57,7 +57,6 @@ fn test_true_branch_with_or() {
     assert_debug_snapshot!(program);
 }
 
-
 #[test]
 fn test_ternary_precedence_in_assignment() {
     // $res = $a ? 10 : 1 and 0;
@@ -65,7 +64,7 @@ fn test_ternary_precedence_in_assignment() {
     // Because '=' (35) > 'and' (10).
     // So the assignment consumes the ternary, but stops at 'and'.
     // The ternary false branch must also stop at 'and'.
-    
+
     let input = b"<?php $res = $a ? 10 : 1 and 0;";
     let arena = Bump::new();
     let lexer = Lexer::new(input);

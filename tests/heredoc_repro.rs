@@ -1,6 +1,6 @@
+use bumpalo::Bump;
 use php_parser_rs::lexer::Lexer;
 use php_parser_rs::parser::Parser;
-use bumpalo::Bump;
 
 #[test]
 fn test_heredoc_in_method() {

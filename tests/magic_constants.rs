@@ -19,7 +19,7 @@ fn test_magic_constants() {
     let lexer = Lexer::new(source.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     let statements = program.statements;
     assert_eq!(statements.len(), 9); // Nop + 8 assignments
 

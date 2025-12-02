@@ -13,7 +13,7 @@ fn main() {
 
     let file_path = &args[1];
     let source = fs::read(file_path).expect("Could not read file");
-    
+
     let arena = Bump::new();
     let lexer = Lexer::new(&source);
     let mut parser = Parser::new(lexer, &arena);
