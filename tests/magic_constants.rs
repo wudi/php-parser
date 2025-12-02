@@ -27,7 +27,7 @@ fn test_magic_constants() {
     let statements: Vec<&Stmt> = program
         .statements
         .iter()
-        .map(|s| *s)
+        .copied()
         .filter(|s| !matches!(s, Stmt::Nop { .. }))
         .collect();
     assert_eq!(statements.len(), 9);
