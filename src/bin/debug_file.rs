@@ -26,5 +26,6 @@ fn main() {
         }
     } else {
         println!("Successfully parsed {}", file_path);
+        println!("{:#?}", program);
     }
 }

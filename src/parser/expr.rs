@@ -302,7 +302,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         self.bump();
                     }
 
-                    let if_false = self.parse_expr(min_bp);
+                    // Use l_bp + 1 to enforce left-associativity for the else branch,
+                    // which allows us to detect the unparenthesized nesting in the next iteration.
+                    let if_false = self.parse_expr(l_bp + 1);
 
                     let span = Span::new(left.span().start, if_false.span().end);
                     left = self.arena.alloc(Expr::Ternary {
@@ -862,16 +864,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Print => {
                 let start = token.span.start;
                 self.bump();
-                let expr = if self.current_token.kind == TokenKind::OpenParen {
-                    self.bump();
-                    let inner = self.parse_expr(0);
-                    if self.current_token.kind == TokenKind::CloseParen {
-                        self.bump();
-                    }
-                    inner
-                } else {
-                    self.parse_expr(0)
-                };
+                let expr = self.parse_expr(31);
                 let span = Span::new(start, expr.span().end);
                 self.arena.alloc(Expr::Print { expr, span })
             }
@@ -891,7 +884,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
 
                 if is_from {
-                    let value = self.parse_expr(30);
+                    let value = self.parse_expr(31);
                     let span = Span::new(start, value.span().end);
                     return self.arena.alloc(Expr::Yield {
                         key: None,
@@ -918,10 +911,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     });
                 }
 
-                let first = self.parse_expr(30);
+                let first = self.parse_expr(31);
                 let (key, value) = if self.current_token.kind == TokenKind::DoubleArrow {
                     self.bump();
-                    let val = self.parse_expr(30);
+                    let val = self.parse_expr(31);
                     (Some(first), val)
                 } else {
                     (None, first)

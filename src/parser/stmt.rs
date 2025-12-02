@@ -7,6 +7,14 @@ use crate::span::Span;
 
 impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_stmt(&mut self) -> StmtId<'ast> {
+        self.parse_stmt_impl(false)
+    }
+
+    pub(super) fn parse_top_stmt(&mut self) -> StmtId<'ast> {
+        self.parse_stmt_impl(true)
+    }
+
+    fn parse_stmt_impl(&mut self, top_level: bool) -> StmtId<'ast> {
         self.lexer.set_mode(LexerMode::Standard);
 
         if self.current_token.kind == TokenKind::Identifier
@@ -103,12 +111,36 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Interface => self.parse_interface(&[]),
             TokenKind::Trait => self.parse_trait(&[]),
             TokenKind::Enum => self.parse_enum(&[]),
-            TokenKind::Namespace => self.parse_namespace(),
-            TokenKind::Use => self.parse_use(),
+            TokenKind::Namespace => {
+                if !top_level {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "Namespace declaration statement has to be the very first statement or after any declare call in the script",
+                    });
+                }
+                self.parse_namespace()
+            }
+            TokenKind::Use => {
+                if !top_level {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "Use declarations are only allowed at the top level",
+                    });
+                }
+                self.parse_use()
+            }
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Try => self.parse_try(),
             TokenKind::Throw => self.parse_throw(),
-            TokenKind::Const => self.parse_const_stmt(&[]),
+            TokenKind::Const => {
+                if !top_level {
+                    self.errors.push(ParseError {
+                        span: self.current_token.span,
+                        message: "Const declarations are only allowed at the top level",
+                    });
+                }
+                self.parse_const_stmt(&[])
+            }
             TokenKind::Goto => self.parse_goto(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
@@ -289,7 +321,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             while self.current_token.kind != TokenKind::CloseBrace
                 && self.current_token.kind != TokenKind::Eof
             {
-                statements.push(self.parse_stmt());
+                statements.push(self.parse_top_stmt());
             }
             if self.current_token.kind == TokenKind::CloseBrace {
                 self.bump();

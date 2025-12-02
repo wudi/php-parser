@@ -12,53 +12,53 @@ Program {
             },
         },
         Expression {
-            expr: Ternary {
-                condition: Variable {
-                    name: Span {
-                        start: 6,
-                        end: 8,
+            expr: Binary {
+                left: Ternary {
+                    condition: Variable {
+                        name: Span {
+                            start: 6,
+                            end: 8,
+                        },
+                        span: Span {
+                            start: 6,
+                            end: 8,
+                        },
+                    },
+                    if_true: Some(
+                        Integer {
+                            value: [
+                                49,
+                                48,
+                            ],
+                            span: Span {
+                                start: 11,
+                                end: 13,
+                            },
+                        },
+                    ),
+                    if_false: Variable {
+                        name: Span {
+                            start: 16,
+                            end: 18,
+                        },
+                        span: Span {
+                            start: 16,
+                            end: 18,
+                        },
                     },
                     span: Span {
                         start: 6,
-                        end: 8,
+                        end: 18,
                     },
                 },
-                if_true: Some(
-                    Integer {
-                        value: [
-                            49,
-                            48,
-                        ],
-                        span: Span {
-                            start: 11,
-                            end: 13,
-                        },
-                    },
-                ),
-                if_false: Binary {
-                    left: Variable {
-                        name: Span {
-                            start: 16,
-                            end: 18,
-                        },
-                        span: Span {
-                            start: 16,
-                            end: 18,
-                        },
-                    },
-                    op: LogicalAnd,
-                    right: Variable {
-                        name: Span {
-                            start: 23,
-                            end: 25,
-                        },
-                        span: Span {
-                            start: 23,
-                            end: 25,
-                        },
+                op: LogicalAnd,
+                right: Variable {
+                    name: Span {
+                        start: 23,
+                        end: 25,
                     },
                     span: Span {
-                        start: 16,
+                        start: 23,
                         end: 25,
                     },
                 },
