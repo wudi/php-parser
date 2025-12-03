@@ -40,6 +40,10 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             self.newline();
             self.visit_stmt(*stmt);
         }
+        for error in program.errors {
+            self.newline();
+            self.visit_parse_error(error);
+        }
         self.indent -= 1;
         self.write(")");
     }
@@ -479,16 +483,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(use");
                 for use_item in *uses {
                     self.write(" ");
-                    match use_item.kind {
-                        UseKind::Normal => {},
-                        UseKind::Function => self.write("function "),
-                        UseKind::Const => self.write("const "),
-                    }
-                    self.visit_name(&use_item.name);
-                    if let Some(alias) = use_item.alias {
-                        self.write(" as ");
-                        self.write(&String::from_utf8_lossy(alias.text(self.source)));
-                    }
+                    self.visit_use_item(use_item);
                 }
                 self.write(")");
             }
@@ -504,11 +499,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(static");
                 for var in *vars {
                     self.write(" ");
-                    self.visit_expr(var.var);
-                    if let Some(default) = var.default {
-                        self.write(" = ");
-                        self.visit_expr(default);
-                    }
+                    self.visit_static_var(var);
                 }
                 self.write(")");
             }
@@ -535,9 +526,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(declare");
                 for declare in *declares {
                     self.write(" ");
-                    self.write(&String::from_utf8_lossy(declare.key.text(self.source)));
-                    self.write("=");
-                    self.visit_expr(declare.value);
+                    self.visit_declare_item(declare);
                 }
                 self.indent += 1;
                 self.newline();
@@ -564,9 +553,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 for c in *consts {
                     self.write(" ");
-                    self.write(&String::from_utf8_lossy(c.name.text(self.source)));
-                    self.write(" = ");
-                    self.visit_expr(c.value);
+                    self.visit_class_const(c);
                 }
                 self.write(")");
             }
@@ -1223,11 +1210,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 for entry in *entries {
                     self.write(" ");
-                    self.write(&String::from_utf8_lossy(entry.name.text(self.source)));
-                    if let Some(default) = entry.default {
-                        self.write(" = ");
-                        self.visit_expr(default);
-                    }
+                    self.visit_property_entry(entry);
                 }
                 self.write(")");
             }
@@ -1297,9 +1280,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 for c in *consts {
                     self.write(" ");
-                    self.write(&String::from_utf8_lossy(c.name.text(self.source)));
-                    self.write(" = ");
-                    self.visit_expr(c.value);
+                    self.visit_class_const(c);
                 }
                 self.write(")");
             }
@@ -1496,6 +1477,53 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             self.write(")");
         }
         self.write(")");
+    }
+
+    fn visit_static_var(&mut self, var: &'ast StaticVar<'ast>) {
+        self.visit_expr(var.var);
+        if let Some(default) = var.default {
+            self.write(" = ");
+            self.visit_expr(default);
+        }
+    }
+
+    fn visit_use_item(&mut self, use_item: &'ast UseItem<'ast>) {
+        match use_item.kind {
+            UseKind::Normal => {},
+            UseKind::Function => self.write("function "),
+            UseKind::Const => self.write("const "),
+        }
+        self.visit_name(&use_item.name);
+        if let Some(alias) = use_item.alias {
+            self.write(" as ");
+            self.write(&String::from_utf8_lossy(alias.text(self.source)));
+        }
+    }
+
+    fn visit_class_const(&mut self, c: &'ast ClassConst<'ast>) {
+        self.write(&String::from_utf8_lossy(c.name.text(self.source)));
+        self.write(" = ");
+        self.visit_expr(c.value);
+    }
+
+    fn visit_declare_item(&mut self, declare: &'ast DeclareItem<'ast>) {
+        self.write(&String::from_utf8_lossy(declare.key.text(self.source)));
+        self.write("=");
+        self.visit_expr(declare.value);
+    }
+
+    fn visit_property_entry(&mut self, entry: &'ast PropertyEntry<'ast>) {
+        self.write(&String::from_utf8_lossy(entry.name.text(self.source)));
+        if let Some(default) = entry.default {
+            self.write(" = ");
+            self.visit_expr(default);
+        }
+    }
+
+    fn visit_parse_error(&mut self, error: &'ast ParseError) {
+        self.write("(parse-error \"");
+        self.write(&error.message);
+        self.write("\")");
     }
 
     fn visit_property_hook(&mut self, hook: &'ast PropertyHook<'ast>) {
