@@ -135,9 +135,18 @@ pub struct Lexer<'src> {
 
 impl<'src> Lexer<'src> {
     pub fn new(input: &'src [u8]) -> Self {
+        let mut cursor = 0;
+        if input.starts_with(b"#!") {
+            if let Some(pos) = memchr(b'\n', input) {
+                cursor = pos + 1;
+            } else {
+                cursor = input.len();
+            }
+        }
+
         Self {
             input,
-            cursor: 0,
+            cursor,
             state_stack: vec![LexerState::Initial],
             mode: LexerMode::Standard,
         }

@@ -324,7 +324,16 @@ fn test_run_tests_php() {
     let path = format!("{}/run-tests.php", php_src_path);
     println!("Testing file: {}", path);
 
-    let php_tokens = get_php_tokens_from_file(&path);
+    let mut php_tokens = get_php_tokens_from_file(&path);
+    
+    // If the first token is a shebang (T_INLINE_HTML starting with #!), remove it
+    // because our lexer discards shebangs.
+    if let Some((kind, text)) = php_tokens.first() {
+        if kind == "T_INLINE_HTML" && text.starts_with("#!") {
+            php_tokens.remove(0);
+        }
+    }
+
     let code = std::fs::read_to_string(&path).expect("Failed to read file");
 
     let lexer = Lexer::new(code.as_bytes());
