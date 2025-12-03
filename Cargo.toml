@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2024"
 authors = ["Di Wu <hi@wudi.io>"]
 description = "A fast PHP parser written in Rust"
+keywords = ["php", "php-parser", "parser", "php-ast", "visitor"]
 license = "MIT"
 exclude = ["tools/*", "tests/*", "bin/*"]
 repository = "https://github.com/wudi/php-parser"
