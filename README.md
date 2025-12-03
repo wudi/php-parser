@@ -50,22 +50,31 @@ fn main() {
 
 ## Performance
 
-test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
+Test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
 
 ```bash
-➜  php-parser git:(master) ✗ ./target/release/bench_file run-tests.php
+➜  php-parser git:(master) ✗ cargo run --release --bin bench_file -- run-tests.php
+    Finished `release` profile [optimized] target(s) in 0.05s
+     Running `target/release/bench_file run-tests.php`
 Benchmarking: run-tests.php
 File size: 139.63 KB
 Warming up...
 Running 200 iterations...
 Profile written to profile.pb
 Flamegraph written to flamegraph.svg
-Total time: 132.538ms
-Average time: 662.69µs
-Throughput: 205.76 MB/s
+Total time: 134.267333ms
+Average time: 671.336µs
+Throughput: 203.11 MB/s
 ```
 
-Machine specs: Apple M1 Pro, 32GB RAM
+Table comparing with [nikic/PHP-Parser](https://github.com/nikic/PHP-Parser) v5.6.2
+
+| Parser            | Language       | Time (ms)        |
+|-------------------|----------------|------------------|
+| nikic/PHP-Parser  | PHP            | 33               |
+| php-parser        | Rust           | 0.67             |
+
+ > Machine specs: Apple M1 Pro, 32GB RAM
 
 ## Development
 
