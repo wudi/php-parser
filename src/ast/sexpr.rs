@@ -583,7 +583,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             }
             Expr::String { value, .. } => {
                 self.write("(string \"");
-                self.write(&String::from_utf8_lossy(value)); // TODO: Escape
+                self.write(&String::from_utf8_lossy(value).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"));
                 self.write("\")");
             }
             Expr::Binary {
@@ -595,7 +595,31 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                     BinaryOp::Minus => "-",
                     BinaryOp::Mul => "*",
                     BinaryOp::Div => "/",
-                    _ => "unknown-op",
+                    BinaryOp::Mod => "%",
+                    BinaryOp::Concat => ".",
+                    BinaryOp::Eq => "=",
+                    BinaryOp::EqEq => "==",
+                    BinaryOp::EqEqEq => "===",
+                    BinaryOp::NotEq => "!=",
+                    BinaryOp::NotEqEq => "!==",
+                    BinaryOp::Lt => "<",
+                    BinaryOp::LtEq => "<=",
+                    BinaryOp::Gt => ">",
+                    BinaryOp::GtEq => ">=",
+                    BinaryOp::And => "&&",
+                    BinaryOp::Or => "||",
+                    BinaryOp::BitAnd => "&",
+                    BinaryOp::BitOr => "|",
+                    BinaryOp::BitXor => "^",
+                    BinaryOp::Coalesce => "??",
+                    BinaryOp::Spaceship => "<=>",
+                    BinaryOp::Pow => "**",
+                    BinaryOp::ShiftLeft => "<<",
+                    BinaryOp::ShiftRight => ">>",
+                    BinaryOp::LogicalAnd => "and",
+                    BinaryOp::LogicalOr => "or",
+                    BinaryOp::LogicalXor => "xor",
+                    BinaryOp::Instanceof => "instanceof",
                 });
                 self.write(" ");
                 self.visit_expr(left);
@@ -1435,11 +1459,16 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 self.write(")");
             }
-            TraitAdaptation::Alias { method, alias, .. } => {
+            TraitAdaptation::Alias { method, alias, visibility, .. } => {
                 self.write("(alias ");
                 self.visit_trait_method_ref(method);
+                self.write(" as");
+                if let Some(vis) = visibility {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(vis.text(self.source)));
+                }
                 if let Some(alias) = alias {
-                    self.write(" as \"");
+                    self.write(" \"");
                     self.write(&String::from_utf8_lossy(alias.text(self.source)));
                     self.write("\"");
                 }
