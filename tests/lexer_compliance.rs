@@ -325,7 +325,7 @@ fn test_run_tests_php() {
     println!("Testing file: {}", path);
 
     let mut php_tokens = get_php_tokens_from_file(&path);
-    
+
     // If the first token is a shebang (T_INLINE_HTML starting with #!), remove it
     // because our lexer discards shebangs.
     if let Some((kind, text)) = php_tokens.first() {

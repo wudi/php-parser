@@ -38,7 +38,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
         self.indent += 1;
         for stmt in program.statements {
             self.newline();
-            self.visit_stmt(*stmt);
+            self.visit_stmt(stmt);
         }
         for error in program.errors {
             self.newline();
@@ -55,7 +55,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent += 1;
                 for stmt in *statements {
                     self.newline();
-                    self.visit_stmt(*stmt);
+                    self.visit_stmt(stmt);
                 }
                 self.indent -= 1;
                 self.write(")");
@@ -74,7 +74,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent += 1;
                 for stmt in *then_block {
                     self.newline();
-                    self.visit_stmt(*stmt);
+                    self.visit_stmt(stmt);
                 }
                 self.indent -= 1;
                 self.write(")");
@@ -84,7 +84,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                     self.indent += 1;
                     for stmt in *else_block {
                         self.newline();
-                        self.visit_stmt(*stmt);
+                        self.visit_stmt(stmt);
                     }
                     self.indent -= 1;
                     self.write(")");
@@ -113,7 +113,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(echo");
                 for expr in *exprs {
                     self.write(" ");
-                    self.visit_expr(*expr);
+                    self.visit_expr(expr);
                 }
                 self.write(")");
             }
@@ -150,21 +150,21 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(init");
                 for expr in *init {
                     self.write(" ");
-                    self.visit_expr(*expr);
+                    self.visit_expr(expr);
                 }
                 self.write(")");
                 self.newline();
                 self.write("(cond");
                 for expr in *condition {
                     self.write(" ");
-                    self.visit_expr(*expr);
+                    self.visit_expr(expr);
                 }
                 self.write(")");
                 self.newline();
                 self.write("(loop");
                 for expr in *loop_expr {
                     self.write(" ");
-                    self.visit_expr(*expr);
+                    self.visit_expr(expr);
                 }
                 self.write(")");
                 self.newline();
@@ -269,7 +269,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                     self.indent += 1;
                     for stmt in *finally {
                         self.newline();
-                        self.visit_stmt(*stmt);
+                        self.visit_stmt(stmt);
                     }
                     self.indent -= 1;
                     self.write(")");
@@ -348,7 +348,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("\"");
                 if let Some(extends) = extends {
                     self.write(" (extends ");
-                    self.visit_name(&extends);
+                    self.visit_name(extends);
                     self.write(")");
                 }
                 if !implements.is_empty() {
@@ -476,7 +476,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(namespace");
                 if let Some(name) = name {
                     self.write(" ");
-                    self.visit_name(&name);
+                    self.visit_name(name);
                 }
                 if let Some(body) = body {
                     self.indent += 1;
@@ -485,7 +485,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                     self.indent += 1;
                     for stmt in *body {
                         self.newline();
-                        self.visit_stmt(*stmt);
+                        self.visit_stmt(stmt);
                     }
                     self.indent -= 1;
                     self.write("))");
@@ -556,9 +556,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             Stmt::Const {
-                attributes,
-                consts,
-                ..
+                attributes, consts, ..
             } => {
                 self.write("(const");
                 for attr in *attributes {
@@ -597,7 +595,14 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             }
             Expr::String { value, .. } => {
                 self.write("(string \"");
-                self.write(&String::from_utf8_lossy(value).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"));
+                self.write(
+                    &String::from_utf8_lossy(value)
+                        .replace("\\", "\\\\")
+                        .replace("\"", "\\\"")
+                        .replace("\n", "\\n")
+                        .replace("\r", "\\r")
+                        .replace("\t", "\\t"),
+                );
                 self.write("\")");
             }
             Expr::Binary {
@@ -1067,7 +1072,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 if let Some(extends) = extends {
                     self.write(" (extends ");
-                    self.visit_name(&extends);
+                    self.visit_name(extends);
                     self.write(")");
                 }
                 if !implements.is_empty() {
@@ -1142,7 +1147,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
         self.indent += 1;
         for stmt in case.body {
             self.newline();
-            self.visit_stmt(*stmt);
+            self.visit_stmt(stmt);
         }
         self.indent -= 1;
         self.write(")");
@@ -1164,7 +1169,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
         self.indent += 1;
         for stmt in catch.body {
             self.newline();
-            self.visit_stmt(*stmt);
+            self.visit_stmt(stmt);
         }
         self.indent -= 1;
         self.write(")");
@@ -1197,12 +1202,12 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             self.visit_expr(default);
         }
         if let Some(hooks) = param.hooks {
-             self.write(" (hooks");
-             for hook in hooks {
-                 self.write(" ");
-                 self.visit_property_hook(hook);
-             }
-             self.write(")");
+            self.write(" (hooks");
+            for hook in hooks {
+                self.write(" ");
+                self.visit_property_hook(hook);
+            }
+            self.write(")");
         }
         self.write(")");
     }
@@ -1210,7 +1215,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
     fn visit_type(&mut self, ty: &'ast Type<'ast>) {
         match ty {
             Type::Simple(t) => self.write(&String::from_utf8_lossy(t.text(self.source))),
-            Type::Name(n) => self.visit_name(&n),
+            Type::Name(n) => self.visit_name(n),
             Type::Union(types) => {
                 self.write("(union");
                 for t in *types {
@@ -1456,7 +1461,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             self.write(" (conds");
             for cond in conds {
                 self.write(" ");
-                self.visit_expr(*cond);
+                self.visit_expr(cond);
             }
             self.write(")");
         } else {
@@ -1488,7 +1493,12 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 self.write(")");
             }
-            TraitAdaptation::Alias { method, alias, visibility, .. } => {
+            TraitAdaptation::Alias {
+                method,
+                alias,
+                visibility,
+                ..
+            } => {
                 self.write("(alias ");
                 self.visit_trait_method_ref(method);
                 self.write(" as");
@@ -1547,7 +1557,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
 
     fn visit_use_item(&mut self, use_item: &'ast UseItem<'ast>) {
         match use_item.kind {
-            UseKind::Normal => {},
+            UseKind::Normal => {}
             UseKind::Function => self.write("function "),
             UseKind::Const => self.write("const "),
         }
@@ -1580,7 +1590,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
 
     fn visit_parse_error(&mut self, error: &'ast ParseError) {
         self.write("(parse-error \"");
-        self.write(&error.message);
+        self.write(error.message);
         self.write("\")");
     }
 
@@ -1599,7 +1609,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
         }
         self.write(" ");
         self.write(&String::from_utf8_lossy(hook.name.text(self.source)));
-        
+
         if !hook.params.is_empty() {
             self.write(" (params");
             for param in hook.params {
@@ -1608,7 +1618,7 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             }
             self.write(")");
         }
-        
+
         self.write(" ");
         self.visit_property_hook_body(&hook.body);
         self.write(")");
