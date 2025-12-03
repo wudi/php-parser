@@ -12,7 +12,7 @@ fn test_sexpr_basic() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut formatter = SExprFormatter::new();
+    let mut formatter = SExprFormatter::new(code.as_bytes());
     formatter.visit_program(&program);
     let output = formatter.finish();
 
@@ -30,12 +30,30 @@ fn test_sexpr_control_flow() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut formatter = SExprFormatter::new();
+    let mut formatter = SExprFormatter::new(code.as_bytes());
     formatter.visit_program(&program);
     let output = formatter.finish();
 
     assert_eq!(
         output,
-        "(program\n  (nop)\n  (if (variable)\n    (then\n      (echo (integer 1)))\n    (else\n      (echo (integer 2))))\n  (while (variable)\n    (body\n      (assign (variable) (integer 1)))))"
+        "(program\n  (nop)\n  (if (variable \"$a\")\n    (then\n      (echo (integer 1)))\n    (else\n      (echo (integer 2))))\n  (while (variable \"$b\")\n    (body\n      (assign (variable \"$a\") (integer 1)))))"
+    );
+}
+
+#[test]
+fn test_sexpr_class() {
+    let code = "<?php class Foo extends Bar implements Baz { public int $p = 1; function m($a) { return $a; } }";
+    let arena = Bump::new();
+    let lexer = Lexer::new(code.as_bytes());
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut formatter = SExprFormatter::new(code.as_bytes());
+    formatter.visit_program(&program);
+    let output = formatter.finish();
+
+    assert_eq!(
+        output,
+        "(program\n  (nop)\n  (class \"Foo\" (extends Bar) (implements Baz)\n    (members\n      (property (int) $p = (integer 1))\n      (method \"m\" (params ($a))\n        (body\n          (return (variable \"$a\")))))))"
     );
 }
