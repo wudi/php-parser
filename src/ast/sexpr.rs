@@ -279,13 +279,23 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             Stmt::Function {
+                attributes,
                 name,
                 params,
                 return_type,
                 body,
+                by_ref,
                 ..
             } => {
-                self.write("(function \"");
+                self.write("(function");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                if *by_ref {
+                    self.write(" &");
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 self.write(" (params");
@@ -312,13 +322,24 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent -= 1;
             }
             Stmt::Class {
+                attributes,
+                modifiers,
                 name,
                 extends,
                 implements,
                 members,
                 ..
             } => {
-                self.write("(class \"");
+                self.write("(class");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 if let Some(extends) = extends {
@@ -347,12 +368,18 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent -= 1;
             }
             Stmt::Interface {
+                attributes,
                 name,
                 extends,
                 members,
                 ..
             } => {
-                self.write("(interface \"");
+                self.write("(interface");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 if !extends.is_empty() {
@@ -375,8 +402,18 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("))");
                 self.indent -= 1;
             }
-            Stmt::Trait { name, members, .. } => {
-                self.write("(trait \"");
+            Stmt::Trait {
+                attributes,
+                name,
+                members,
+                ..
+            } => {
+                self.write("(trait");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 self.indent += 1;
@@ -391,8 +428,18 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("))");
                 self.indent -= 1;
             }
-            Stmt::Enum { name, members, .. } => {
-                self.write("(enum \"");
+            Stmt::Enum {
+                attributes,
+                name,
+                members,
+                ..
+            } => {
+                self.write("(enum");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 self.indent += 1;
@@ -432,6 +479,11 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("(use");
                 for use_item in *uses {
                     self.write(" ");
+                    match use_item.kind {
+                        UseKind::Normal => {},
+                        UseKind::Function => self.write("function "),
+                        UseKind::Const => self.write("const "),
+                    }
                     self.visit_name(&use_item.name);
                     if let Some(alias) = use_item.alias {
                         self.write(" as ");
@@ -500,8 +552,16 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent -= 1;
                 self.write(")");
             }
-            Stmt::Const { consts, .. } => {
+            Stmt::Const {
+                attributes,
+                consts,
+                ..
+            } => {
                 self.write("(const");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
                 for c in *consts {
                     self.write(" ");
                     self.write(&String::from_utf8_lossy(c.name.text(self.source)));
@@ -743,13 +803,27 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             Expr::Closure {
+                attributes,
+                is_static,
+                by_ref,
                 params,
                 return_type,
                 body,
                 uses,
                 ..
             } => {
-                self.write("(closure (params");
+                self.write("(closure");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                if *is_static {
+                    self.write(" static");
+                }
+                if *by_ref {
+                    self.write(" &");
+                }
+                self.write(" (params");
                 for param in *params {
                     self.write(" ");
                     self.visit_param(param);
@@ -781,12 +855,26 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.indent -= 1;
             }
             Expr::ArrowFunction {
+                attributes,
+                is_static,
+                by_ref,
                 params,
                 return_type,
                 expr,
                 ..
             } => {
-                self.write("(arrow-function (params");
+                self.write("(arrow-function");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                if *is_static {
+                    self.write(" static");
+                }
+                if *by_ref {
+                    self.write(" &");
+                }
+                self.write(" (params");
                 for param in *params {
                     self.write(" ");
                     self.visit_param(param);
@@ -1049,7 +1137,16 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
 
     fn visit_param(&mut self, param: &'ast Param<'ast>) {
         self.write("(");
+        for attr in param.attributes {
+            self.write(" ");
+            self.visit_attribute_group(attr);
+        }
+        for modifier in param.modifiers {
+            self.write(" ");
+            self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+        }
         if let Some(ty) = param.ty {
+            self.write(" ");
             self.visit_type(ty);
             self.write(" ");
         }
@@ -1063,6 +1160,14 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
         if let Some(default) = param.default {
             self.write(" = ");
             self.visit_expr(default);
+        }
+        if let Some(hooks) = param.hooks {
+             self.write(" (hooks");
+             for hook in hooks {
+                 self.write(" ");
+                 self.visit_property_hook(hook);
+             }
+             self.write(")");
         }
         self.write(")");
     }
@@ -1096,8 +1201,22 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
 
     fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
         match member {
-            ClassMember::Property { ty, entries, .. } => {
+            ClassMember::Property {
+                attributes,
+                modifiers,
+                ty,
+                entries,
+                ..
+            } => {
                 self.write("(property");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
                 if let Some(ty) = ty {
                     self.write(" ");
                     self.visit_type(ty);
@@ -1113,13 +1232,24 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             ClassMember::Method {
+                attributes,
+                modifiers,
                 name,
                 params,
                 return_type,
                 body,
                 ..
             } => {
-                self.write("(method \"");
+                self.write("(method");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 self.write(" (params");
@@ -1145,8 +1275,26 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write("))");
                 self.indent -= 1;
             }
-            ClassMember::Const { consts, .. } => {
+            ClassMember::Const {
+                attributes,
+                modifiers,
+                ty,
+                consts,
+                ..
+            } => {
                 self.write("(const");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
+                if let Some(ty) = ty {
+                    self.write(" ");
+                    self.visit_type(ty);
+                }
                 for c in *consts {
                     self.write(" ");
                     self.write(&String::from_utf8_lossy(c.name.text(self.source)));
@@ -1175,8 +1323,18 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 self.write(")");
             }
-            ClassMember::Case { name, value, .. } => {
-                self.write("(enum-case \"");
+            ClassMember::Case {
+                attributes,
+                name,
+                value,
+                ..
+            } => {
+                self.write("(enum-case");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
                 if let Some(v) = value {
@@ -1185,10 +1343,48 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 }
                 self.write(")");
             }
-            ClassMember::PropertyHook { name, .. } => {
-                self.write("(property-hook \"");
+            ClassMember::PropertyHook {
+                attributes,
+                modifiers,
+                ty,
+                name,
+                default,
+                hooks,
+                ..
+            } => {
+                self.write("(property-hook-def");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
+                if let Some(ty) = ty {
+                    self.write(" ");
+                    self.visit_type(ty);
+                }
+                self.write(" ");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
-                self.write("\")");
+                if let Some(default) = default {
+                    self.write(" = ");
+                    self.visit_expr(default);
+                }
+                if !hooks.is_empty() {
+                    self.indent += 1;
+                    self.newline();
+                    self.write("(hooks");
+                    self.indent += 1;
+                    for hook in *hooks {
+                        self.newline();
+                        self.visit_property_hook(hook);
+                    }
+                    self.indent -= 1;
+                    self.write(")");
+                    self.indent -= 1;
+                }
+                self.write(")");
             }
         }
     }
@@ -1277,5 +1473,81 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             self.write("::");
         }
         self.write(&String::from_utf8_lossy(method.method.text(self.source)));
+    }
+
+    fn visit_attribute_group(&mut self, group: &'ast AttributeGroup<'ast>) {
+        self.write("(attribute-group");
+        for attr in group.attributes {
+            self.write(" ");
+            self.visit_attribute(attr);
+        }
+        self.write(")");
+    }
+
+    fn visit_attribute(&mut self, attribute: &'ast Attribute<'ast>) {
+        self.write("(attribute ");
+        self.visit_name(&attribute.name);
+        if !attribute.args.is_empty() {
+            self.write(" (args");
+            for arg in attribute.args {
+                self.write(" ");
+                self.visit_arg(arg);
+            }
+            self.write(")");
+        }
+        self.write(")");
+    }
+
+    fn visit_property_hook(&mut self, hook: &'ast PropertyHook<'ast>) {
+        self.write("(hook");
+        for attr in hook.attributes {
+            self.write(" ");
+            self.visit_attribute_group(attr);
+        }
+        for modifier in hook.modifiers {
+            self.write(" ");
+            self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+        }
+        if hook.by_ref {
+            self.write(" &");
+        }
+        self.write(" ");
+        self.write(&String::from_utf8_lossy(hook.name.text(self.source)));
+        
+        if !hook.params.is_empty() {
+            self.write(" (params");
+            for param in hook.params {
+                self.write(" ");
+                self.visit_param(param);
+            }
+            self.write(")");
+        }
+        
+        self.write(" ");
+        self.visit_property_hook_body(&hook.body);
+        self.write(")");
+    }
+
+    fn visit_property_hook_body(&mut self, body: &'ast PropertyHookBody<'ast>) {
+        match body {
+            PropertyHookBody::None => self.write("(none)"),
+            PropertyHookBody::Expr(expr) => {
+                self.write(" => ");
+                self.visit_expr(expr);
+            }
+            PropertyHookBody::Statements(stmts) => {
+                self.indent += 1;
+                self.newline();
+                self.write("(body");
+                self.indent += 1;
+                for stmt in *stmts {
+                    self.newline();
+                    self.visit_stmt(stmt);
+                }
+                self.indent -= 1;
+                self.write(")");
+                self.indent -= 1;
+            }
+        }
     }
 }

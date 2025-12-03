@@ -54,6 +54,6 @@ fn test_sexpr_class() {
 
     assert_eq!(
         output,
-        "(program\n  (nop)\n  (class \"Foo\" (extends Bar) (implements Baz)\n    (members\n      (property (int) $p = (integer 1))\n      (method \"m\" (params ($a))\n        (body\n          (return (variable \"$a\")))))))"
+        "(program\n  (nop)\n  (class \"Foo\" (extends Bar) (implements Baz)\n    (members\n      (property public int $p = (integer 1))\n      (method \"m\" (params ($a))\n        (body\n          (return (variable \"$a\")))))))"
     );
 }
