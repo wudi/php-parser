@@ -72,6 +72,7 @@ Table comparing with [nikic/PHP-Parser](https://github.com/nikic/PHP-Parser) v5.
 | Parser            | Language       | Time (ms)        |
 |-------------------|----------------|------------------|
 | nikic/PHP-Parser  | PHP            | 33               |
+| tree-sitter-php   | C              | 15               |
 | php-parser        | Rust           | 0.67             |
 
  > Machine specs: Apple M1 Pro, 32GB RAM
