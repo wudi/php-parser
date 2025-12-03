@@ -2,6 +2,7 @@ use crate::lexer::token::Token;
 use crate::span::{LineInfo, Span};
 use serde::Serialize;
 
+pub mod sexpr;
 pub mod visitor;
 
 pub type ExprId<'ast> = &'ast Expr<'ast>;
