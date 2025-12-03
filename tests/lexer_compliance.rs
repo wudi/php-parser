@@ -328,10 +328,11 @@ fn test_run_tests_php() {
 
     // If the first token is a shebang (T_INLINE_HTML starting with #!), remove it
     // because our lexer discards shebangs.
-    if let Some((kind, text)) = php_tokens.first() {
-        if kind == "T_INLINE_HTML" && text.starts_with("#!") {
-            php_tokens.remove(0);
-        }
+    if php_tokens
+        .first()
+        .is_some_and(|(kind, text)| kind == "T_INLINE_HTML" && text.starts_with("#!"))
+    {
+        php_tokens.remove(0);
     }
 
     let code = std::fs::read_to_string(&path).expect("Failed to read file");
