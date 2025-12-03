@@ -9,9 +9,15 @@ A production-grade, fault-tolerant, zero-copy PHP parser written in Rust.
 - **PHP 8.x Support**: Targets compliance with modern PHP grammar.
 - **Safe**: Handles mixed encodings and invalid UTF-8 gracefully by operating on byte slices (`&[u8]`).
 
-## Installation
+## Install as library
 
-Add this to your `Cargo.toml`:
+`cargo add php-parser`
+
+Or add the following line to your Cargo.toml:
+
+`php-parser = "0.1.0"`
+
+If you want to use the latest version from the GitHub repository, add this to your Cargo.toml:
 
 ```toml
 [dependencies]
