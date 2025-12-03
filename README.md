@@ -39,15 +39,12 @@ fn main() {
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer, &arena);
 
-    // Parse the program
-    match parser.parse_program() {
-        Ok(program) => {
-            println!("{:#?}", program);
-        },
-        Err(error) => {
-            eprintln!("Failed to parse: {:?}", error);
-        }
-    }
+    let program = parser.parse_program();
+    println!("{:#?}", program);
+
+    // php_parser::span::with_session_globals(source, || {
+    //     println!("{:#?}", program);
+    // });
 }
 ```
 
