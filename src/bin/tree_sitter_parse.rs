@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use tree_sitter::{Parser};
+use tree_sitter::Parser;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
