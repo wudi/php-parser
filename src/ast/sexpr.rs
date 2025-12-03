@@ -435,6 +435,8 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
             Stmt::Enum {
                 attributes,
                 name,
+                backed_type,
+                implements,
                 members,
                 ..
             } => {
@@ -446,6 +448,18 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(" \"");
                 self.write(&String::from_utf8_lossy(name.text(self.source)));
                 self.write("\"");
+                if let Some(backed_type) = backed_type {
+                    self.write(" : ");
+                    self.visit_type(backed_type);
+                }
+                if !implements.is_empty() {
+                    self.write(" (implements");
+                    for iface in *implements {
+                        self.write(" ");
+                        self.visit_name(iface);
+                    }
+                    self.write(")");
+                }
                 self.indent += 1;
                 self.newline();
                 self.write("(members");
@@ -1026,6 +1040,8 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             Expr::AnonymousClass {
+                attributes,
+                modifiers,
                 args,
                 extends,
                 implements,
@@ -1033,6 +1049,14 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 ..
             } => {
                 self.write("(anonymous-class");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
+                for modifier in *modifiers {
+                    self.write(" ");
+                    self.write(&String::from_utf8_lossy(modifier.text(self.source)));
+                }
                 if !args.is_empty() {
                     self.write(" (args");
                     for arg in *args {
@@ -1309,11 +1333,16 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(")");
             }
             ClassMember::TraitUse {
+                attributes,
                 traits,
                 adaptations,
                 ..
             } => {
                 self.write("(trait-use");
+                for attr in *attributes {
+                    self.write(" ");
+                    self.visit_attribute_group(attr);
+                }
                 for t in *traits {
                     self.write(" ");
                     self.visit_name(t);
