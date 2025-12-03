@@ -48,6 +48,42 @@ fn main() {
 }
 ```
 
+## S-Expression Output
+
+You can output the AST in S-expression format for easier visualization:
+
+```rust
+use bumpalo::Bump;
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
+use php_parser::ast::sexpr::SExprFormatter;
+fn main() {
+    let code = "<?php class Foo extends Bar implements Baz { public int $p = 1; function m($a) { return $a; } }";
+    let arena = Bump::new();
+    let lexer = Lexer::new(code.as_bytes());
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut formatter = SExprFormatter::new(code.as_bytes());
+    formatter.visit_program(&program);
+    let output = formatter.finish();
+    println!("{}", output);
+}
+``` 
+Gives the output:
+
+```
+(program
+  (nop)
+  (class "Foo" (extends Bar) (implements Baz)
+    (members
+      (property public int  = (integer 1))
+      (method "m" (params ())
+        (body
+          (return (variable "")))))))
+
+```
+
 ## Performance
 
 Test file `run-tests.php` from [php-src](https://github.com/php/php-src/blob/801e587faa0efd2fba633413681c68c83d6f2188/run-tests.php) with 140KB size, here are the benchmark results:
