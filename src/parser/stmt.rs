@@ -299,6 +299,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         while self.current_token.kind != TokenKind::CloseBrace
             && self.current_token.kind != TokenKind::Eof
         {
+            if matches!(
+                self.current_token.kind,
+                TokenKind::OpenTag | TokenKind::CloseTag
+            ) {
+                self.bump();
+                continue;
+            }
             statements.push(self.parse_stmt());
         }
 

@@ -133,6 +133,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut statements = std::vec::Vec::new(); // Temporary vec, will be moved to arena
 
         while self.current_token.kind != TokenKind::Eof {
+            if matches!(
+                self.current_token.kind,
+                TokenKind::OpenTag | TokenKind::CloseTag
+            ) {
+                self.bump();
+                continue;
+            }
             statements.push(self.parse_top_stmt());
         }
 

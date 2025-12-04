@@ -30,6 +30,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 && self.current_token.kind != TokenKind::ElseIf
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 stmts.push(self.parse_stmt());
             }
             stmts.into_bump_slice() as &'ast [StmtId<'ast>]
@@ -58,6 +65,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 while self.current_token.kind != TokenKind::EndIf
                     && self.current_token.kind != TokenKind::Eof
                 {
+                    if matches!(
+                        self.current_token.kind,
+                        TokenKind::OpenTag | TokenKind::CloseTag
+                    ) {
+                        self.bump();
+                        continue;
+                    }
                     stmts.push(self.parse_stmt());
                 }
                 Some(stmts.into_bump_slice() as &'ast [StmtId<'ast>])
@@ -105,6 +119,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             while self.current_token.kind != TokenKind::EndWhile
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndWhile {
@@ -215,6 +236,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             while self.current_token.kind != TokenKind::EndFor
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndFor {
@@ -274,6 +302,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             while self.current_token.kind != TokenKind::EndForeach
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndForeach {
@@ -364,6 +399,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 && self.current_token.kind != end_token
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 body_stmts.push(self.parse_stmt());
             }
 
@@ -557,6 +599,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             while self.current_token.kind != TokenKind::EndDeclare
                 && self.current_token.kind != TokenKind::Eof
             {
+                if matches!(
+                    self.current_token.kind,
+                    TokenKind::OpenTag | TokenKind::CloseTag
+                ) {
+                    self.bump();
+                    continue;
+                }
                 stmts.push(self.parse_stmt());
             }
             if self.current_token.kind == TokenKind::EndDeclare {

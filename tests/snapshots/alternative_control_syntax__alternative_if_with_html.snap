@@ -1,16 +1,9 @@
 ---
 source: tests/alternative_control_syntax.rs
-assertion_line: 136
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         If {
             condition: Variable {
                 name: Span {
@@ -23,12 +16,6 @@ Program {
                 },
             },
             then_block: [
-                Nop {
-                    span: Span {
-                        start: 18,
-                        end: 20,
-                    },
-                },
                 InlineHtml {
                     value: [
                         10,
@@ -61,12 +48,6 @@ Program {
                         end: 50,
                     },
                 },
-                Nop {
-                    span: Span {
-                        start: 44,
-                        end: 50,
-                    },
-                },
             ],
             else_block: None,
             span: Span {
@@ -74,16 +55,10 @@ Program {
                 end: 59,
             },
         },
-        Nop {
-            span: Span {
-                start: 57,
-                end: 59,
-            },
-        },
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 59,
     },
 }

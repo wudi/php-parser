@@ -4,12 +4,6 @@ expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         If {
             condition: Boolean {
                 value: true,
@@ -71,7 +65,7 @@ Program {
         },
     ],
     span: Span {
-        start: 0,
+        start: 10,
         end: 71,
     },
 }

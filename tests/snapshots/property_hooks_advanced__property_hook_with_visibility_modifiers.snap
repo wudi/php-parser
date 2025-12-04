@@ -1,16 +1,9 @@
 ---
 source: tests/property_hooks_advanced.rs
-assertion_line: 144
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Class {
             attributes: [],
             modifiers: [],
@@ -192,7 +185,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 137,
     },
 }

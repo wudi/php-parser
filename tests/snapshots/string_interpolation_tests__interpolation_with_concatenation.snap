@@ -1,16 +1,9 @@
 ---
 source: tests/string_interpolation_tests.rs
-assertion_line: 236
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Echo {
             exprs: [
                 Binary {
@@ -77,7 +70,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 37,
     },
 }

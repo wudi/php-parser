@@ -1,16 +1,9 @@
 ---
 source: tests/additional_edge_cases.rs
-assertion_line: 91
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Enum {
             attributes: [],
             name: Token {
@@ -275,7 +268,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 256,
     },
 }

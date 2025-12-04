@@ -1,16 +1,9 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 186
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Try {
             body: [
                 Throw {
@@ -166,7 +159,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 10,
         end: 161,
     },
 }

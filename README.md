@@ -80,7 +80,6 @@ Gives the output:
 
 ```
 (program
-  (nop)
   (class "Foo" (extends Bar) (implements Baz)
     (members
       (property public int  = (integer 1))

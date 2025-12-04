@@ -1,16 +1,9 @@
 ---
 source: tests/ternary_false_branch.rs
-assertion_line: 75
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Expression {
             expr: Binary {
                 left: Assign {
@@ -89,7 +82,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 31,
     },
 }

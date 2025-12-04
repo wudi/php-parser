@@ -4,12 +4,6 @@ expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Break {
             level: None,
             span: Span {
@@ -174,7 +168,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 10,
         end: 125,
     },
 }

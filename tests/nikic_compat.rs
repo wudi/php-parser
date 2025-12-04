@@ -12,10 +12,10 @@ fn test_group_use_flattening() {
 
     assert!(program.errors.is_empty());
 
-    // Currently flattens to 2 Use statements (Nop + Use)
-    assert_eq!(program.statements.len(), 2);
+    // Currently flattens to 1 Use statement (Use)
+    assert_eq!(program.statements.len(), 1);
 
-    match program.statements[1] {
+    match program.statements[0] {
         Stmt::Use { uses, .. } => {
             assert_eq!(uses.len(), 2);
         }
@@ -33,8 +33,8 @@ fn test_list_vs_short_array() {
     assert!(program.errors.is_empty());
 
     // Check first assignment: list($a) = ...
-    // Index 1 because 0 is Nop
-    match program.statements[1] {
+    // Index 0 because Nop is gone
+    match program.statements[0] {
         Stmt::Expression { expr, .. } => {
             match expr {
                 Expr::Assign { var, .. } => {
@@ -49,7 +49,7 @@ fn test_list_vs_short_array() {
     }
 
     // Check second assignment: [$b] = ...
-    match program.statements[2] {
+    match program.statements[1] {
         Stmt::Expression { expr, .. } => match expr {
             Expr::Assign { var, .. } => {
                 assert!(matches!(**var, Expr::Array { .. }));
@@ -75,7 +75,7 @@ $x = <<<EOT
 
     assert!(program.errors.is_empty());
 
-    match program.statements[1] {
+    match program.statements[0] {
         Stmt::Expression { expr, .. } => {
             match expr {
                 Expr::Assign { expr, .. } => {

@@ -16,10 +16,7 @@ fn test_sexpr_basic() {
     formatter.visit_program(&program);
     let output = formatter.finish();
 
-    assert_eq!(
-        output,
-        "(program\n  (nop)\n  (echo (+ (integer 1) (integer 2))))"
-    );
+    assert_eq!(output, "(program\n  (echo (+ (integer 1) (integer 2))))");
 }
 
 #[test]
@@ -36,7 +33,7 @@ fn test_sexpr_control_flow() {
 
     assert_eq!(
         output,
-        "(program\n  (nop)\n  (if (variable \"$a\")\n    (then\n      (echo (integer 1)))\n    (else\n      (echo (integer 2))))\n  (while (variable \"$b\")\n    (body\n      (assign (variable \"$a\") (integer 1)))))"
+        "(program\n  (if (variable \"$a\")\n    (then\n      (echo (integer 1)))\n    (else\n      (echo (integer 2))))\n  (while (variable \"$b\")\n    (body\n      (assign (variable \"$a\") (integer 1)))))"
     );
 }
 
@@ -54,6 +51,6 @@ fn test_sexpr_class() {
 
     assert_eq!(
         output,
-        "(program\n  (nop)\n  (class \"Foo\" (extends Bar) (implements Baz)\n    (members\n      (property public int $p = (integer 1))\n      (method \"m\" (params ($a))\n        (body\n          (return (variable \"$a\")))))))"
+        "(program\n  (class \"Foo\" (extends Bar) (implements Baz)\n    (members\n      (property public int $p = (integer 1))\n      (method \"m\" (params ($a))\n        (body\n          (return (variable \"$a\")))))))"
     );
 }

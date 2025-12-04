@@ -1,16 +1,9 @@
 ---
 source: tests/asymmetric_visibility_validation.rs
-assertion_line: 90
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Class {
             attributes: [],
             modifiers: [],
@@ -90,7 +83,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 74,
     },
 }

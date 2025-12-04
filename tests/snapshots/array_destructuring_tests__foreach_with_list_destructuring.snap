@@ -1,16 +1,9 @@
 ---
 source: tests/array_destructuring_tests.rs
-assertion_line: 121
 expression: program
 ---
 Program {
     statements: [
-        Nop {
-            span: Span {
-                start: 0,
-                end: 6,
-            },
-        },
         Foreach {
             expr: Variable {
                 name: Span {
@@ -114,7 +107,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 0,
+        start: 6,
         end: 61,
     },
 }
