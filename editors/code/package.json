@@ -1,7 +1,7 @@
 {
-  "name": "php-parser-lsp",
-  "displayName": "PHP Parser RS LSP",
-  "description": "LSP Client for php-parser",
+  "name": "pls",
+  "displayName": "PHP Language Server for VS Code",
+  "description": "PHP Language Server integration for Visual Studio Code",
   "version": "0.0.1",
   "publisher": "wudi",
   "repository": {

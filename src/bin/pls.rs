@@ -508,7 +508,7 @@ impl Backend {
                         severity: Some(DiagnosticSeverity::ERROR),
                         code: None,
                         code_description: None,
-                        source: Some("php-parser".to_string()),
+                        source: Some("pls".to_string()),
                         message: e.message.to_string(),
                         related_information: None,
                         tags: None,
