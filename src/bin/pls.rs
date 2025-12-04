@@ -1158,6 +1158,123 @@ impl<'a> Formatter<'a> {
     }
 }
 
+impl Backend {
+    async fn type_hierarchy_supertypes(
+        &self,
+        params: TypeHierarchySupertypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let item = params.item;
+        let name = item.name;
+
+        let mut parents = Vec::new();
+
+        if let Some(entries) = self.index.get(&name) {
+            for entry in entries.iter() {
+                if entry.kind == SymbolType::Definition {
+                    if let Some(extends) = &entry.extends {
+                        for parent_name in extends {
+                            if let Some(parent_entries) = self.index.get(parent_name) {
+                                for parent_entry in parent_entries.iter() {
+                                    if parent_entry.kind == SymbolType::Definition {
+                                        parents.push(TypeHierarchyItem {
+                                            name: parent_name.clone(),
+                                            kind: parent_entry
+                                                .symbol_kind
+                                                .unwrap_or(SymbolKind::CLASS),
+                                            tags: None,
+                                            detail: parent_entry.type_info.clone(),
+                                            uri: parent_entry.uri.clone(),
+                                            range: parent_entry.range,
+                                            selection_range: parent_entry.range,
+                                            data: Some(serde_json::json!({ "name": parent_name })),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(implements) = &entry.implements {
+                        for parent_name in implements {
+                            if let Some(parent_entries) = self.index.get(parent_name) {
+                                for parent_entry in parent_entries.iter() {
+                                    if parent_entry.kind == SymbolType::Definition {
+                                        parents.push(TypeHierarchyItem {
+                                            name: parent_name.clone(),
+                                            kind: parent_entry
+                                                .symbol_kind
+                                                .unwrap_or(SymbolKind::INTERFACE),
+                                            tags: None,
+                                            detail: parent_entry.type_info.clone(),
+                                            uri: parent_entry.uri.clone(),
+                                            range: parent_entry.range,
+                                            selection_range: parent_entry.range,
+                                            data: Some(serde_json::json!({ "name": parent_name })),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if parents.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(parents))
+        }
+    }
+
+    async fn type_hierarchy_subtypes(
+        &self,
+        params: TypeHierarchySubtypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let item = params.item;
+        let name = item.name;
+
+        let mut children = Vec::new();
+
+        for entry in self.index.iter() {
+            let child_name = entry.key();
+            for child_entry in entry.value() {
+                if child_entry.kind == SymbolType::Definition {
+                    let mut is_child = false;
+                    if let Some(extends) = &child_entry.extends {
+                        if extends.contains(&name) {
+                            is_child = true;
+                        }
+                    }
+                    if let Some(implements) = &child_entry.implements {
+                        if implements.contains(&name) {
+                            is_child = true;
+                        }
+                    }
+
+                    if is_child {
+                        children.push(TypeHierarchyItem {
+                            name: child_name.clone(),
+                            kind: child_entry.symbol_kind.unwrap_or(SymbolKind::CLASS),
+                            tags: None,
+                            detail: child_entry.type_info.clone(),
+                            uri: child_entry.uri.clone(),
+                            range: child_entry.range,
+                            selection_range: child_entry.range,
+                            data: Some(serde_json::json!({ "name": child_name })),
+                        });
+                    }
+                }
+            }
+        }
+
+        if children.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(children))
+        }
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -1278,6 +1395,9 @@ impl LanguageServer for Backend {
                     retrigger_characters: None,
                     work_done_progress_options: Default::default(),
                 }),
+                experimental: Some(serde_json::json!({
+                    "typeHierarchyProvider": true
+                })),
                 completion_provider: Some(CompletionOptions::default()),
                 ..Default::default()
             },
@@ -1289,6 +1409,97 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "PHP Parser LSP initialized!")
             .await;
+    }
+
+    async fn prepare_type_hierarchy(
+        &self,
+        params: TypeHierarchyPrepareParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let mut target_name = String::new();
+
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let offset = line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(offset) = offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let mut locator = php_parser::ast::locator::Locator::new(offset);
+                locator.visit_program(&program);
+
+                if let Some(node) = locator.path.last() {
+                    match node {
+                        AstNode::Stmt(Stmt::Class { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Interface { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Trait { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Enum { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Expr(Expr::New { class, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = *class
+                            {
+                                target_name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if target_name.is_empty() {
+            return Ok(None);
+        }
+
+        let mut items = Vec::new();
+        if let Some(entries) = self.index.get(&target_name) {
+            for entry in entries.iter() {
+                if entry.kind == SymbolType::Definition {
+                    items.push(TypeHierarchyItem {
+                        name: target_name.clone(),
+                        kind: entry.symbol_kind.unwrap_or(SymbolKind::CLASS),
+                        tags: None,
+                        detail: entry.type_info.clone(),
+                        uri: entry.uri.clone(),
+                        range: entry.range,
+                        selection_range: entry.range,
+                        data: Some(serde_json::json!({ "name": target_name })),
+                    });
+                }
+            }
+        }
+
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(items))
+        }
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -2499,13 +2710,19 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend {
+    let (service, socket) = LspService::build(|client| Backend {
         client,
         documents: DashMap::new(),
         index: DashMap::new(),
         file_map: DashMap::new(),
         root_path: Arc::new(RwLock::new(None)),
-    });
+    })
+    .custom_method(
+        "typeHierarchy/supertypes",
+        Backend::type_hierarchy_supertypes,
+    )
+    .custom_method("typeHierarchy/subtypes", Backend::type_hierarchy_subtypes)
+    .finish();
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
