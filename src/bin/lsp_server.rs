@@ -1061,6 +1061,103 @@ impl<'a, 'ast> Visitor<'ast> for InlayHintVisitor<'a> {
     }
 }
 
+struct Formatter<'a> {
+    source: &'a [u8],
+    line_index: &'a LineIndex,
+    indent_unit: &'a str,
+}
+
+impl<'a> Formatter<'a> {
+    fn new(source: &'a [u8], line_index: &'a LineIndex) -> Self {
+        Self {
+            source,
+            line_index,
+            indent_unit: "    ",
+        }
+    }
+
+    fn format(&self) -> Vec<TextEdit> {
+        use php_parser::lexer::token::TokenKind;
+
+        let mut edits = Vec::new();
+        let mut lexer = Lexer::new(self.source);
+        let mut indent_level: usize = 0;
+        let mut last_token_end = 0;
+        let mut safety_counter = 0;
+
+        while let Some(token) = lexer.next() {
+            safety_counter += 1;
+            if safety_counter > 100000 {
+                break;
+            }
+            // Check gap
+            let gap_start = last_token_end;
+            let gap_end = token.span.start;
+
+            if gap_end > gap_start {
+                let gap = &self.source[gap_start..gap_end];
+                // Check if gap contains newline
+                if gap.contains(&b'\n') {
+                    // Calculate indent
+                    let mut current_indent = indent_level;
+                    match token.kind {
+                        TokenKind::CloseBrace | TokenKind::CloseBracket | TokenKind::CloseParen => {
+                            current_indent = current_indent.saturating_sub(1);
+                        }
+                        _ => {}
+                    }
+
+                    // Create edit
+                    let newlines = gap.iter().filter(|&&b| b == b'\n').count();
+                    let mut new_text = String::new();
+                    for _ in 0..newlines {
+                        new_text.push('\n');
+                    }
+                    for _ in 0..current_indent {
+                        new_text.push_str(self.indent_unit);
+                    }
+
+                    let start_pos = self.line_index.line_col(gap_start);
+                    let end_pos = self.line_index.line_col(gap_end);
+
+                    edits.push(TextEdit {
+                        range: Range {
+                            start: Position {
+                                line: start_pos.0 as u32,
+                                character: start_pos.1 as u32,
+                            },
+                            end: Position {
+                                line: end_pos.0 as u32,
+                                character: end_pos.1 as u32,
+                            },
+                        },
+                        new_text,
+                    });
+                }
+            }
+
+            match token.kind {
+                TokenKind::OpenBrace
+                | TokenKind::OpenBracket
+                | TokenKind::OpenParen
+                | TokenKind::Attribute
+                | TokenKind::CurlyOpen
+                | TokenKind::DollarOpenCurlyBraces => {
+                    indent_level += 1;
+                }
+                TokenKind::CloseBrace | TokenKind::CloseBracket | TokenKind::CloseParen => {
+                    indent_level = indent_level.saturating_sub(1);
+                }
+                _ => {}
+            }
+
+            last_token_end = token.span.end;
+        }
+
+        edits
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -1170,6 +1267,7 @@ impl LanguageServer for Backend {
                 code_lens_provider: Some(CodeLensOptions {
                     resolve_provider: Some(false),
                 }),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 document_link_provider: Some(DocumentLinkOptions {
                     resolve_provider: Some(false),
@@ -2382,6 +2480,18 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let formatter = Formatter::new(source, &line_index);
+            Ok(Some(formatter.format()))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[tokio::main]
@@ -2492,12 +2602,12 @@ mod tests {
             let names: Vec<&str> = visitor
                 .entries
                 .iter()
-                .map(|(n, _, _, _)| n.as_str())
+                .map(|(n, _, _, _, _, _, _, _)| n.as_str())
                 .collect();
             assert!(names.contains(&"globalFunc"));
             assert!(names.contains(&"GlobalClass"));
 
-            for (name, _, kind, sym_kind) in &visitor.entries {
+            for (name, _, kind, sym_kind, _, _, _, _) in &visitor.entries {
                 if name == "globalFunc" {
                     assert_eq!(*kind, SymbolType::Definition);
                     assert_eq!(*sym_kind, Some(SymbolKind::FUNCTION));
@@ -2563,5 +2673,18 @@ mod tests {
             assert_eq!(grandparent.range.start.character, 6);
             assert_eq!(grandparent.range.end.character, 13);
         });
+    }
+
+    #[test]
+    fn test_formatting() {
+        let code = "<?php\nif(true){\necho 1;\n}";
+        let source = code.as_bytes();
+        let line_index = LineIndex::new(source);
+        let formatter = Formatter::new(source, &line_index);
+        let edits = formatter.format();
+
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].new_text, "\n    ");
+        assert_eq!(edits[1].new_text, "\n");
     }
 }
