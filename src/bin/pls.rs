@@ -491,7 +491,7 @@ impl Backend {
             let diagnostics: Vec<Diagnostic> = program
                 .errors
                 .iter()
-                .map(|e| {
+                .map(|e: &ParseError| {
                     let start = line_index.line_col(e.span.start);
                     let end = line_index.line_col(e.span.end);
                     Diagnostic {
@@ -509,7 +509,7 @@ impl Backend {
                         code: None,
                         code_description: None,
                         source: Some("pls".to_string()),
-                        message: e.message.to_string(),
+                        message: e.to_human_readable(source),
                         related_information: None,
                         tags: None,
                         data: None,
