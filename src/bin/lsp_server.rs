@@ -688,6 +688,115 @@ impl<'a, 'ast> Visitor<'ast> for DocumentLinkVisitor<'a> {
     }
 }
 
+struct CodeLensVisitor<'a> {
+    lenses: Vec<CodeLens>,
+    line_index: &'a LineIndex,
+    source: &'a [u8],
+    index: &'a DashMap<String, Vec<IndexEntry>>,
+}
+
+impl<'a> CodeLensVisitor<'a> {
+    fn new(
+        line_index: &'a LineIndex,
+        source: &'a [u8],
+        index: &'a DashMap<String, Vec<IndexEntry>>,
+    ) -> Self {
+        Self {
+            lenses: Vec::new(),
+            line_index,
+            source,
+            index,
+        }
+    }
+
+    fn get_text(&self, span: php_parser::span::Span) -> String {
+        String::from_utf8_lossy(&self.source[span.start..span.end]).to_string()
+    }
+
+    fn add_lens(&mut self, name: String, span: php_parser::span::Span) {
+        let start = self.line_index.line_col(span.start);
+        let end = self.line_index.line_col(span.end);
+        let range = Range {
+            start: Position {
+                line: start.0 as u32,
+                character: start.1 as u32,
+            },
+            end: Position {
+                line: end.0 as u32,
+                character: end.1 as u32,
+            },
+        };
+
+        let mut count = 0;
+        if let Some(entries) = self.index.get(&name) {
+            count = entries
+                .iter()
+                .filter(|e| e.kind == SymbolType::Reference)
+                .count();
+        }
+
+        let title = if count == 1 {
+            "1 reference".to_string()
+        } else {
+            format!("{} references", count)
+        };
+
+        self.lenses.push(CodeLens {
+            range,
+            command: Some(Command {
+                title,
+                command: "".to_string(),
+                arguments: None,
+            }),
+            data: None,
+        });
+    }
+}
+
+impl<'a, 'ast> Visitor<'ast> for CodeLensVisitor<'a> {
+    fn visit_stmt(&mut self, stmt: &'ast Stmt<'ast>) {
+        match stmt {
+            Stmt::Class { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_stmt(self, stmt);
+            }
+            Stmt::Function { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_stmt(self, stmt);
+            }
+            Stmt::Interface { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_stmt(self, stmt);
+            }
+            Stmt::Trait { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_stmt(self, stmt);
+            }
+            Stmt::Enum { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_stmt(self, stmt);
+            }
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
+        match member {
+            ClassMember::Method { name, .. } => {
+                let name_str = self.get_text(name.span);
+                self.add_lens(name_str, name.span);
+                walk_class_member(self, member);
+            }
+            _ => walk_class_member(self, member),
+        }
+    }
+}
+
 struct InlayHintVisitor<'a> {
     hints: Vec<InlayHint>,
     line_index: &'a LineIndex,
@@ -859,9 +968,13 @@ impl LanguageServer for Backend {
                 document_highlight_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                declaration_provider: Some(DeclarationCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                code_lens_provider: Some(CodeLensOptions {
+                    resolve_provider: Some(false),
+                }),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 document_link_provider: Some(DocumentLinkOptions {
                     resolve_provider: Some(false),
@@ -1290,6 +1403,30 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
+    async fn goto_declaration(
+        &self,
+        params: request::GotoDeclarationParams,
+    ) -> Result<Option<request::GotoDeclarationResponse>> {
+        // For now, declaration is same as definition
+        let def_params = GotoDefinitionParams {
+            text_document_position_params: params.text_document_position_params,
+            work_done_progress_params: params.work_done_progress_params,
+            partial_result_params: params.partial_result_params,
+        };
+        match self.goto_definition(def_params).await? {
+            Some(GotoDefinitionResponse::Scalar(loc)) => {
+                Ok(Some(request::GotoDeclarationResponse::Scalar(loc)))
+            }
+            Some(GotoDefinitionResponse::Array(locs)) => {
+                Ok(Some(request::GotoDeclarationResponse::Array(locs)))
+            }
+            Some(GotoDefinitionResponse::Link(links)) => {
+                Ok(Some(request::GotoDeclarationResponse::Link(links)))
+            }
+            None => Ok(None),
+        }
+    }
+
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
@@ -1487,6 +1624,25 @@ impl LanguageServer for Backend {
             document_changes: None,
             change_annotations: None,
         }))
+    }
+
+    async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
+        let uri = params.text_document.uri;
+        if let Some(content) = self.documents.get(&uri) {
+            let source = content.as_bytes();
+            let bump = Bump::new();
+            let lexer = Lexer::new(source);
+            let mut parser = Parser::new(lexer, &bump);
+            let program = parser.parse_program();
+            let line_index = LineIndex::new(source);
+
+            let mut visitor = CodeLensVisitor::new(&line_index, source, &self.index);
+            visitor.visit_program(&program);
+
+            Ok(Some(visitor.lenses))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
