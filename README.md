@@ -11,11 +11,10 @@ A production-grade, fault-tolerant, zero-copy PHP parser written in Rust.
 
 ## Install as library
 
-`cargo add php-parser`
-
-Or add the following line to your Cargo.toml:
-
-`php-parser = "0.1.0"`
+```bash
+cargo add php-parser
+cargo add bumpalo
+```
 
 If you want to use the latest version from the GitHub repository, add this to your Cargo.toml:
 
