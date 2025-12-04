@@ -17,6 +17,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     fn parse_stmt_impl(&mut self, top_level: bool) -> StmtId<'ast> {
         self.lexer.set_mode(LexerMode::Standard);
 
+        let doc_comment = self.current_doc_comment;
+
         if self.current_token.kind == TokenKind::Identifier
             && self.next_token.kind == TokenKind::Colon
         {
@@ -36,12 +38,12 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Attribute => {
                 let attributes = self.parse_attributes();
                 match self.current_token.kind {
-                    TokenKind::Function => self.parse_function(attributes),
-                    TokenKind::Class => self.parse_class(attributes, &[]),
-                    TokenKind::Interface => self.parse_interface(attributes),
-                    TokenKind::Trait => self.parse_trait(attributes),
-                    TokenKind::Enum => self.parse_enum(attributes),
-                    TokenKind::Const => self.parse_const_stmt(attributes),
+                    TokenKind::Function => self.parse_function(attributes, doc_comment),
+                    TokenKind::Class => self.parse_class(attributes, &[], doc_comment),
+                    TokenKind::Interface => self.parse_interface(attributes, doc_comment),
+                    TokenKind::Trait => self.parse_trait(attributes, doc_comment),
+                    TokenKind::Enum => self.parse_enum(attributes, doc_comment),
+                    TokenKind::Const => self.parse_const_stmt(attributes, doc_comment),
                     TokenKind::Final | TokenKind::Abstract | TokenKind::Readonly => {
                         let mut modifiers = std::vec::Vec::new();
                         while matches!(
@@ -53,7 +55,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         }
 
                         if self.current_token.kind == TokenKind::Class {
-                            self.parse_class(attributes, self.arena.alloc_slice_copy(&modifiers))
+                            self.parse_class(attributes, self.arena.alloc_slice_copy(&modifiers), doc_comment)
                         } else {
                             self.arena.alloc(Stmt::Error {
                                 span: self.current_token.span,
@@ -76,7 +78,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
 
                 if self.current_token.kind == TokenKind::Class {
-                    self.parse_class(&[], self.arena.alloc_slice_copy(&modifiers))
+                    self.parse_class(&[], self.arena.alloc_slice_copy(&modifiers), doc_comment)
                 } else {
                     self.arena.alloc(Stmt::Error {
                         span: self.current_token.span,
@@ -123,11 +125,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             TokenKind::Do => self.parse_do_while(),
             TokenKind::For => self.parse_for(),
             TokenKind::Foreach => self.parse_foreach(),
-            TokenKind::Function => self.parse_function(&[]),
-            TokenKind::Class => self.parse_class(&[], &[]),
-            TokenKind::Interface => self.parse_interface(&[]),
-            TokenKind::Trait => self.parse_trait(&[]),
-            TokenKind::Enum => self.parse_enum(&[]),
+            TokenKind::Function => self.parse_function(&[], doc_comment),
+            TokenKind::Class => self.parse_class(&[], &[], doc_comment),
+            TokenKind::Interface => self.parse_interface(&[], doc_comment),
+            TokenKind::Trait => self.parse_trait(&[], doc_comment),
+            TokenKind::Enum => self.parse_enum(&[], doc_comment),
             TokenKind::Namespace => {
                 if !top_level {
                     self.errors.push(ParseError {
@@ -156,7 +158,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         message: "Const declarations are only allowed at the top level",
                     });
                 }
-                self.parse_const_stmt(&[])
+                self.parse_const_stmt(&[], doc_comment)
             }
             TokenKind::Goto => self.parse_goto(),
             TokenKind::Break => self.parse_break(),
@@ -599,8 +601,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         })
     }
 
-    fn parse_const_stmt(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+    fn parse_const_stmt(
+        &mut self,
+        attributes: &'ast [AttributeGroup<'ast>],
+        doc_comment: Option<Span>,
+    ) -> StmtId<'ast> {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -649,6 +657,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         self.arena.alloc(Stmt::Const {
             attributes,
             consts: self.arena.alloc_slice_copy(&consts),
+            doc_comment,
             span: Span::new(start, end),
         })
     }

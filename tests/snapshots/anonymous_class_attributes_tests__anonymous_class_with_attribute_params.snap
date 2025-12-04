@@ -180,6 +180,7 @@ Program {
                                 params: [],
                                 return_type: None,
                                 body: [],
+                                doc_comment: None,
                                 span: Span {
                                     start: 78,
                                     end: 107,

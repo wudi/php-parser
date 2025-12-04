@@ -1,6 +1,5 @@
 ---
 source: tests/property_hooks_advanced.rs
-assertion_line: 102
 expression: program
 ---
 Program {
@@ -70,6 +69,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 28,
                         end: 69,
@@ -175,12 +175,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 63,
                         end: 130,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 130,

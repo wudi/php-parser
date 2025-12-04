@@ -90,6 +90,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 44,
                         end: 96,

@@ -1,6 +1,5 @@
 ---
 source: tests/additional_edge_cases.rs
-assertion_line: 196
 expression: program
 ---
 Program {
@@ -286,6 +285,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 94,
                         end: 159,
@@ -452,12 +452,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 157,
                         end: 269,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 272,

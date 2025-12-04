@@ -1,6 +1,5 @@
 ---
 source: tests/asymmetric_visibility_validation.rs
-assertion_line: 105
 expression: program
 ---
 Program {
@@ -84,12 +83,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 32,
                         end: 76,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 77,

@@ -1,6 +1,5 @@
 ---
 source: tests/trait_adaptation_tests.rs
-assertion_line: 16
 expression: program
 ---
 Program {
@@ -44,12 +43,14 @@ Program {
                         },
                     ],
                     adaptations: [],
+                    doc_comment: None,
                     span: Span {
                         start: 26,
                         end: 40,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 40,

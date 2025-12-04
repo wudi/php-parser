@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 397
 expression: program
 ---
 Program {
@@ -286,12 +285,14 @@ Program {
                     params: [],
                     return_type: None,
                     body: [],
+                    doc_comment: None,
                     span: Span {
                         start: 156,
                         end: 188,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 81,
                 end: 199,

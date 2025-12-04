@@ -51,12 +51,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 30,
                         end: 62,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 10,
                 end: 62,

@@ -4,6 +4,8 @@ use serde::Serialize;
 
 pub mod sexpr;
 pub mod visitor;
+pub mod locator;
+pub mod symbol_table;
 
 pub type ExprId<'ast> = &'ast Expr<'ast>;
 pub type StmtId<'ast> = &'ast Stmt<'ast>;
@@ -117,6 +119,7 @@ pub enum Stmt<'ast> {
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Class {
@@ -126,6 +129,7 @@ pub enum Stmt<'ast> {
         extends: Option<Name<'ast>>,
         implements: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Interface {
@@ -133,12 +137,14 @@ pub enum Stmt<'ast> {
         name: &'ast Token,
         extends: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Trait {
         attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         members: &'ast [ClassMember<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Enum {
@@ -147,6 +153,7 @@ pub enum Stmt<'ast> {
         backed_type: Option<&'ast Type<'ast>>,
         implements: &'ast [Name<'ast>],
         members: &'ast [ClassMember<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Namespace {
@@ -177,6 +184,7 @@ pub enum Stmt<'ast> {
     Const {
         attributes: &'ast [AttributeGroup<'ast>],
         consts: &'ast [ClassConst<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Break {
@@ -683,6 +691,7 @@ pub enum ClassMember<'ast> {
         modifiers: &'ast [Token],
         ty: Option<&'ast Type<'ast>>,
         entries: &'ast [PropertyEntry<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     PropertyHook {
@@ -692,6 +701,7 @@ pub enum ClassMember<'ast> {
         name: &'ast Token,
         default: Option<ExprId<'ast>>,
         hooks: &'ast [PropertyHook<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Method {
@@ -701,6 +711,7 @@ pub enum ClassMember<'ast> {
         params: &'ast [Param<'ast>],
         return_type: Option<&'ast Type<'ast>>,
         body: &'ast [StmtId<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Const {
@@ -708,18 +719,21 @@ pub enum ClassMember<'ast> {
         modifiers: &'ast [Token],
         ty: Option<&'ast Type<'ast>>,
         consts: &'ast [ClassConst<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     TraitUse {
         attributes: &'ast [AttributeGroup<'ast>],
         traits: &'ast [Name<'ast>],
         adaptations: &'ast [TraitAdaptation<'ast>],
+        doc_comment: Option<Span>,
         span: Span,
     },
     Case {
         attributes: &'ast [AttributeGroup<'ast>],
         name: &'ast Token,
         value: Option<ExprId<'ast>>,
+        doc_comment: Option<Span>,
         span: Span,
     },
 }

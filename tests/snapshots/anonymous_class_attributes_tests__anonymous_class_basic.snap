@@ -68,6 +68,7 @@ Program {
                                         },
                                     },
                                 ],
+                                doc_comment: None,
                                 span: Span {
                                     start: 29,
                                     end: 48,

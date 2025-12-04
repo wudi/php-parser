@@ -233,6 +233,7 @@ Program {
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 10,
                 end: 104,

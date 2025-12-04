@@ -288,6 +288,7 @@ Program {
             extends: None,
             implements: [],
             members: [],
+            doc_comment: None,
             span: Span {
                 start: 95,
                 end: 137,

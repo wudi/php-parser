@@ -98,6 +98,7 @@ Program {
                                 params: [],
                                 return_type: None,
                                 body: [],
+                                doc_comment: None,
                                 span: Span {
                                     start: 56,
                                     end: 85,
