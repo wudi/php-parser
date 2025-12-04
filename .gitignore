@@ -1,3 +1,6 @@
+.vscode/
+build/
+.idea/
 /target
 test_repos/
 tmp_corpus/
@@ -7,3 +10,4 @@ profile.pb
 flamegraph.svg
 *.log
 node_modules/
+editors/code/out
