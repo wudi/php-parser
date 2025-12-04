@@ -17,8 +17,8 @@ export function activate(context: ExtensionContext) {
     if (!serverPath) {
         // Try to find the server in the target directory
         const extPath = context.extensionPath;
-        const debugPath = path.join(extPath, '..', '..', 'target', 'debug', 'lsp_server');
-        const releasePath = path.join(extPath, '..', '..', 'target', 'release', 'lsp_server');
+        const debugPath = path.join(extPath, '..', '..', 'target', 'debug', 'pls');
+        const releasePath = path.join(extPath, '..', '..', 'target', 'release', 'pls');
         
         // Also check for Windows .exe
         const debugPathExe = debugPath + '.exe';
@@ -36,7 +36,7 @@ export function activate(context: ExtensionContext) {
     }
 
     if (!serverPath || !fs.existsSync(serverPath)) {
-        window.showErrorMessage(`PHP Parser LSP server not found. Please build it with 'cargo build' or configure 'phpParserRs.serverPath'. Searched at: ${serverPath || 'target/debug/lsp_server'}`);
+        window.showErrorMessage(`PHP Parser LSP server not found. Please build it with 'cargo build' or configure 'phpParserRs.serverPath'. Searched at: ${serverPath || 'target/debug/pls'}`);
         return;
     }
 

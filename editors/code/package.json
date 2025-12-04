@@ -26,7 +26,7 @@
         "phpParserRs.serverPath": {
           "type": "string",
           "default": null,
-          "description": "Path to the lsp_server binary. If not set, it tries to find it in target/debug or target/release."
+          "description": "Path to the pls binary. If not set, it tries to find it in target/debug or target/release."
         },
         "phpParserRs.trace.server": {
           "scope": "window",
