@@ -67,12 +67,14 @@ Program {
                         },
                     ],
                     adaptations: [],
+                    doc_comment: None,
                     span: Span {
                         start: 26,
                         end: 55,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 55,

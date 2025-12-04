@@ -43,6 +43,7 @@ Program {
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 64,
@@ -87,6 +88,7 @@ Program {
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 56,
                 end: 117,
@@ -130,6 +132,7 @@ Program {
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 109,
                 end: 158,

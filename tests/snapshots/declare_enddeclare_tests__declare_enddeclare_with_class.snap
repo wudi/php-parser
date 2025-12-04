@@ -171,12 +171,14 @@ Program {
                                     },
                                 },
                             ],
+                            doc_comment: None,
                             span: Span {
                                 start: 62,
                                 end: 142,
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 35,
                         end: 159,

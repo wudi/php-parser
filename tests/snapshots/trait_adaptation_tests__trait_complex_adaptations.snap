@@ -282,12 +282,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 26,
                         end: 208,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 208,

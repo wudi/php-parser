@@ -56,6 +56,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 29,
                         end: 72,
@@ -95,12 +96,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 65,
                         end: 94,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 95,

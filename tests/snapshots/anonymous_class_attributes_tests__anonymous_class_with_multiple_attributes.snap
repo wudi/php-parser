@@ -115,6 +115,7 @@ Program {
                                         },
                                     },
                                 ],
+                                doc_comment: None,
                                 span: Span {
                                     start: 45,
                                     end: 64,

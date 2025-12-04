@@ -100,12 +100,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 41,
                         end: 105,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 105,

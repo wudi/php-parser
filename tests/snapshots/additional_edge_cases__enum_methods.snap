@@ -54,6 +54,7 @@ Program {
                             },
                         },
                     ),
+                    doc_comment: None,
                     span: Span {
                         start: 32,
                         end: 66,
@@ -86,6 +87,7 @@ Program {
                             },
                         },
                     ),
+                    doc_comment: None,
                     span: Span {
                         start: 62,
                         end: 101,
@@ -254,12 +256,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 95,
                         end: 253,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 256,

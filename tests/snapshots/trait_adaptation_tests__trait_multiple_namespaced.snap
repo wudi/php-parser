@@ -143,12 +143,14 @@ Program {
                                     },
                                 ],
                                 adaptations: [],
+                                doc_comment: None,
                                 span: Span {
                                     start: 61,
                                     end: 115,
                                 },
                             },
                         ],
+                        doc_comment: None,
                         span: Span {
                             start: 37,
                             end: 117,

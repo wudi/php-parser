@@ -150,6 +150,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 35,
                         end: 111,

@@ -1,0 +1,63 @@
+{
+  "name": "pls",
+  "displayName": "PHP Language Server for VS Code",
+  "description": "PHP Language Server integration for Visual Studio Code",
+  "version": "0.0.1",
+  "publisher": "wudi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wudi/php-parser"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:php"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "PHP Parser RS",
+      "properties": {
+        "phpParserRs.serverPath": {
+          "type": "string",
+          "default": null,
+          "description": "Path to the pls binary. If not set, it tries to find it in target/debug or target/release."
+        },
+        "phpParserRs.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w",
+    "lint": "eslint ./src --ext .ts,.tsx",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^16.11.7",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^5.42.0",
+    "@typescript-eslint/parser": "^5.42.0",
+    "eslint": "^8.26.0",
+    "typescript": "^4.8.4"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.0.2"
+  }
+}

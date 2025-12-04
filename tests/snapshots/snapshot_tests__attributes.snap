@@ -176,6 +176,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 80,
                         end: 125,
@@ -240,6 +241,7 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 123,
                         end: 175,
@@ -349,12 +351,14 @@ Program {
                     ],
                     return_type: None,
                     body: [],
+                    doc_comment: None,
                     span: Span {
                         start: 173,
                         end: 258,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 10,
                 end: 266,
@@ -404,6 +408,7 @@ Program {
             params: [],
             return_type: None,
             body: [],
+            doc_comment: None,
             span: Span {
                 start: 264,
                 end: 305,
