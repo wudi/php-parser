@@ -55,7 +55,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                         }
 
                         if self.current_token.kind == TokenKind::Class {
-                            self.parse_class(attributes, self.arena.alloc_slice_copy(&modifiers), doc_comment)
+                            self.parse_class(
+                                attributes,
+                                self.arena.alloc_slice_copy(&modifiers),
+                                doc_comment,
+                            )
                         } else {
                             self.arena.alloc(Stmt::Error {
                                 span: self.current_token.span,

@@ -2,10 +2,10 @@ use crate::lexer::token::Token;
 use crate::span::{LineInfo, Span};
 use serde::Serialize;
 
-pub mod sexpr;
-pub mod visitor;
 pub mod locator;
+pub mod sexpr;
 pub mod symbol_table;
+pub mod visitor;
 
 pub type ExprId<'ast> = &'ast Expr<'ast>;
 pub type StmtId<'ast> = &'ast Stmt<'ast>;

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use crate::span::Span;
-use crate::ast::visitor::{Visitor, walk_program, walk_stmt, walk_expr, walk_param};
+use crate::ast::visitor::{Visitor, walk_expr, walk_param, walk_program, walk_stmt};
 use crate::ast::*;
+use crate::span::Span;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolKind {
@@ -39,9 +39,10 @@ impl Scope {
     }
 
     pub fn add(&mut self, name: String, kind: SymbolKind, span: Span) {
-        self.symbols.insert(name.clone(), Symbol { name, kind, span });
+        self.symbols
+            .insert(name.clone(), Symbol { name, kind, span });
     }
-    
+
     pub fn get(&self, name: &str) -> Option<&Symbol> {
         self.symbols.get(name)
     }
@@ -71,10 +72,12 @@ impl SymbolTable {
         let new_scope_idx = self.scopes.len();
         let new_scope = Scope::new(Some(self.current_scope_idx));
         self.scopes.push(new_scope);
-        
+
         // Register as child of current scope
-        self.scopes[self.current_scope_idx].children.push(new_scope_idx);
-        
+        self.scopes[self.current_scope_idx]
+            .children
+            .push(new_scope_idx);
+
         self.current_scope_idx = new_scope_idx;
     }
 
@@ -90,7 +93,7 @@ impl SymbolTable {
     pub fn add_symbol(&mut self, name: String, kind: SymbolKind, span: Span) {
         self.scopes[self.current_scope_idx].add(name, kind, span);
     }
-    
+
     pub fn lookup(&self, name: &str) -> Option<&Symbol> {
         let mut current = Some(self.current_scope_idx);
         while let Some(idx) = current {
@@ -129,10 +132,17 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
 
     fn visit_stmt(&mut self, stmt: StmtId<'ast>) {
         match stmt {
-            Stmt::Function { name, params, body, span, .. } => {
+            Stmt::Function {
+                name,
+                params,
+                body,
+                span,
+                ..
+            } => {
                 let func_name = self.get_text(name.span);
-                self.table.add_symbol(func_name, SymbolKind::Function, *span);
-                
+                self.table
+                    .add_symbol(func_name, SymbolKind::Function, *span);
+
                 self.table.enter_scope();
                 for param in *params {
                     self.visit_param(param);
@@ -141,8 +151,13 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
                     self.visit_stmt(s);
                 }
                 self.table.exit_scope();
-            },
-            Stmt::Class { name, members, span, .. } => {
+            }
+            Stmt::Class {
+                name,
+                members,
+                span,
+                ..
+            } => {
                 let class_name = self.get_text(name.span);
                 self.table.add_symbol(class_name, SymbolKind::Class, *span);
                 self.table.enter_scope();
@@ -150,17 +165,28 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
                     self.visit_class_member(member);
                 }
                 self.table.exit_scope();
-            },
-            Stmt::Interface { name, members, span, .. } => {
+            }
+            Stmt::Interface {
+                name,
+                members,
+                span,
+                ..
+            } => {
                 let interface_name = self.get_text(name.span);
-                self.table.add_symbol(interface_name, SymbolKind::Interface, *span);
+                self.table
+                    .add_symbol(interface_name, SymbolKind::Interface, *span);
                 self.table.enter_scope();
                 for member in *members {
                     self.visit_class_member(member);
                 }
                 self.table.exit_scope();
-            },
-            Stmt::Trait { name, members, span, .. } => {
+            }
+            Stmt::Trait {
+                name,
+                members,
+                span,
+                ..
+            } => {
                 let trait_name = self.get_text(name.span);
                 self.table.add_symbol(trait_name, SymbolKind::Trait, *span);
                 self.table.enter_scope();
@@ -168,8 +194,13 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
                     self.visit_class_member(member);
                 }
                 self.table.exit_scope();
-            },
-            Stmt::Enum { name, members, span, .. } => {
+            }
+            Stmt::Enum {
+                name,
+                members,
+                span,
+                ..
+            } => {
                 let enum_name = self.get_text(name.span);
                 self.table.add_symbol(enum_name, SymbolKind::Enum, *span);
                 self.table.enter_scope();
@@ -177,14 +208,15 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
                     self.visit_class_member(member);
                 }
                 self.table.exit_scope();
-            },
+            }
             _ => walk_stmt(self, stmt),
         }
     }
 
     fn visit_param(&mut self, param: &'ast Param<'ast>) {
         let name = self.get_text(param.name.span);
-        self.table.add_symbol(name, SymbolKind::Parameter, param.span);
+        self.table
+            .add_symbol(name, SymbolKind::Parameter, param.span);
         walk_param(self, param);
     }
 
@@ -192,13 +224,16 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
         match expr {
             Expr::Assign { var, .. } => {
                 if let Expr::Variable { name, span } = var {
-                     let var_name = self.get_text(*name);
-                     if self.table.scopes[self.table.current_scope_idx].get(&var_name).is_none() {
-                         self.table.add_symbol(var_name, SymbolKind::Variable, *span);
-                     }
+                    let var_name = self.get_text(*name);
+                    if self.table.scopes[self.table.current_scope_idx]
+                        .get(&var_name)
+                        .is_none()
+                    {
+                        self.table.add_symbol(var_name, SymbolKind::Variable, *span);
+                    }
                 }
                 walk_expr(self, expr);
-            },
+            }
             _ => walk_expr(self, expr),
         }
     }
@@ -207,9 +242,16 @@ impl<'ast, 'src> Visitor<'ast> for SymbolVisitor<'src> {
 impl<'src> SymbolVisitor<'src> {
     fn visit_class_member<'ast>(&mut self, member: &'ast ClassMember<'ast>) {
         match member {
-            ClassMember::Method { name, params, body, span, .. } => {
+            ClassMember::Method {
+                name,
+                params,
+                body,
+                span,
+                ..
+            } => {
                 let method_name = self.get_text(name.span);
-                self.table.add_symbol(method_name, SymbolKind::Function, *span);
+                self.table
+                    .add_symbol(method_name, SymbolKind::Function, *span);
                 self.table.enter_scope();
                 for param in *params {
                     self.visit_param(param);
@@ -218,19 +260,21 @@ impl<'src> SymbolVisitor<'src> {
                     self.visit_stmt(stmt);
                 }
                 self.table.exit_scope();
-            },
+            }
             ClassMember::Property { entries, .. } => {
                 for entry in *entries {
                     let prop_name = self.get_text(entry.name.span);
-                    self.table.add_symbol(prop_name, SymbolKind::Variable, entry.span);
+                    self.table
+                        .add_symbol(prop_name, SymbolKind::Variable, entry.span);
                 }
-            },
+            }
             ClassMember::Case { name, span, .. } => {
                 let case_name = self.get_text(name.span);
                 // Enum cases are like constants or static properties
-                self.table.add_symbol(case_name, SymbolKind::EnumCase, *span); 
-            },
-            _ => {} 
+                self.table
+                    .add_symbol(case_name, SymbolKind::EnumCase, *span);
+            }
+            _ => {}
         }
     }
 }

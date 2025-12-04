@@ -1,7 +1,7 @@
+use bumpalo::Bump;
+use php_parser::ast::Stmt;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
-use php_parser::ast::Stmt;
-use bumpalo::Bump;
 
 #[test]
 fn test_class_doc_comment() {
@@ -14,8 +14,12 @@ class Foo {}";
     let lexer = Lexer::new(code);
     let mut parser = Parser::new(lexer, &bump);
     let result = parser.parse_program();
-    
-    let stmt = result.statements.iter().find(|s| matches!(s, Stmt::Class { .. })).expect("Expected Class");
+
+    let stmt = result
+        .statements
+        .iter()
+        .find(|s| matches!(s, Stmt::Class { .. }))
+        .expect("Expected Class");
 
     match stmt {
         Stmt::Class { doc_comment, .. } => {
@@ -37,8 +41,12 @@ function foo() {}";
     let lexer = Lexer::new(code);
     let mut parser = Parser::new(lexer, &bump);
     let result = parser.parse_program();
-    
-    let stmt = result.statements.iter().find(|s| matches!(s, Stmt::Function { .. })).expect("Expected Function");
+
+    let stmt = result
+        .statements
+        .iter()
+        .find(|s| matches!(s, Stmt::Function { .. }))
+        .expect("Expected Function");
 
     match stmt {
         Stmt::Function { doc_comment, .. } => {
@@ -62,21 +70,23 @@ class Foo {
     let lexer = Lexer::new(code);
     let mut parser = Parser::new(lexer, &bump);
     let result = parser.parse_program();
-    
-    let stmt = result.statements.iter().find(|s| matches!(s, Stmt::Class { .. })).expect("Expected Class");
+
+    let stmt = result
+        .statements
+        .iter()
+        .find(|s| matches!(s, Stmt::Class { .. }))
+        .expect("Expected Class");
 
     match stmt {
-        Stmt::Class { members, .. } => {
-            match &members[0] {
-                php_parser::ast::ClassMember::Property { doc_comment, .. } => {
-                    assert!(doc_comment.is_some(), "Doc comment is None");
-                    let span = doc_comment.unwrap();
-                    let text = &code[span.start..span.end];
-                    assert_eq!(std::str::from_utf8(text).unwrap(), "/** My Property */");
-                }
-                member => panic!("Expected Property, got {:?}", member),
+        Stmt::Class { members, .. } => match &members[0] {
+            php_parser::ast::ClassMember::Property { doc_comment, .. } => {
+                assert!(doc_comment.is_some(), "Doc comment is None");
+                let span = doc_comment.unwrap();
+                let text = &code[span.start..span.end];
+                assert_eq!(std::str::from_utf8(text).unwrap(), "/** My Property */");
             }
-        }
+            member => panic!("Expected Property, got {:?}", member),
+        },
         _ => panic!("Expected Class"),
     }
 }
@@ -92,21 +102,23 @@ class Foo {
     let lexer = Lexer::new(code);
     let mut parser = Parser::new(lexer, &bump);
     let result = parser.parse_program();
-    
-    let stmt = result.statements.iter().find(|s| matches!(s, Stmt::Class { .. })).expect("Expected Class");
+
+    let stmt = result
+        .statements
+        .iter()
+        .find(|s| matches!(s, Stmt::Class { .. }))
+        .expect("Expected Class");
 
     match stmt {
-        Stmt::Class { members, .. } => {
-            match &members[0] {
-                php_parser::ast::ClassMember::Method { doc_comment, .. } => {
-                    assert!(doc_comment.is_some(), "Doc comment is None");
-                    let span = doc_comment.unwrap();
-                    let text = &code[span.start..span.end];
-                    assert_eq!(std::str::from_utf8(text).unwrap(), "/** My Method */");
-                }
-                member => panic!("Expected Method, got {:?}", member),
+        Stmt::Class { members, .. } => match &members[0] {
+            php_parser::ast::ClassMember::Method { doc_comment, .. } => {
+                assert!(doc_comment.is_some(), "Doc comment is None");
+                let span = doc_comment.unwrap();
+                let text = &code[span.start..span.end];
+                assert_eq!(std::str::from_utf8(text).unwrap(), "/** My Method */");
             }
-        }
+            member => panic!("Expected Method, got {:?}", member),
+        },
         _ => panic!("Expected Class"),
     }
 }

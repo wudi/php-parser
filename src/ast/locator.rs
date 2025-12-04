@@ -1,4 +1,4 @@
-use crate::ast::visitor::{walk_expr, walk_stmt, Visitor};
+use crate::ast::visitor::{Visitor, walk_class_member, walk_expr, walk_stmt};
 use crate::ast::*;
 use crate::span::Span;
 
@@ -6,6 +6,7 @@ use crate::span::Span;
 pub enum AstNode<'ast> {
     Stmt(StmtId<'ast>),
     Expr(ExprId<'ast>),
+    ClassMember(&'ast ClassMember<'ast>),
 }
 
 impl<'ast> AstNode<'ast> {
@@ -13,13 +14,21 @@ impl<'ast> AstNode<'ast> {
         match self {
             AstNode::Stmt(s) => s.span(),
             AstNode::Expr(e) => e.span(),
+            AstNode::ClassMember(m) => match m {
+                ClassMember::Property { span, .. } => *span,
+                ClassMember::PropertyHook { span, .. } => *span,
+                ClassMember::Method { span, .. } => *span,
+                ClassMember::Const { span, .. } => *span,
+                ClassMember::TraitUse { span, .. } => *span,
+                ClassMember::Case { span, .. } => *span,
+            },
         }
     }
 }
 
 pub struct Locator<'ast> {
     target: usize,
-    path: Vec<AstNode<'ast>>,
+    pub path: Vec<AstNode<'ast>>,
 }
 
 impl<'ast> Locator<'ast> {
@@ -51,6 +60,22 @@ impl<'ast> Visitor<'ast> for Locator<'ast> {
         if span.start <= self.target && self.target <= span.end {
             self.path.push(AstNode::Expr(expr));
             walk_expr(self, expr);
+        }
+    }
+
+    fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
+        let span = match member {
+            ClassMember::Property { span, .. } => *span,
+            ClassMember::PropertyHook { span, .. } => *span,
+            ClassMember::Method { span, .. } => *span,
+            ClassMember::Const { span, .. } => *span,
+            ClassMember::TraitUse { span, .. } => *span,
+            ClassMember::Case { span, .. } => *span,
+        };
+
+        if span.start <= self.target && self.target <= span.end {
+            self.path.push(AstNode::ClassMember(member));
+            walk_class_member(self, member);
         }
     }
 }

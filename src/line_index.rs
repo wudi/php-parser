@@ -50,9 +50,9 @@ impl LineIndex {
         }
         let start = self.line_starts[line];
         let offset = start + col;
-        
+
         // Check if offset is within the line (or at least within file bounds)
-        // We don't strictly check if col goes beyond the line length here, 
+        // We don't strictly check if col goes beyond the line length here,
         // but we should check if it goes beyond the next line start.
         if line + 1 < self.line_starts.len() {
             if offset >= self.line_starts[line + 1] {
@@ -63,14 +63,14 @@ impl LineIndex {
                 // For now, let's just check total length.
             }
         }
-        
+
         if offset > self.len {
             None
         } else {
             Some(offset)
         }
     }
-    
+
     pub fn to_lsp_range(&self, span: Span) -> (usize, usize, usize, usize) {
         let (start_line, start_col) = self.line_col(span.start);
         let (end_line, end_col) = self.line_col(span.end);
