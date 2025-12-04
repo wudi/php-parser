@@ -7,6 +7,10 @@ use php_parser::lexer::Lexer;
 use php_parser::line_index::LineIndex;
 use php_parser::parser::Parser;
 use tower_lsp::jsonrpc::Result;
+use tower_lsp::lsp_types::request::{
+    GotoDeclarationParams, GotoDeclarationResponse, GotoImplementationParams,
+    GotoImplementationResponse,
+};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -28,6 +32,8 @@ struct IndexEntry {
     kind: SymbolType,
     symbol_kind: Option<SymbolKind>,
     parameters: Option<Vec<String>>,
+    extends: Option<Vec<String>>,
+    implements: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -45,6 +51,8 @@ struct IndexingVisitor<'a> {
         Range,
         SymbolType,
         Option<SymbolKind>,
+        Option<Vec<String>>,
+        Option<Vec<String>>,
         Option<Vec<String>>,
     )>,
     line_index: &'a LineIndex,
@@ -67,6 +75,8 @@ impl<'a> IndexingVisitor<'a> {
         kind: SymbolType,
         symbol_kind: Option<SymbolKind>,
         parameters: Option<Vec<String>>,
+        extends: Option<Vec<String>>,
+        implements: Option<Vec<String>>,
     ) {
         let start = self.line_index.line_col(span.start);
         let end = self.line_index.line_col(span.end);
@@ -80,8 +90,15 @@ impl<'a> IndexingVisitor<'a> {
                 character: end.1 as u32,
             },
         };
-        self.entries
-            .push((name, range, kind, symbol_kind, parameters));
+        self.entries.push((
+            name,
+            range,
+            kind,
+            symbol_kind,
+            parameters,
+            extends,
+            implements,
+        ));
     }
 
     fn get_text(&self, span: php_parser::span::Span) -> String {
@@ -99,21 +116,47 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 ..
             } => {
                 let name_str = self.get_text(name.span);
+
+                let extends_vec = extends.map(|e| vec![self.get_text(e.span)]);
+                let implements_vec = if implements.is_empty() {
+                    None
+                } else {
+                    Some(implements.iter().map(|i| self.get_text(i.span)).collect())
+                };
+
                 self.add(
                     name_str,
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::CLASS),
                     None,
+                    extends_vec,
+                    implements_vec,
                 );
 
                 if let Some(extends) = extends {
                     let ext_name = self.get_text(extends.span);
-                    self.add(ext_name, extends.span, SymbolType::Reference, None, None);
+                    self.add(
+                        ext_name,
+                        extends.span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference, None, None);
+                    self.add(
+                        imp_name,
+                        implement.span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_stmt(self, stmt);
             }
@@ -126,21 +169,40 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     SymbolType::Definition,
                     Some(SymbolKind::FUNCTION),
                     Some(parameters),
+                    None,
+                    None,
                 );
                 walk_stmt(self, stmt);
             }
             Stmt::Interface { name, extends, .. } => {
                 let name_str = self.get_text(name.span);
+
+                let extends_vec = if extends.is_empty() {
+                    None
+                } else {
+                    Some(extends.iter().map(|e| self.get_text(e.span)).collect())
+                };
+
                 self.add(
                     name_str,
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::INTERFACE),
                     None,
+                    extends_vec,
+                    None,
                 );
                 for extend in *extends {
                     let ext_name = self.get_text(extend.span);
-                    self.add(ext_name, extend.span, SymbolType::Reference, None, None);
+                    self.add(
+                        ext_name,
+                        extend.span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_stmt(self, stmt);
             }
@@ -152,6 +214,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     SymbolType::Definition,
                     Some(SymbolKind::INTERFACE),
                     None,
+                    None,
+                    None,
                 );
                 walk_stmt(self, stmt);
             }
@@ -159,16 +223,33 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 name, implements, ..
             } => {
                 let name_str = self.get_text(name.span);
+
+                let implements_vec = if implements.is_empty() {
+                    None
+                } else {
+                    Some(implements.iter().map(|i| self.get_text(i.span)).collect())
+                };
+
                 self.add(
                     name_str,
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::ENUM),
                     None,
+                    None,
+                    implements_vec,
                 );
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference, None, None);
+                    self.add(
+                        imp_name,
+                        implement.span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_stmt(self, stmt);
             }
@@ -180,6 +261,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         c.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::CONSTANT),
+                        None,
+                        None,
                         None,
                     );
                 }
@@ -197,7 +280,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
+                    self.add(
+                        name_str,
+                        *name_span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_expr(self, expr);
             }
@@ -207,7 +298,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *func
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
+                    self.add(
+                        name_str,
+                        *name_span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_expr(self, expr);
             }
@@ -217,7 +316,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
+                    self.add(
+                        name_str,
+                        *name_span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_expr(self, expr);
             }
@@ -227,7 +334,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
+                    self.add(
+                        name_str,
+                        *name_span,
+                        SymbolType::Reference,
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
                 }
                 walk_expr(self, expr);
             }
@@ -246,6 +361,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     SymbolType::Definition,
                     Some(SymbolKind::METHOD),
                     Some(parameters),
+                    None,
+                    None,
                 );
                 walk_class_member(self, member);
             }
@@ -257,6 +374,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         entry.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::PROPERTY),
+                        None,
+                        None,
                         None,
                     );
                 }
@@ -271,6 +390,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         SymbolType::Definition,
                         Some(SymbolKind::CONSTANT),
                         None,
+                        None,
+                        None,
                     );
                 }
                 walk_class_member(self, member);
@@ -282,6 +403,8 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::ENUM_MEMBER),
+                    None,
+                    None,
                     None,
                 );
                 walk_class_member(self, member);
@@ -351,7 +474,7 @@ impl Backend {
 
         // 3. Update index
         let mut new_symbols = Vec::new();
-        for (name, range, kind, symbol_kind, parameters) in new_entries {
+        for (name, range, kind, symbol_kind, parameters, extends, implements) in new_entries {
             self.index
                 .entry(name.clone())
                 .or_default()
@@ -361,6 +484,8 @@ impl Backend {
                     kind,
                     symbol_kind,
                     parameters,
+                    extends,
+                    implements,
                 });
             new_symbols.push(name);
         }
@@ -919,8 +1044,15 @@ impl LanguageServer for Backend {
                                     visitor.visit_program(&program);
 
                                     let mut new_symbols = Vec::new();
-                                    for (name, range, kind, symbol_kind, parameters) in
-                                        visitor.entries
+                                    for (
+                                        name,
+                                        range,
+                                        kind,
+                                        symbol_kind,
+                                        parameters,
+                                        extends,
+                                        implements,
+                                    ) in visitor.entries
                                     {
                                         index.entry(name.clone()).or_default().push(IndexEntry {
                                             uri: uri.clone(),
@@ -928,6 +1060,8 @@ impl LanguageServer for Backend {
                                             kind,
                                             symbol_kind,
                                             parameters,
+                                            extends,
+                                            implements,
                                         });
                                         new_symbols.push(name);
                                     }
@@ -969,6 +1103,7 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 declaration_provider: Some(DeclarationCapability::Simple(true)),
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
@@ -1405,8 +1540,8 @@ impl LanguageServer for Backend {
 
     async fn goto_declaration(
         &self,
-        params: request::GotoDeclarationParams,
-    ) -> Result<Option<request::GotoDeclarationResponse>> {
+        params: GotoDeclarationParams,
+    ) -> Result<Option<GotoDeclarationResponse>> {
         // For now, declaration is same as definition
         let def_params = GotoDefinitionParams {
             text_document_position_params: params.text_document_position_params,
@@ -1415,15 +1550,112 @@ impl LanguageServer for Backend {
         };
         match self.goto_definition(def_params).await? {
             Some(GotoDefinitionResponse::Scalar(loc)) => {
-                Ok(Some(request::GotoDeclarationResponse::Scalar(loc)))
+                Ok(Some(GotoDeclarationResponse::Scalar(loc)))
             }
             Some(GotoDefinitionResponse::Array(locs)) => {
-                Ok(Some(request::GotoDeclarationResponse::Array(locs)))
+                Ok(Some(GotoDeclarationResponse::Array(locs)))
             }
             Some(GotoDefinitionResponse::Link(links)) => {
-                Ok(Some(request::GotoDeclarationResponse::Link(links)))
+                Ok(Some(GotoDeclarationResponse::Link(links)))
             }
             None => Ok(None),
+        }
+    }
+
+    async fn goto_implementation(
+        &self,
+        params: GotoImplementationParams,
+    ) -> Result<Option<GotoImplementationResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let mut target_name = String::new();
+
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let cursor_offset =
+                line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(cursor_offset) = cursor_offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let path = php_parser::ast::locator::Locator::find(&program, cursor_offset);
+
+                if let Some(node) = path.last() {
+                    match node {
+                        AstNode::Expr(Expr::New { class, .. }) => {
+                            target_name = String::from_utf8_lossy(
+                                &source[class.span().start..class.span().end],
+                            )
+                            .to_string();
+                        }
+                        AstNode::Expr(Expr::ClassConstFetch { class, .. }) => {
+                            target_name = String::from_utf8_lossy(
+                                &source[class.span().start..class.span().end],
+                            )
+                            .to_string();
+                        }
+                        AstNode::Expr(Expr::StaticCall { class, .. }) => {
+                            target_name = String::from_utf8_lossy(
+                                &source[class.span().start..class.span().end],
+                            )
+                            .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Class { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Interface { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if target_name.is_empty() {
+            return Ok(None);
+        }
+
+        let mut locations = Vec::new();
+
+        for entry in self.index.iter() {
+            for ie in entry.value() {
+                if ie.kind == SymbolType::Definition {
+                    let mut is_impl = false;
+                    if let Some(extends) = &ie.extends {
+                        if extends.contains(&target_name) {
+                            is_impl = true;
+                        }
+                    }
+                    if let Some(implements) = &ie.implements {
+                        if implements.contains(&target_name) {
+                            is_impl = true;
+                        }
+                    }
+
+                    if is_impl {
+                        locations.push(Location {
+                            uri: ie.uri.clone(),
+                            range: ie.range,
+                        });
+                    }
+                }
+            }
+        }
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(GotoImplementationResponse::Array(locations)))
         }
     }
 
