@@ -1,0 +1,27 @@
+[package]
+name = "php-parser"
+version = "0.1.1"
+edition = "2024"
+authors = ["Di Wu <hi@wudi.io>"]
+description = "A fast PHP parser written in Rust"
+keywords = ["php", "php-parser", "parser", "php-ast", "visitor"]
+license = "MIT"
+exclude = ["tests/*"]
+repository = "https://github.com/wudi/php-parser"
+
+[dependencies]
+bumpalo = { version = "3.19.0", features = ["collections"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+rayon = "1.10.0"
+pprof = { version = "0.15.0", features = ["flamegraph", "protobuf", "protobuf-codec"] }
+memchr = "2.7.6"
+tree-sitter = "0.25.10"
+tree-sitter-php = "0.24.2"
+tower-lsp = "0.20.0"
+tokio = { version = "1.48.0", features = ["full"] }
+dashmap = "6.1.0"
+walkdir = "2.5.0"
+
+[dev-dependencies]
+insta = "1.44.2"
