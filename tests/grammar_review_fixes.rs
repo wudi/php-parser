@@ -12,7 +12,7 @@ fn test_function_by_ref() {
 
     assert!(program.errors.is_empty());
     assert!(
-        program.statements.len() >= 1,
+        !program.statements.is_empty(),
         "Program should have at least 1 statement (function)"
     );
 
