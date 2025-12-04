@@ -1643,7 +1643,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
                 self.errors.push(ParseError {
                     span: token.span,
-                    message: "Syntax error",
+                    message: "Syntax error, unexpected token",
                 });
 
                 if is_terminator {
