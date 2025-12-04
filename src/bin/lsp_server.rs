@@ -27,6 +27,7 @@ struct IndexEntry {
     range: Range,
     kind: SymbolType,
     symbol_kind: Option<SymbolKind>,
+    parameters: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -39,7 +40,13 @@ struct Backend {
 }
 
 struct IndexingVisitor<'a> {
-    entries: Vec<(String, Range, SymbolType, Option<SymbolKind>)>,
+    entries: Vec<(
+        String,
+        Range,
+        SymbolType,
+        Option<SymbolKind>,
+        Option<Vec<String>>,
+    )>,
     line_index: &'a LineIndex,
     source: &'a [u8],
 }
@@ -59,6 +66,7 @@ impl<'a> IndexingVisitor<'a> {
         span: php_parser::span::Span,
         kind: SymbolType,
         symbol_kind: Option<SymbolKind>,
+        parameters: Option<Vec<String>>,
     ) {
         let start = self.line_index.line_col(span.start);
         let end = self.line_index.line_col(span.end);
@@ -72,7 +80,8 @@ impl<'a> IndexingVisitor<'a> {
                 character: end.1 as u32,
             },
         };
-        self.entries.push((name, range, kind, symbol_kind));
+        self.entries
+            .push((name, range, kind, symbol_kind, parameters));
     }
 
     fn get_text(&self, span: php_parser::span::Span) -> String {
@@ -95,25 +104,28 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::CLASS),
+                    None,
                 );
 
                 if let Some(extends) = extends {
                     let ext_name = self.get_text(extends.span);
-                    self.add(ext_name, extends.span, SymbolType::Reference, None);
+                    self.add(ext_name, extends.span, SymbolType::Reference, None, None);
                 }
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference, None);
+                    self.add(imp_name, implement.span, SymbolType::Reference, None, None);
                 }
                 walk_stmt(self, stmt);
             }
-            Stmt::Function { name, .. } => {
+            Stmt::Function { name, params, .. } => {
                 let name_str = self.get_text(name.span);
+                let parameters = params.iter().map(|p| self.get_text(p.name.span)).collect();
                 self.add(
                     name_str,
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::FUNCTION),
+                    Some(parameters),
                 );
                 walk_stmt(self, stmt);
             }
@@ -124,10 +136,11 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::INTERFACE),
+                    None,
                 );
                 for extend in *extends {
                     let ext_name = self.get_text(extend.span);
-                    self.add(ext_name, extend.span, SymbolType::Reference, None);
+                    self.add(ext_name, extend.span, SymbolType::Reference, None, None);
                 }
                 walk_stmt(self, stmt);
             }
@@ -138,6 +151,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::INTERFACE),
+                    None,
                 );
                 walk_stmt(self, stmt);
             }
@@ -150,10 +164,11 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::ENUM),
+                    None,
                 );
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference, None);
+                    self.add(imp_name, implement.span, SymbolType::Reference, None, None);
                 }
                 walk_stmt(self, stmt);
             }
@@ -165,6 +180,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         c.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::CONSTANT),
+                        None,
                     );
                 }
                 walk_stmt(self, stmt);
@@ -181,7 +197,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None);
+                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
                 }
                 walk_expr(self, expr);
             }
@@ -191,7 +207,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *func
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None);
+                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
                 }
                 walk_expr(self, expr);
             }
@@ -201,7 +217,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None);
+                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
                 }
                 walk_expr(self, expr);
             }
@@ -211,7 +227,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference, None);
+                    self.add(name_str, *name_span, SymbolType::Reference, None, None);
                 }
                 walk_expr(self, expr);
             }
@@ -221,13 +237,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
 
     fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
         match member {
-            ClassMember::Method { name, .. } => {
+            ClassMember::Method { name, params, .. } => {
                 let name_str = self.get_text(name.span);
+                let parameters = params.iter().map(|p| self.get_text(p.name.span)).collect();
                 self.add(
                     name_str,
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::METHOD),
+                    Some(parameters),
                 );
                 walk_class_member(self, member);
             }
@@ -239,6 +257,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         entry.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::PROPERTY),
+                        None,
                     );
                 }
                 walk_class_member(self, member);
@@ -251,6 +270,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         c.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::CONSTANT),
+                        None,
                     );
                 }
                 walk_class_member(self, member);
@@ -262,6 +282,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::ENUM_MEMBER),
+                    None,
                 );
                 walk_class_member(self, member);
             }
@@ -330,7 +351,7 @@ impl Backend {
 
         // 3. Update index
         let mut new_symbols = Vec::new();
-        for (name, range, kind, symbol_kind) in new_entries {
+        for (name, range, kind, symbol_kind, parameters) in new_entries {
             self.index
                 .entry(name.clone())
                 .or_default()
@@ -339,6 +360,7 @@ impl Backend {
                     range,
                     kind,
                     symbol_kind,
+                    parameters,
                 });
             new_symbols.push(name);
         }
@@ -606,6 +628,148 @@ impl<'a, 'ast> Visitor<'ast> for FoldingRangeVisitor<'a> {
     }
 }
 
+struct DocumentLinkVisitor<'a> {
+    links: Vec<DocumentLink>,
+    line_index: &'a LineIndex,
+    source: &'a [u8],
+    base_url: Url,
+}
+
+impl<'a> DocumentLinkVisitor<'a> {
+    fn new(line_index: &'a LineIndex, source: &'a [u8], base_url: Url) -> Self {
+        Self {
+            links: Vec::new(),
+            line_index,
+            source,
+            base_url,
+        }
+    }
+
+    fn get_text(&self, span: php_parser::span::Span) -> String {
+        String::from_utf8_lossy(&self.source[span.start..span.end]).to_string()
+    }
+}
+
+impl<'a, 'ast> Visitor<'ast> for DocumentLinkVisitor<'a> {
+    fn visit_expr(&mut self, expr: ExprId<'ast>) {
+        match expr {
+            Expr::Include {
+                expr: path_expr, ..
+            } => {
+                if let Expr::String { span, .. } = path_expr {
+                    let raw_text = self.get_text(*span);
+                    let path_str = raw_text.trim_matches(|c| c == '"' || c == '\'');
+
+                    if let Ok(target) = self.base_url.join(path_str) {
+                        let start = self.line_index.line_col(span.start);
+                        let end = self.line_index.line_col(span.end);
+
+                        self.links.push(DocumentLink {
+                            range: Range {
+                                start: Position {
+                                    line: start.0 as u32,
+                                    character: start.1 as u32,
+                                },
+                                end: Position {
+                                    line: end.0 as u32,
+                                    character: end.1 as u32,
+                                },
+                            },
+                            target: Some(target),
+                            tooltip: Some(path_str.to_string()),
+                            data: None,
+                        });
+                    }
+                }
+                walk_expr(self, expr);
+            }
+            _ => walk_expr(self, expr),
+        }
+    }
+}
+
+struct InlayHintVisitor<'a> {
+    hints: Vec<InlayHint>,
+    line_index: &'a LineIndex,
+    source: &'a [u8],
+    index: &'a DashMap<String, Vec<IndexEntry>>,
+}
+
+impl<'a> InlayHintVisitor<'a> {
+    fn new(
+        line_index: &'a LineIndex,
+        source: &'a [u8],
+        index: &'a DashMap<String, Vec<IndexEntry>>,
+    ) -> Self {
+        Self {
+            hints: Vec::new(),
+            line_index,
+            source,
+            index,
+        }
+    }
+
+    fn get_text(&self, span: php_parser::span::Span) -> String {
+        String::from_utf8_lossy(&self.source[span.start..span.end]).to_string()
+    }
+}
+
+impl<'a, 'ast> Visitor<'ast> for InlayHintVisitor<'a> {
+    fn visit_expr(&mut self, expr: ExprId<'ast>) {
+        match expr {
+            Expr::Call { func, args, .. } => {
+                if let Expr::Variable {
+                    name: name_span, ..
+                } = *func
+                {
+                    let name_str = self.get_text(*name_span);
+                    if let Some(entries) = self.index.get(&name_str) {
+                        if let Some(entry) = entries
+                            .iter()
+                            .find(|e| e.kind == SymbolType::Definition && e.parameters.is_some())
+                        {
+                            if let Some(params) = &entry.parameters {
+                                for (i, arg) in args.iter().enumerate() {
+                                    if i < params.len() {
+                                        if let Some(arg_name) = arg.name {
+                                            let arg_name_str = self.get_text(arg_name.span);
+                                            if arg_name_str == params[i] {
+                                                continue;
+                                            }
+                                        }
+
+                                        let param_name = &params[i];
+                                        let start = self.line_index.line_col(arg.span.start);
+
+                                        self.hints.push(InlayHint {
+                                            position: Position {
+                                                line: start.0 as u32,
+                                                character: start.1 as u32,
+                                            },
+                                            label: InlayHintLabel::String(format!(
+                                                "{}:",
+                                                param_name
+                                            )),
+                                            kind: Some(InlayHintKind::PARAMETER),
+                                            text_edits: None,
+                                            tooltip: None,
+                                            padding_left: None,
+                                            padding_right: Some(true),
+                                            data: None,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                walk_expr(self, expr);
+            }
+            _ => walk_expr(self, expr),
+        }
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -646,12 +810,15 @@ impl LanguageServer for Backend {
                                     visitor.visit_program(&program);
 
                                     let mut new_symbols = Vec::new();
-                                    for (name, range, kind, symbol_kind) in visitor.entries {
+                                    for (name, range, kind, symbol_kind, parameters) in
+                                        visitor.entries
+                                    {
                                         index.entry(name.clone()).or_default().push(IndexEntry {
                                             uri: uri.clone(),
                                             range,
                                             kind,
                                             symbol_kind,
+                                            parameters,
                                         });
                                         new_symbols.push(name);
                                     }
@@ -694,6 +861,12 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                inlay_hint_provider: Some(OneOf::Left(true)),
+                document_link_provider: Some(DocumentLinkOptions {
+                    resolve_provider: Some(false),
+                    work_done_progress_options: Default::default(),
+                }),
                 signature_help_provider: Some(SignatureHelpOptions {
                     trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
                     retrigger_characters: None,
@@ -1314,6 +1487,86 @@ impl LanguageServer for Backend {
             document_changes: None,
             change_annotations: None,
         }))
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let mut actions = Vec::new();
+
+        for diagnostic in params.context.diagnostics {
+            if diagnostic.message == "Missing semicolon" {
+                let title = "Add missing semicolon".to_string();
+                let mut changes = std::collections::HashMap::new();
+                changes.insert(
+                    params.text_document.uri.clone(),
+                    vec![TextEdit {
+                        range: Range {
+                            start: diagnostic.range.start,
+                            end: diagnostic.range.start,
+                        },
+                        new_text: ";".to_string(),
+                    }],
+                );
+
+                actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                    title,
+                    kind: Some(CodeActionKind::QUICKFIX),
+                    diagnostics: Some(vec![diagnostic]),
+                    edit: Some(WorkspaceEdit {
+                        changes: Some(changes),
+                        document_changes: None,
+                        change_annotations: None,
+                    }),
+                    command: None,
+                    is_preferred: Some(true),
+                    disabled: None,
+                    data: None,
+                }));
+            }
+        }
+
+        if actions.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(actions))
+        }
+    }
+
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = params.text_document.uri;
+        if let Some(content) = self.documents.get(&uri) {
+            let source = content.as_bytes();
+            let bump = Bump::new();
+            let lexer = Lexer::new(source);
+            let mut parser = Parser::new(lexer, &bump);
+            let program = parser.parse_program();
+            let line_index = LineIndex::new(source);
+
+            let mut visitor = InlayHintVisitor::new(&line_index, source, &self.index);
+            visitor.visit_program(&program);
+
+            Ok(Some(visitor.hints))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn document_link(&self, params: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
+        let uri = params.text_document.uri;
+        if let Some(content) = self.documents.get(&uri) {
+            let source = content.as_bytes();
+            let bump = Bump::new();
+            let lexer = Lexer::new(source);
+            let mut parser = Parser::new(lexer, &bump);
+            let program = parser.parse_program();
+            let line_index = LineIndex::new(source);
+
+            let mut visitor = DocumentLinkVisitor::new(&line_index, source, uri.clone());
+            visitor.visit_program(&program);
+
+            Ok(Some(visitor.links))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
