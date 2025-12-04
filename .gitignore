@@ -6,3 +6,4 @@ run-tests.php
 profile.pb
 flamegraph.svg
 *.log
+node_modules/
