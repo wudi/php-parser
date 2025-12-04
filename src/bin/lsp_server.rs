@@ -26,6 +26,7 @@ struct IndexEntry {
     uri: Url,
     range: Range,
     kind: SymbolType,
+    symbol_kind: Option<SymbolKind>,
 }
 
 #[derive(Debug)]
@@ -38,7 +39,7 @@ struct Backend {
 }
 
 struct IndexingVisitor<'a> {
-    entries: Vec<(String, Range, SymbolType)>,
+    entries: Vec<(String, Range, SymbolType, Option<SymbolKind>)>,
     line_index: &'a LineIndex,
     source: &'a [u8],
 }
@@ -52,7 +53,13 @@ impl<'a> IndexingVisitor<'a> {
         }
     }
 
-    fn add(&mut self, name: String, span: php_parser::span::Span, kind: SymbolType) {
+    fn add(
+        &mut self,
+        name: String,
+        span: php_parser::span::Span,
+        kind: SymbolType,
+        symbol_kind: Option<SymbolKind>,
+    ) {
         let start = self.line_index.line_col(span.start);
         let end = self.line_index.line_col(span.end);
         let range = Range {
@@ -65,7 +72,7 @@ impl<'a> IndexingVisitor<'a> {
                 character: end.1 as u32,
             },
         };
-        self.entries.push((name, range, kind));
+        self.entries.push((name, range, kind, symbol_kind));
     }
 
     fn get_text(&self, span: php_parser::span::Span) -> String {
@@ -83,52 +90,82 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 ..
             } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::CLASS),
+                );
 
                 if let Some(extends) = extends {
                     let ext_name = self.get_text(extends.span);
-                    self.add(ext_name, extends.span, SymbolType::Reference);
+                    self.add(ext_name, extends.span, SymbolType::Reference, None);
                 }
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference);
+                    self.add(imp_name, implement.span, SymbolType::Reference, None);
                 }
                 walk_stmt(self, stmt);
             }
             Stmt::Function { name, .. } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::FUNCTION),
+                );
                 walk_stmt(self, stmt);
             }
             Stmt::Interface { name, extends, .. } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::INTERFACE),
+                );
                 for extend in *extends {
                     let ext_name = self.get_text(extend.span);
-                    self.add(ext_name, extend.span, SymbolType::Reference);
+                    self.add(ext_name, extend.span, SymbolType::Reference, None);
                 }
                 walk_stmt(self, stmt);
             }
             Stmt::Trait { name, .. } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::INTERFACE),
+                );
                 walk_stmt(self, stmt);
             }
             Stmt::Enum {
                 name, implements, ..
             } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::ENUM),
+                );
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
-                    self.add(imp_name, implement.span, SymbolType::Reference);
+                    self.add(imp_name, implement.span, SymbolType::Reference, None);
                 }
                 walk_stmt(self, stmt);
             }
             Stmt::Const { consts, .. } => {
                 for c in *consts {
                     let name_str = self.get_text(c.name.span);
-                    self.add(name_str, c.name.span, SymbolType::Definition);
+                    self.add(
+                        name_str,
+                        c.name.span,
+                        SymbolType::Definition,
+                        Some(SymbolKind::CONSTANT),
+                    );
                 }
                 walk_stmt(self, stmt);
             }
@@ -144,7 +181,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference);
+                    self.add(name_str, *name_span, SymbolType::Reference, None);
                 }
                 walk_expr(self, expr);
             }
@@ -154,7 +191,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *func
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference);
+                    self.add(name_str, *name_span, SymbolType::Reference, None);
                 }
                 walk_expr(self, expr);
             }
@@ -164,7 +201,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference);
+                    self.add(name_str, *name_span, SymbolType::Reference, None);
                 }
                 walk_expr(self, expr);
             }
@@ -174,7 +211,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                 } = *class
                 {
                     let name_str = self.get_text(*name_span);
-                    self.add(name_str, *name_span, SymbolType::Reference);
+                    self.add(name_str, *name_span, SymbolType::Reference, None);
                 }
                 walk_expr(self, expr);
             }
@@ -186,26 +223,46 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
         match member {
             ClassMember::Method { name, .. } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::METHOD),
+                );
                 walk_class_member(self, member);
             }
             ClassMember::Property { entries, .. } => {
                 for entry in *entries {
                     let name_str = self.get_text(entry.name.span);
-                    self.add(name_str, entry.name.span, SymbolType::Definition);
+                    self.add(
+                        name_str,
+                        entry.name.span,
+                        SymbolType::Definition,
+                        Some(SymbolKind::PROPERTY),
+                    );
                 }
                 walk_class_member(self, member);
             }
             ClassMember::Const { consts, .. } => {
                 for c in *consts {
                     let name_str = self.get_text(c.name.span);
-                    self.add(name_str, c.name.span, SymbolType::Definition);
+                    self.add(
+                        name_str,
+                        c.name.span,
+                        SymbolType::Definition,
+                        Some(SymbolKind::CONSTANT),
+                    );
                 }
                 walk_class_member(self, member);
             }
             ClassMember::Case { name, .. } => {
                 let name_str = self.get_text(name.span);
-                self.add(name_str, name.span, SymbolType::Definition);
+                self.add(
+                    name_str,
+                    name.span,
+                    SymbolType::Definition,
+                    Some(SymbolKind::ENUM_MEMBER),
+                );
                 walk_class_member(self, member);
             }
             _ => walk_class_member(self, member),
@@ -273,7 +330,7 @@ impl Backend {
 
         // 3. Update index
         let mut new_symbols = Vec::new();
-        for (name, range, kind) in new_entries {
+        for (name, range, kind, symbol_kind) in new_entries {
             self.index
                 .entry(name.clone())
                 .or_default()
@@ -281,6 +338,7 @@ impl Backend {
                     uri: uri.clone(),
                     range,
                     kind,
+                    symbol_kind,
                 });
             new_symbols.push(name);
         }
@@ -488,6 +546,66 @@ impl<'a, 'ast> Visitor<'ast> for DocumentSymbolVisitor<'a> {
     }
 }
 
+struct FoldingRangeVisitor<'a> {
+    ranges: Vec<FoldingRange>,
+    line_index: &'a LineIndex,
+}
+
+impl<'a> FoldingRangeVisitor<'a> {
+    fn new(line_index: &'a LineIndex) -> Self {
+        Self {
+            ranges: Vec::new(),
+            line_index,
+        }
+    }
+
+    fn add_range(&mut self, span: php_parser::span::Span, kind: Option<FoldingRangeKind>) {
+        let start = self.line_index.line_col(span.start);
+        let end = self.line_index.line_col(span.end);
+
+        if start.0 < end.0 {
+            self.ranges.push(FoldingRange {
+                start_line: start.0 as u32,
+                start_character: Some(start.1 as u32),
+                end_line: end.0 as u32,
+                end_character: Some(end.1 as u32),
+                kind,
+                collapsed_text: None,
+            });
+        }
+    }
+}
+
+impl<'a, 'ast> Visitor<'ast> for FoldingRangeVisitor<'a> {
+    fn visit_stmt(&mut self, stmt: &'ast Stmt<'ast>) {
+        match stmt {
+            Stmt::Class { span, .. }
+            | Stmt::Function { span, .. }
+            | Stmt::Interface { span, .. }
+            | Stmt::Trait { span, .. }
+            | Stmt::Enum { span, .. } => {
+                self.add_range(*span, Some(FoldingRangeKind::Region));
+                walk_stmt(self, stmt);
+            }
+            Stmt::Block { span, .. } => {
+                self.add_range(*span, Some(FoldingRangeKind::Region));
+                walk_stmt(self, stmt);
+            }
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
+        match member {
+            ClassMember::Method { span, .. } => {
+                self.add_range(*span, Some(FoldingRangeKind::Region));
+                walk_class_member(self, member);
+            }
+            _ => walk_class_member(self, member),
+        }
+    }
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -528,11 +646,12 @@ impl LanguageServer for Backend {
                                     visitor.visit_program(&program);
 
                                     let mut new_symbols = Vec::new();
-                                    for (name, range, kind) in visitor.entries {
+                                    for (name, range, kind, symbol_kind) in visitor.entries {
                                         index.entry(name.clone()).or_default().push(IndexEntry {
                                             uri: uri.clone(),
                                             range,
                                             kind,
+                                            symbol_kind,
                                         });
                                         new_symbols.push(name);
                                     }
@@ -567,9 +686,19 @@ impl LanguageServer for Backend {
                     },
                 )),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
+                document_highlight_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Left(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: None,
+                    work_done_progress_options: Default::default(),
+                }),
                 completion_provider: Some(CompletionOptions::default()),
                 ..Default::default()
             },
@@ -643,6 +772,212 @@ impl LanguageServer for Backend {
             return Ok(Some(DocumentSymbolResponse::Nested(visitor.symbols)));
         }
         Ok(None)
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        let query = params.query.to_lowercase();
+        let mut symbols = Vec::new();
+
+        for entry in self.index.iter() {
+            let name = entry.key();
+            if name.to_lowercase().contains(&query) {
+                for index_entry in entry.value() {
+                    if index_entry.kind == SymbolType::Definition {
+                        #[allow(deprecated)]
+                        symbols.push(SymbolInformation {
+                            name: name.clone(),
+                            kind: index_entry.symbol_kind.unwrap_or(SymbolKind::VARIABLE),
+                            tags: None,
+                            deprecated: None,
+                            location: Location {
+                                uri: index_entry.uri.clone(),
+                                range: index_entry.range,
+                            },
+                            container_name: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(Some(symbols))
+    }
+
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        let uri = params.text_document.uri;
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let bump = Bump::new();
+            let lexer = Lexer::new(source);
+            let mut parser = Parser::new(lexer, &bump);
+            let program = parser.parse_program();
+            let line_index = LineIndex::new(source);
+
+            let mut visitor = FoldingRangeVisitor::new(&line_index);
+            visitor.visit_program(&program);
+
+            return Ok(Some(visitor.ranges));
+        }
+        Ok(None)
+    }
+
+    async fn selection_range(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        let uri = params.text_document.uri;
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let bump = Bump::new();
+            let lexer = Lexer::new(source);
+            let mut parser = Parser::new(lexer, &bump);
+            let program = parser.parse_program();
+
+            let mut result = Vec::new();
+
+            for position in params.positions {
+                let offset = line_index.offset(position.line as usize, position.character as usize);
+                if let Some(offset) = offset {
+                    let mut locator = php_parser::ast::locator::Locator::new(offset);
+                    locator.visit_program(&program);
+
+                    let mut current: Option<Box<SelectionRange>> = None;
+
+                    for node in locator.path.iter() {
+                        let span = node.span();
+                        let start = line_index.line_col(span.start);
+                        let end = line_index.line_col(span.end);
+                        let range = Range {
+                            start: Position {
+                                line: start.0 as u32,
+                                character: start.1 as u32,
+                            },
+                            end: Position {
+                                line: end.0 as u32,
+                                character: end.1 as u32,
+                            },
+                        };
+
+                        let selection_range = SelectionRange {
+                            range,
+                            parent: current,
+                        };
+                        current = Some(Box::new(selection_range));
+                    }
+
+                    if let Some(r) = current {
+                        result.push(*r);
+                    }
+                }
+            }
+            return Ok(Some(result));
+        }
+        Ok(None)
+    }
+
+    async fn document_highlight(
+        &self,
+        params: DocumentHighlightParams,
+    ) -> Result<Option<Vec<DocumentHighlight>>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let mut target_name = String::new();
+
+        // 1. Identify the symbol at the cursor
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let offset = line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(offset) = offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let mut locator = php_parser::ast::locator::Locator::new(offset);
+                locator.visit_program(&program);
+
+                if let Some(node) = locator.path.last() {
+                    match node {
+                        AstNode::Expr(Expr::New { class, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = *class
+                            {
+                                target_name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                            }
+                        }
+                        AstNode::Expr(Expr::Call { func, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = *func
+                            {
+                                target_name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                            }
+                        }
+                        AstNode::Stmt(Stmt::Class { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Function { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Interface { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Trait { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Enum { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if target_name.is_empty() {
+            return Ok(None);
+        }
+
+        let mut highlights = Vec::new();
+        if let Some(entries) = self.index.get(&target_name) {
+            for entry in entries.iter() {
+                if entry.uri == uri {
+                    highlights.push(DocumentHighlight {
+                        range: entry.range,
+                        kind: Some(match entry.kind {
+                            SymbolType::Definition => DocumentHighlightKind::WRITE,
+                            SymbolType::Reference => DocumentHighlightKind::READ,
+                        }),
+                    });
+                }
+            }
+        }
+
+        Ok(Some(highlights))
     }
 
     async fn goto_definition(
@@ -879,6 +1214,158 @@ impl LanguageServer for Backend {
         Ok(Some(locations))
     }
 
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        let mut target_name = String::new();
+
+        // 1. Identify the symbol at the cursor
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let offset = line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(offset) = offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let mut locator = php_parser::ast::locator::Locator::new(offset);
+                locator.visit_program(&program);
+
+                if let Some(node) = locator.path.last() {
+                    match node {
+                        AstNode::Expr(Expr::New { class, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = *class
+                            {
+                                target_name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                            }
+                        }
+                        AstNode::Expr(Expr::Call { func, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = *func
+                            {
+                                target_name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                            }
+                        }
+                        AstNode::Stmt(Stmt::Class { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Function { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Interface { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Trait { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Enum { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if target_name.is_empty() {
+            return Ok(None);
+        }
+
+        let mut changes = std::collections::HashMap::new();
+
+        if let Some(entries) = self.index.get(&target_name) {
+            for entry in entries.iter() {
+                changes
+                    .entry(entry.uri.clone())
+                    .or_insert_with(Vec::new)
+                    .push(TextEdit {
+                        range: entry.range,
+                        new_text: new_name.clone(),
+                    });
+            }
+        }
+
+        Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        }))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let offset = line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(offset) = offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let mut locator = php_parser::ast::locator::Locator::new(offset);
+                locator.visit_program(&program);
+
+                for node in locator.path.iter().rev() {
+                    if let AstNode::Expr(Expr::Call { func, args, .. }) = node {
+                        let func_name = if let Expr::Variable { name, .. } = **func {
+                            String::from_utf8_lossy(&source[name.start..name.end]).to_string()
+                        } else {
+                            continue;
+                        };
+
+                        let mut active_parameter = 0;
+                        for (i, arg) in args.iter().enumerate() {
+                            if offset > arg.span.end {
+                                active_parameter = i + 1;
+                            }
+                        }
+
+                        return Ok(Some(SignatureHelp {
+                            signatures: vec![SignatureInformation {
+                                label: format!("{}(...)", func_name),
+                                documentation: None,
+                                parameters: None,
+                                active_parameter: None,
+                            }],
+                            active_signature: Some(0),
+                            active_parameter: Some(active_parameter as u32),
+                        }));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     async fn completion(&self, _: CompletionParams) -> Result<Option<CompletionResponse>> {
         let mut items = Vec::new();
         for entry in self.index.iter() {
@@ -996,4 +1483,171 @@ async fn main() {
         root_path: Arc::new(RwLock::new(None)),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use php_parser::lexer::Lexer;
+    use php_parser::parser::Parser;
+
+    fn with_parsed<F>(code: &str, f: F)
+    where
+        F: FnOnce(&php_parser::ast::Program, &LineIndex, &[u8]),
+    {
+        let source = code.as_bytes();
+        let bump = Bump::new();
+        let lexer = Lexer::new(source);
+        let mut parser = Parser::new(lexer, &bump);
+        let program = parser.parse_program();
+        let line_index = LineIndex::new(source);
+
+        f(&program, &line_index, source);
+    }
+
+    #[test]
+    fn test_document_symbols() {
+        let code = r#"<?php
+        class User {
+            public function getName() {}
+        }
+        "#;
+
+        with_parsed(code, |program, line_index, source| {
+            let mut visitor = DocumentSymbolVisitor::new(line_index, source);
+            visitor.visit_program(program);
+
+            assert_eq!(visitor.symbols.len(), 1);
+            let class_symbol = &visitor.symbols[0];
+            assert_eq!(class_symbol.name, "User");
+            assert_eq!(class_symbol.kind, SymbolKind::CLASS);
+
+            assert!(class_symbol.children.is_some());
+            let children = class_symbol.children.as_ref().unwrap();
+            assert_eq!(children.len(), 1);
+            let method_symbol = &children[0];
+            assert_eq!(method_symbol.name, "getName");
+            assert_eq!(method_symbol.kind, SymbolKind::METHOD);
+        });
+    }
+
+    #[test]
+    fn test_folding_ranges() {
+        let code = r#"<?php
+        class User {
+            public function getName() {
+                // body
+            }
+        }
+        "#;
+
+        with_parsed(code, |program, line_index, _| {
+            let mut visitor = FoldingRangeVisitor::new(line_index);
+            visitor.visit_program(program);
+
+            // Expecting ranges for Class and Method
+            assert!(visitor.ranges.len() >= 2);
+
+            // Verify we have a range covering the class
+            let has_class_range = visitor.ranges.iter().any(|r| {
+                // Class starts at line 1 (0-indexed)
+                r.start_line == 1
+            });
+            assert!(has_class_range, "Should have folding range for class");
+
+            // Verify we have a range covering the method
+            let has_method_range = visitor.ranges.iter().any(|r| {
+                // Method starts at line 2
+                r.start_line == 2
+            });
+            assert!(has_method_range, "Should have folding range for method");
+        });
+    }
+
+    #[test]
+    fn test_indexing() {
+        let code = r#"<?php
+        function globalFunc() {}
+        class GlobalClass {}
+        "#;
+
+        with_parsed(code, |program, line_index, source| {
+            let mut visitor = IndexingVisitor::new(line_index, source);
+            visitor.visit_program(program);
+
+            let names: Vec<&str> = visitor
+                .entries
+                .iter()
+                .map(|(n, _, _, _)| n.as_str())
+                .collect();
+            assert!(names.contains(&"globalFunc"));
+            assert!(names.contains(&"GlobalClass"));
+
+            for (name, _, kind, sym_kind) in &visitor.entries {
+                if name == "globalFunc" {
+                    assert_eq!(*kind, SymbolType::Definition);
+                    assert_eq!(*sym_kind, Some(SymbolKind::FUNCTION));
+                }
+                if name == "GlobalClass" {
+                    assert_eq!(*kind, SymbolType::Definition);
+                    assert_eq!(*sym_kind, Some(SymbolKind::CLASS));
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn test_selection_range() {
+        let code = "<?php $a = 1;";
+
+        with_parsed(code, |program, line_index, _| {
+            // "<?php " is 6 chars.
+            // "$a" is at 6..8
+            // Offset 7 is inside "$a"
+            let offset = 7;
+
+            let mut locator = php_parser::ast::locator::Locator::new(offset);
+            locator.visit_program(program);
+
+            assert!(!locator.path.is_empty());
+
+            // Simulate the selection range construction logic
+            let mut current: Option<Box<SelectionRange>> = None;
+            for node in locator.path.iter() {
+                let span = node.span();
+                let start = line_index.line_col(span.start);
+                let end = line_index.line_col(span.end);
+                let range = Range {
+                    start: Position {
+                        line: start.0 as u32,
+                        character: start.1 as u32,
+                    },
+                    end: Position {
+                        line: end.0 as u32,
+                        character: end.1 as u32,
+                    },
+                };
+
+                current = Some(Box::new(SelectionRange {
+                    range,
+                    parent: current,
+                }));
+            }
+
+            let leaf = current.expect("Should have selection range");
+            // Leaf should be the variable $a (6..8)
+            assert_eq!(leaf.range.start.character, 6);
+            assert_eq!(leaf.range.end.character, 8);
+
+            // Parent should be Assignment (6..12)
+            let parent = leaf.parent.as_ref().expect("Should have parent");
+            assert_eq!(parent.range.start.character, 6);
+            assert_eq!(parent.range.end.character, 12);
+
+            // Grandparent should be Statement (6..13)
+            let grandparent = parent.parent.as_ref().expect("Should have grandparent");
+            assert_eq!(grandparent.range.start.character, 6);
+            assert_eq!(grandparent.range.end.character, 13);
+        });
+    }
 }
