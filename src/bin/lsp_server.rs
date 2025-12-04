@@ -323,11 +323,22 @@ impl<'a> DocumentSymbolVisitor<'a> {
 
     fn push_symbol(
         &mut self,
-        name: String,
+        mut name: String,
         kind: SymbolKind,
         span: php_parser::span::Span,
-        selection_span: php_parser::span::Span,
+        mut selection_span: php_parser::span::Span,
     ) {
+        if name.is_empty() {
+            name = "<unknown>".to_string();
+        }
+
+        // Ensure selection_span is contained in span.
+        // If the parser recovered with a default span (0..0) for the name,
+        // it might be outside the statement's span.
+        if selection_span.start < span.start || selection_span.end > span.end {
+            selection_span = span;
+        }
+
         let range = self.range(span);
         let selection_range = self.range(selection_span);
 
