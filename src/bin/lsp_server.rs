@@ -6,10 +6,11 @@ use php_parser::ast::*;
 use php_parser::lexer::Lexer;
 use php_parser::line_index::LineIndex;
 use php_parser::parser::Parser;
+use php_parser::span::Span;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::request::{
     GotoDeclarationParams, GotoDeclarationResponse, GotoImplementationParams,
-    GotoImplementationResponse,
+    GotoImplementationResponse, GotoTypeDefinitionParams, GotoTypeDefinitionResponse,
 };
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -34,6 +35,7 @@ struct IndexEntry {
     parameters: Option<Vec<String>>,
     extends: Option<Vec<String>>,
     implements: Option<Vec<String>>,
+    type_info: Option<String>,
 }
 
 #[derive(Debug)]
@@ -54,6 +56,7 @@ struct IndexingVisitor<'a> {
         Option<Vec<String>>,
         Option<Vec<String>>,
         Option<Vec<String>>,
+        Option<String>,
     )>,
     line_index: &'a LineIndex,
     source: &'a [u8],
@@ -77,6 +80,7 @@ impl<'a> IndexingVisitor<'a> {
         parameters: Option<Vec<String>>,
         extends: Option<Vec<String>>,
         implements: Option<Vec<String>>,
+        type_info: Option<String>,
     ) {
         let start = self.line_index.line_col(span.start);
         let end = self.line_index.line_col(span.end);
@@ -98,11 +102,30 @@ impl<'a> IndexingVisitor<'a> {
             parameters,
             extends,
             implements,
+            type_info,
         ));
     }
 
     fn get_text(&self, span: php_parser::span::Span) -> String {
         String::from_utf8_lossy(&self.source[span.start..span.end]).to_string()
+    }
+
+    fn get_type_text(&self, ty: &Type) -> String {
+        match ty {
+            Type::Simple(token) => self.get_text(token.span),
+            Type::Name(name) => self.get_text(name.span),
+            Type::Union(types) => types
+                .iter()
+                .map(|t| self.get_type_text(t))
+                .collect::<Vec<_>>()
+                .join("|"),
+            Type::Intersection(types) => types
+                .iter()
+                .map(|t| self.get_type_text(t))
+                .collect::<Vec<_>>()
+                .join("&"),
+            Type::Nullable(ty) => format!("?{}", self.get_type_text(ty)),
+        }
     }
 }
 
@@ -132,6 +155,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     None,
                     extends_vec,
                     implements_vec,
+                    None,
                 );
 
                 if let Some(extends) = extends {
@@ -140,6 +164,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         ext_name,
                         extends.span,
                         SymbolType::Reference,
+                        None,
                         None,
                         None,
                         None,
@@ -156,13 +181,20 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
                 walk_stmt(self, stmt);
             }
-            Stmt::Function { name, params, .. } => {
+            Stmt::Function {
+                name,
+                params,
+                return_type,
+                ..
+            } => {
                 let name_str = self.get_text(name.span);
                 let parameters = params.iter().map(|p| self.get_text(p.name.span)).collect();
+                let type_info = return_type.as_ref().map(|t| self.get_type_text(t));
                 self.add(
                     name_str,
                     name.span,
@@ -171,6 +203,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     Some(parameters),
                     None,
                     None,
+                    type_info,
                 );
                 walk_stmt(self, stmt);
             }
@@ -191,6 +224,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     None,
                     extends_vec,
                     None,
+                    None,
                 );
                 for extend in *extends {
                     let ext_name = self.get_text(extend.span);
@@ -198,6 +232,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         ext_name,
                         extend.span,
                         SymbolType::Reference,
+                        None,
                         None,
                         None,
                         None,
@@ -213,6 +248,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::INTERFACE),
+                    None,
                     None,
                     None,
                     None,
@@ -238,6 +274,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     None,
                     None,
                     implements_vec,
+                    None,
                 );
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
@@ -245,6 +282,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         imp_name,
                         implement.span,
                         SymbolType::Reference,
+                        None,
                         None,
                         None,
                         None,
@@ -261,6 +299,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         c.name.span,
                         SymbolType::Definition,
                         Some(SymbolKind::CONSTANT),
+                        None,
                         None,
                         None,
                         None,
@@ -288,6 +327,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
                 walk_expr(self, expr);
@@ -302,6 +342,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         *name_span,
                         SymbolType::Reference,
+                        None,
                         None,
                         None,
                         None,
@@ -324,6 +365,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
                 walk_expr(self, expr);
@@ -342,6 +384,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
                 walk_expr(self, expr);
@@ -352,9 +395,15 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
 
     fn visit_class_member(&mut self, member: &'ast ClassMember<'ast>) {
         match member {
-            ClassMember::Method { name, params, .. } => {
+            ClassMember::Method {
+                name,
+                params,
+                return_type,
+                ..
+            } => {
                 let name_str = self.get_text(name.span);
                 let parameters = params.iter().map(|p| self.get_text(p.name.span)).collect();
+                let type_info = return_type.as_ref().map(|t| self.get_type_text(t));
                 self.add(
                     name_str,
                     name.span,
@@ -363,10 +412,12 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     Some(parameters),
                     None,
                     None,
+                    type_info,
                 );
                 walk_class_member(self, member);
             }
-            ClassMember::Property { entries, .. } => {
+            ClassMember::Property { entries, ty, .. } => {
+                let type_info = ty.as_ref().map(|t| self.get_type_text(t));
                 for entry in *entries {
                     let name_str = self.get_text(entry.name.span);
                     self.add(
@@ -377,6 +428,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        type_info.clone(),
                     );
                 }
                 walk_class_member(self, member);
@@ -392,6 +444,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         None,
                         None,
                         None,
+                        None,
                     );
                 }
                 walk_class_member(self, member);
@@ -403,6 +456,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name.span,
                     SymbolType::Definition,
                     Some(SymbolKind::ENUM_MEMBER),
+                    None,
                     None,
                     None,
                     None,
@@ -474,7 +528,9 @@ impl Backend {
 
         // 3. Update index
         let mut new_symbols = Vec::new();
-        for (name, range, kind, symbol_kind, parameters, extends, implements) in new_entries {
+        for (name, range, kind, symbol_kind, parameters, extends, implements, type_info) in
+            new_entries
+        {
             self.index
                 .entry(name.clone())
                 .or_default()
@@ -486,6 +542,7 @@ impl Backend {
                     parameters,
                     extends,
                     implements,
+                    type_info,
                 });
             new_symbols.push(name);
         }
@@ -1052,6 +1109,7 @@ impl LanguageServer for Backend {
                                         parameters,
                                         extends,
                                         implements,
+                                        type_info,
                                     ) in visitor.entries
                                     {
                                         index.entry(name.clone()).or_default().push(IndexEntry {
@@ -1062,6 +1120,7 @@ impl LanguageServer for Backend {
                                             parameters,
                                             extends,
                                             implements,
+                                            type_info,
                                         });
                                         new_symbols.push(name);
                                     }
@@ -1103,6 +1162,7 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 declaration_provider: Some(DeclarationCapability::Simple(true)),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
@@ -1659,6 +1719,161 @@ impl LanguageServer for Backend {
         }
     }
 
+    async fn goto_type_definition(
+        &self,
+        params: GotoTypeDefinitionParams,
+    ) -> Result<Option<GotoTypeDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let mut target_type_name = String::new();
+
+        if let Some(text) = self.documents.get(&uri) {
+            let source = text.as_bytes();
+            let line_index = LineIndex::new(source);
+            let cursor_offset =
+                line_index.offset(position.line as usize, position.character as usize);
+
+            if let Some(cursor_offset) = cursor_offset {
+                let bump = Bump::new();
+                let lexer = Lexer::new(source);
+                let mut parser = Parser::new(lexer, &bump);
+                let program = parser.parse_program();
+
+                let path = php_parser::ast::locator::Locator::find(&program, cursor_offset);
+
+                fn get_type_text(ty: &Type, source: &[u8]) -> String {
+                    let get_text = |span: Span| -> String {
+                        String::from_utf8_lossy(&source[span.start..span.end]).to_string()
+                    };
+                    match ty {
+                        Type::Simple(token) => get_text(token.span),
+                        Type::Name(name) => get_text(name.span),
+                        Type::Union(types) => types
+                            .iter()
+                            .map(|t| get_type_text(t, source))
+                            .collect::<Vec<_>>()
+                            .join("|"),
+                        Type::Intersection(types) => types
+                            .iter()
+                            .map(|t| get_type_text(t, source))
+                            .collect::<Vec<_>>()
+                            .join("&"),
+                        Type::Nullable(ty) => format!("?{}", get_type_text(ty, source)),
+                    }
+                }
+
+                if let Some(node) = path.last() {
+                    match node {
+                        AstNode::Expr(Expr::PropertyFetch { property, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = **property
+                            {
+                                if name_span.start <= cursor_offset
+                                    && cursor_offset <= name_span.end
+                                {
+                                    let name = String::from_utf8_lossy(
+                                        &source[name_span.start..name_span.end],
+                                    )
+                                    .to_string();
+                                    let lookup_name = format!("${}", name);
+
+                                    if let Some(entries) = self.index.get(&lookup_name) {
+                                        for entry in entries.value() {
+                                            if entry.kind == SymbolType::Definition
+                                                && entry.type_info.is_some()
+                                            {
+                                                target_type_name = entry.type_info.clone().unwrap();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        AstNode::Expr(Expr::MethodCall { method, .. }) => {
+                            if let Expr::Variable {
+                                name: name_span, ..
+                            } = **method
+                            {
+                                if name_span.start <= cursor_offset
+                                    && cursor_offset <= name_span.end
+                                {
+                                    let name = String::from_utf8_lossy(
+                                        &source[name_span.start..name_span.end],
+                                    )
+                                    .to_string();
+                                    if let Some(entries) = self.index.get(&name) {
+                                        for entry in entries.value() {
+                                            if entry.kind == SymbolType::Definition
+                                                && entry.type_info.is_some()
+                                            {
+                                                target_type_name = entry.type_info.clone().unwrap();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        AstNode::Stmt(Stmt::Function { params, .. }) => {
+                            for param in *params {
+                                if param.name.span.start <= cursor_offset
+                                    && cursor_offset <= param.name.span.end
+                                {
+                                    if let Some(ty) = &param.ty {
+                                        target_type_name = get_type_text(ty, source);
+                                    }
+                                }
+                            }
+                        }
+                        AstNode::ClassMember(ClassMember::Method { params, .. }) => {
+                            for param in *params {
+                                if param.name.span.start <= cursor_offset
+                                    && cursor_offset <= param.name.span.end
+                                {
+                                    if let Some(ty) = &param.ty {
+                                        target_type_name = get_type_text(ty, source);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if target_type_name.is_empty() {
+            return Ok(None);
+        }
+
+        let clean_name = target_type_name.trim_start_matches('?').to_string();
+        let type_names: Vec<&str> = clean_name.split('|').collect();
+        let mut locations = Vec::new();
+
+        for name in type_names {
+            let name = name.trim();
+            if let Some(entries) = self.index.get(name) {
+                for entry in entries.value() {
+                    if entry.kind == SymbolType::Definition {
+                        locations.push(Location {
+                            uri: entry.uri.clone(),
+                            range: entry.range,
+                        });
+                    }
+                }
+            }
+        }
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(GotoTypeDefinitionResponse::Array(locations)))
+        }
+    }
+
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
@@ -2030,6 +2245,9 @@ impl LanguageServer for Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
+        let mut target_name = String::new();
+        let mut range = None;
+
         if let Some(text) = self.documents.get(&uri) {
             let source = text.as_bytes();
             let line_index = LineIndex::new(source);
@@ -2045,68 +2263,123 @@ impl LanguageServer for Backend {
                 locator.visit_program(&program);
 
                 if let Some(node) = locator.path.last() {
-                    let span = node.span();
-                    let range = {
-                        let start = line_index.line_col(span.start);
-                        let end = line_index.line_col(span.end);
-                        Range {
-                            start: Position {
-                                line: start.0 as u32,
-                                character: start.1 as u32,
-                            },
-                            end: Position {
-                                line: end.0 as u32,
-                                character: end.1 as u32,
-                            },
+                    match node {
+                        AstNode::Expr(Expr::Variable { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
-                    };
-
-                    // Try to get doc comment
-                    let doc_comment = match node {
-                        AstNode::Stmt(stmt) => match stmt {
-                            Stmt::Class { doc_comment, .. } => *doc_comment,
-                            Stmt::Function { doc_comment, .. } => *doc_comment,
-                            Stmt::Interface { doc_comment, .. } => *doc_comment,
-                            Stmt::Trait { doc_comment, .. } => *doc_comment,
-                            Stmt::Enum { doc_comment, .. } => *doc_comment,
-                            _ => None,
-                        },
-                        AstNode::ClassMember(member) => match member {
-                            ClassMember::Method { doc_comment, .. } => *doc_comment,
-                            ClassMember::Property { doc_comment, .. } => *doc_comment,
-                            ClassMember::PropertyHook { doc_comment, .. } => *doc_comment,
-                            ClassMember::Const { doc_comment, .. } => *doc_comment,
-                            ClassMember::TraitUse { doc_comment, .. } => *doc_comment,
-                            ClassMember::Case { doc_comment, .. } => *doc_comment,
-                        },
-                        _ => None,
-                    };
-
-                    if let Some(doc_span) = doc_comment {
-                        let doc_text =
-                            String::from_utf8_lossy(&source[doc_span.start..doc_span.end])
+                        AstNode::Expr(Expr::New { class, .. }) => {
+                            if let Expr::Variable { name, .. } = *class {
+                                target_name =
+                                    String::from_utf8_lossy(&source[name.start..name.end])
+                                        .to_string();
+                            }
+                        }
+                        AstNode::Expr(Expr::Call { func, .. }) => {
+                            if let Expr::Variable { name, .. } = *func {
+                                target_name =
+                                    String::from_utf8_lossy(&source[name.start..name.end])
+                                        .to_string();
+                            }
+                        }
+                        AstNode::Expr(Expr::StaticCall { class, .. }) => {
+                            if let Expr::Variable { name, .. } = *class {
+                                target_name =
+                                    String::from_utf8_lossy(&source[name.start..name.end])
+                                        .to_string();
+                            }
+                        }
+                        AstNode::Expr(Expr::ClassConstFetch { class, .. }) => {
+                            if let Expr::Variable { name, .. } = *class {
+                                target_name =
+                                    String::from_utf8_lossy(&source[name.start..name.end])
+                                        .to_string();
+                            }
+                        }
+                        AstNode::Stmt(Stmt::Class { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Function { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Interface { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Trait { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::Stmt(Stmt::Enum { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::ClassMember(ClassMember::Method { name, .. }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.span.start..name.span.end])
+                                    .to_string();
+                        }
+                        AstNode::ClassMember(ClassMember::Property { entries, .. }) => {
+                            if let Some(entry) = entries.first() {
+                                target_name = String::from_utf8_lossy(
+                                    &source[entry.name.span.start..entry.name.span.end],
+                                )
                                 .to_string();
-                        // Clean up doc comment (remove /**, */, *)
-                        let clean_doc = doc_text
-                            .lines()
-                            .map(|line| line.trim())
-                            .map(|line| {
-                                line.trim_start_matches("/**")
-                                    .trim_start_matches("*/")
-                                    .trim_start_matches('*')
-                                    .trim()
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        return Ok(Some(Hover {
-                            contents: HoverContents::Scalar(MarkedString::String(clean_doc)),
-                            range: Some(range),
-                        }));
+                            }
+                        }
+                        _ => {}
                     }
+
+                    let span = node.span();
+                    let start = line_index.line_col(span.start);
+                    let end = line_index.line_col(span.end);
+                    range = Some(Range {
+                        start: Position {
+                            line: start.0 as u32,
+                            character: start.1 as u32,
+                        },
+                        end: Position {
+                            line: end.0 as u32,
+                            character: end.1 as u32,
+                        },
+                    });
                 }
             }
         }
+
+        if target_name.is_empty() {
+            return Ok(None);
+        }
+
+        if let Some(entries) = self.index.get(&target_name) {
+            for entry in entries.iter() {
+                if entry.kind == SymbolType::Definition {
+                    let mut contents = format!("**{}**", target_name);
+                    if let Some(kind) = entry.symbol_kind {
+                        contents.push_str(&format!(" ({:?})", kind));
+                    }
+                    if let Some(type_info) = &entry.type_info {
+                        contents.push_str(&format!("\n\nType: `{}`", type_info));
+                    }
+                    if let Some(params) = &entry.parameters {
+                        contents.push_str(&format!("\n\nParams: ({})", params.join(", ")));
+                    }
+
+                    return Ok(Some(Hover {
+                        contents: HoverContents::Scalar(MarkedString::String(contents)),
+                        range,
+                    }));
+                }
+            }
+        }
+
         Ok(None)
     }
 }
