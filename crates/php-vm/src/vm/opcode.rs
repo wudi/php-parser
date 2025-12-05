@@ -32,6 +32,7 @@ pub enum OpCode {
     MakeVarRef(Symbol), // Convert local var to reference (COW if needed), push handle
     MakeRef,            // Convert top of stack to reference
     UnsetVar(Symbol),
+    BindGlobal(Symbol), // Bind local variable to global variable (by reference)
     
     // Control Flow
     Jmp(u32),
@@ -99,6 +100,7 @@ pub enum OpCode {
     AssignStaticProp(Symbol, Symbol), // (class_name, prop_name) [Val] -> [Val]
     CallStaticMethod(Symbol, Symbol, u8), // (class_name, method_name, arg_count) -> [RetVal]
     New(Symbol, u8),        // Create instance, call constructor with N args
+    NewDynamic(u8),         // [ClassName] -> Create instance, call constructor with N args
     FetchProp(Symbol),      // [Obj] -> [Val]
     AssignProp(Symbol),     // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]

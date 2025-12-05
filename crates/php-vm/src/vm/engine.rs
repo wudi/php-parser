@@ -626,6 +626,35 @@ impl VM {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
                 }
+                OpCode::BindGlobal(sym) => {
+                    let global_handle = self.context.globals.get(&sym).copied();
+                    
+                    let handle = if let Some(h) = global_handle {
+                        h
+                    } else {
+                        // Check main frame (frame 0) for the variable
+                        let main_handle = if !self.frames.is_empty() {
+                            self.frames[0].locals.get(&sym).copied()
+                        } else {
+                            None
+                        };
+                        
+                        if let Some(h) = main_handle {
+                            h
+                        } else {
+                            self.arena.alloc(Val::Null)
+                        }
+                    };
+                    
+                    // Ensure it is in globals map
+                    self.context.globals.insert(sym, handle);
+                    
+                    // Mark as reference
+                    self.arena.get_mut(handle).is_ref = true;
+                    
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.insert(sym, handle);
+                }
                 OpCode::MakeRef => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
@@ -796,6 +825,57 @@ impl VM {
                             Val::Null => Val::String(Vec::new()),
                             _ => Val::String(b"Array".to_vec()),
                         },
+                        4 => match val { // Array
+                            Val::Array(a) => Val::Array(a),
+                            Val::Null => Val::Array(IndexMap::new()),
+                            _ => {
+                                let mut map = IndexMap::new();
+                                map.insert(ArrayKey::Int(0), self.arena.alloc(val));
+                                Val::Array(map)
+                            }
+                        },
+                        5 => match val { // Object
+                            Val::Object(h) => Val::Object(h),
+                            Val::Array(a) => {
+                                let mut props = IndexMap::new();
+                                for (k, v) in a {
+                                    let key_sym = match k {
+                                        ArrayKey::Int(i) => self.context.interner.intern(i.to_string().as_bytes()),
+                                        ArrayKey::Str(s) => self.context.interner.intern(&s),
+                                    };
+                                    props.insert(key_sym, v);
+                                }
+                                let obj_data = ObjectData {
+                                    class: self.context.interner.intern(b"stdClass"),
+                                    properties: props,
+                                    internal: None,
+                                };
+                                let payload = self.arena.alloc(Val::ObjPayload(obj_data));
+                                Val::Object(payload)
+                            },
+                            Val::Null => {
+                                let obj_data = ObjectData {
+                                    class: self.context.interner.intern(b"stdClass"),
+                                    properties: IndexMap::new(),
+                                    internal: None,
+                                };
+                                let payload = self.arena.alloc(Val::ObjPayload(obj_data));
+                                Val::Object(payload)
+                            },
+                            _ => {
+                                let mut props = IndexMap::new();
+                                let key_sym = self.context.interner.intern(b"scalar");
+                                props.insert(key_sym, self.arena.alloc(val));
+                                let obj_data = ObjectData {
+                                    class: self.context.interner.intern(b"stdClass"),
+                                    properties: props,
+                                    internal: None,
+                                };
+                                let payload = self.arena.alloc(Val::ObjPayload(obj_data));
+                                Val::Object(payload)
+                            }
+                        },
+                        6 => Val::Null, // Unset
                         _ => val,
                     };
                     let res_handle = self.arena.alloc(new_val);
@@ -2146,6 +2226,73 @@ impl VM {
                             }
                             args.reverse();
 
+                            let mut frame = CallFrame::new(constructor.chunk.clone());
+                            frame.this = Some(obj_handle);
+                            frame.is_constructor = true;
+                            frame.class_scope = Some(defined_class);
+
+                            for (i, param) in constructor.params.iter().enumerate() {
+                                if i < args.len() {
+                                    let arg_handle = args[i];
+                                    if param.by_ref {
+                                        if !self.arena.get(arg_handle).is_ref {
+                                            self.arena.get_mut(arg_handle).is_ref = true;
+                                        }
+                                        frame.locals.insert(param.name, arg_handle);
+                                    } else {
+                                        let final_handle = if self.arena.get(arg_handle).is_ref {
+                                            let val = self.arena.get(arg_handle).value.clone();
+                                            self.arena.alloc(val)
+                                        } else {
+                                            arg_handle
+                                        };
+                                        frame.locals.insert(param.name, final_handle);
+                                    }
+                                }
+                            }
+                            self.frames.push(frame);
+                        } else {
+                            if arg_count > 0 {
+                                let class_name_bytes = self.context.interner.lookup(class_name).unwrap_or(b"<unknown>");
+                                let class_name_str = String::from_utf8_lossy(class_name_bytes);
+                                return Err(VmError::RuntimeError(format!("Class {} does not have a constructor, so you cannot pass any constructor arguments", class_name_str).into()));
+                            }
+                            self.operand_stack.push(obj_handle);
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("Class not found".into()));
+                    }
+                }
+                OpCode::NewDynamic(arg_count) => {
+                    // Collect args first
+                    let mut args = Vec::new();
+                    for _ in 0..arg_count {
+                        args.push(self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?);
+                    }
+                    args.reverse();
+                    
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_name = match &self.arena.get(class_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    if self.context.classes.contains_key(&class_name) {
+                        let properties = self.collect_properties(class_name);
+                        
+                        let obj_data = ObjectData {
+                            class: class_name,
+                            properties,
+                            internal: None,
+                        };
+                        
+                        let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
+                        let obj_val = Val::Object(payload_handle);
+                        let obj_handle = self.arena.alloc(obj_val);
+                        
+                        // Check for constructor
+                        let constructor_name = self.context.interner.intern(b"__construct");
+                        if let Some((constructor, _, _, defined_class)) = self.find_method(class_name, constructor_name) {
                             let mut frame = CallFrame::new(constructor.chunk.clone());
                             frame.this = Some(obj_handle);
                             frame.is_constructor = true;

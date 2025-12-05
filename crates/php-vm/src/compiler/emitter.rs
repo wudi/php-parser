@@ -193,6 +193,18 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::DefGlobalConst(sym, val_idx as u16));
                 }
             }
+            Stmt::Global { vars, .. } => {
+                for var in *vars {
+                    if let Expr::Variable { span, .. } = var {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            let var_name = &name[1..];
+                            let sym = self.interner.intern(var_name);
+                            self.chunk.code.push(OpCode::BindGlobal(sym));
+                        }
+                    }
+                }
+            }
             Stmt::Break { .. } => {
                 if let Some(loop_info) = self.loop_stack.last_mut() {
                     let idx = self.chunk.code.len();
@@ -1085,7 +1097,26 @@ impl<'src> Emitter<'src> {
                         }
                         
                         self.chunk.code.push(OpCode::New(class_sym, args.len() as u8));
+                    } else {
+                        // Dynamic new $var()
+                        // Emit expression to get class name (string)
+                        self.emit_expr(class);
+                        
+                        for arg in *args {
+                            self.emit_expr(arg.value);
+                        }
+                        
+                        self.chunk.code.push(OpCode::NewDynamic(args.len() as u8));
                     }
+                } else {
+                    // Complex expression for class name
+                    self.emit_expr(class);
+                    
+                    for arg in *args {
+                        self.emit_expr(arg.value);
+                    }
+                    
+                    self.chunk.code.push(OpCode::NewDynamic(args.len() as u8));
                 }
             }
             Expr::PropertyFetch { target, property, .. } => {
