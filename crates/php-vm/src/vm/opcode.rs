@@ -33,6 +33,7 @@ pub enum OpCode {
     MakeRef,            // Convert top of stack to reference
     UnsetVar(Symbol),
     BindGlobal(Symbol), // Bind local variable to global variable (by reference)
+    BindStatic(Symbol, u16), // Bind local variable to static variable (name, default_val_idx)
     
     // Control Flow
     Jmp(u32),
@@ -135,6 +136,12 @@ pub enum OpCode {
     // Type Check
     TypeCheck,
     Defined,
+    
+    // Isset/Empty
+    IssetVar(Symbol),
+    IssetDim,
+    IssetProp(Symbol),
+    IssetStaticProp(Symbol),
     
     // Match
     Match,

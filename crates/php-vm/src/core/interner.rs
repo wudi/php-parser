@@ -22,6 +22,10 @@ impl Interner {
         sym
     }
 
+    pub fn find(&self, s: &[u8]) -> Option<Symbol> {
+        self.map.get(s).copied()
+    }
+
     pub fn lookup(&self, sym: Symbol) -> Option<&[u8]> {
         self.vec.get(sym.0 as usize).map(|v| v.as_slice())
     }

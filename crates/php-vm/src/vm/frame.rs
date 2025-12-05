@@ -1,11 +1,12 @@
 use std::rc::Rc;
 use std::collections::HashMap;
-use crate::compiler::chunk::CodeChunk;
+use crate::compiler::chunk::{CodeChunk, UserFunc};
 use crate::core::value::{Symbol, Handle};
 
 #[derive(Debug, Clone)]
 pub struct CallFrame {
     pub chunk: Rc<CodeChunk>,
+    pub func: Option<Rc<UserFunc>>,
     pub ip: usize,
     pub locals: HashMap<Symbol, Handle>,
     pub this: Option<Handle>,
@@ -19,6 +20,7 @@ impl CallFrame {
     pub fn new(chunk: Rc<CodeChunk>) -> Self {
         Self {
             chunk,
+            func: None,
             ip: 0,
             locals: HashMap::new(),
             this: None,

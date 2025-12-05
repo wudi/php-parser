@@ -1,6 +1,8 @@
 use crate::core::value::{Symbol, Val, Handle};
 use crate::vm::opcode::OpCode;
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
@@ -10,6 +12,7 @@ pub struct UserFunc {
     pub chunk: Rc<CodeChunk>,
     pub is_static: bool,
     pub is_generator: bool,
+    pub statics: Rc<RefCell<HashMap<Symbol, Handle>>>,
 }
 
 #[derive(Debug, Clone)]

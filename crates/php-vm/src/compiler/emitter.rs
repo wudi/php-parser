@@ -5,6 +5,8 @@ use crate::vm::opcode::OpCode;
 use crate::core::value::{Val, Visibility};
 use crate::core::interner::Interner;
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 struct LoopInfo {
     break_jumps: Vec<usize>,
@@ -86,6 +88,7 @@ impl<'src> Emitter<'src> {
                         chunk: Rc::new(method_chunk),
                         is_static,
                         is_generator,
+                        statics: Rc::new(RefCell::new(HashMap::new())),
                     };
                     
                     // Store in constants
@@ -205,6 +208,108 @@ impl<'src> Emitter<'src> {
                     }
                 }
             }
+            Stmt::Static { vars, .. } => {
+                for var in *vars {
+                    // Check if var.var is Assign
+                    let (target_var, default_expr) = if let Expr::Assign { var: assign_var, expr: assign_expr, .. } = var.var {
+                        (*assign_var, Some(*assign_expr))
+                    } else {
+                        (var.var, var.default)
+                    };
+
+                    let name = if let Expr::Variable { span, .. } = target_var {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            self.interner.intern(&name[1..])
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    };
+                    
+                    let val = if let Some(expr) = default_expr {
+                        self.eval_constant_expr(expr)
+                    } else {
+                        Val::Null
+                    };
+                    
+                    let idx = self.add_constant(val);
+                    self.chunk.code.push(OpCode::BindStatic(name, idx as u16));
+                }
+            }
+            Stmt::Unset { vars, .. } => {
+                for var in *vars {
+                    match var {
+                        Expr::Variable { span, .. } => {
+                            let name = self.get_text(*span);
+                            if name.starts_with(b"$") {
+                                let sym = self.interner.intern(&name[1..]);
+                                self.chunk.code.push(OpCode::UnsetVar(sym));
+                            }
+                        }
+                        Expr::ArrayDimFetch { array, dim, .. } => {
+                            if let Expr::Variable { span, .. } = array {
+                                let name = self.get_text(*span);
+                                if name.starts_with(b"$") {
+                                    let sym = self.interner.intern(&name[1..]);
+                                    self.chunk.code.push(OpCode::LoadVar(sym));
+                                    self.chunk.code.push(OpCode::Dup);
+                                    
+                                    if let Some(d) = dim {
+                                        self.emit_expr(d);
+                                    } else {
+                                        let idx = self.add_constant(Val::Null);
+                                        self.chunk.code.push(OpCode::Const(idx as u16));
+                                    }
+                                    
+                                    self.chunk.code.push(OpCode::UnsetDim);
+                                    self.chunk.code.push(OpCode::StoreVar(sym));
+                                    self.chunk.code.push(OpCode::Pop);
+                                }
+                            }
+                        }
+                        Expr::PropertyFetch { target, property, .. } => {
+                            self.emit_expr(target);
+                            if let Expr::Variable { span, .. } = property {
+                                let name = self.get_text(*span);
+                                let idx = self.add_constant(Val::String(name.to_vec()));
+                                self.chunk.code.push(OpCode::Const(idx as u16));
+                                self.chunk.code.push(OpCode::UnsetObj);
+                            }
+                        }
+                        Expr::ClassConstFetch { class, constant, .. } => {
+                            let is_static_prop = if let Expr::Variable { span, .. } = constant {
+                                let name = self.get_text(*span);
+                                name.starts_with(b"$")
+                            } else {
+                                false
+                            };
+
+                            if is_static_prop {
+                                if let Expr::Variable { span, .. } = class {
+                                    let name = self.get_text(*span);
+                                    if !name.starts_with(b"$") {
+                                        let idx = self.add_constant(Val::String(name.to_vec()));
+                                        self.chunk.code.push(OpCode::Const(idx as u16));
+                                    } else {
+                                        let sym = self.interner.intern(&name[1..]);
+                                        self.chunk.code.push(OpCode::LoadVar(sym));
+                                    }
+                                    
+                                    if let Expr::Variable { span: prop_span, .. } = constant {
+                                        let prop_name = self.get_text(*prop_span);
+                                        let idx = self.add_constant(Val::String(prop_name[1..].to_vec()));
+                                        self.chunk.code.push(OpCode::Const(idx as u16));
+                                        self.chunk.code.push(OpCode::UnsetStaticProp);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
             Stmt::Break { .. } => {
                 if let Some(loop_info) = self.loop_stack.last_mut() {
                     let idx = self.chunk.code.len();
@@ -272,6 +377,7 @@ impl<'src> Emitter<'src> {
                     chunk: Rc::new(func_chunk),
                     is_static: false,
                     is_generator,
+                    statics: Rc::new(RefCell::new(HashMap::new())),
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -955,6 +1061,207 @@ impl<'src> Emitter<'src> {
                 self.emit_expr(expr);
                 self.chunk.code.push(OpCode::Clone);
             }
+            Expr::Exit { expr, .. } | Expr::Die { expr, .. } => {
+                if let Some(e) = expr {
+                    self.emit_expr(e);
+                } else {
+                    let idx = self.add_constant(Val::Null);
+                    self.chunk.code.push(OpCode::Const(idx as u16));
+                }
+                self.chunk.code.push(OpCode::Exit);
+            }
+            Expr::Isset { vars, .. } => {
+                if vars.is_empty() {
+                    let idx = self.add_constant(Val::Bool(false));
+                    self.chunk.code.push(OpCode::Const(idx as u16));
+                } else {
+                    let mut end_jumps = Vec::new();
+                    
+                    for (i, var) in vars.iter().enumerate() {
+                        match var {
+                            Expr::Variable { span, .. } => {
+                                let name = self.get_text(*span);
+                                if name.starts_with(b"$") {
+                                    let sym = self.interner.intern(&name[1..]);
+                                    self.chunk.code.push(OpCode::IssetVar(sym));
+                                } else {
+                                    let idx = self.add_constant(Val::Bool(false));
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+                            }
+                            Expr::ArrayDimFetch { array, dim, .. } => {
+                                self.emit_expr(array);
+                                if let Some(d) = dim {
+                                    self.emit_expr(d);
+                                    self.chunk.code.push(OpCode::IssetDim);
+                                } else {
+                                     let idx = self.add_constant(Val::Bool(false));
+                                     self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+                            }
+                            Expr::PropertyFetch { target, property, .. } => {
+                                self.emit_expr(target);
+                                if let Expr::Variable { span, .. } = property {
+                                    let name = self.get_text(*span);
+                                    let sym = self.interner.intern(name);
+                                    self.chunk.code.push(OpCode::IssetProp(sym));
+                                } else {
+                                    self.chunk.code.push(OpCode::Pop);
+                                    let idx = self.add_constant(Val::Bool(false));
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+                            }
+                            Expr::ClassConstFetch { class, constant, .. } => {
+                                let is_static_prop = if let Expr::Variable { span, .. } = constant {
+                                    let name = self.get_text(*span);
+                                    name.starts_with(b"$")
+                                } else {
+                                    false
+                                };
+
+                                if is_static_prop {
+                                    if let Expr::Variable { span, .. } = class {
+                                        let name = self.get_text(*span);
+                                        if !name.starts_with(b"$") {
+                                            let idx = self.add_constant(Val::String(name.to_vec()));
+                                            self.chunk.code.push(OpCode::Const(idx as u16));
+                                        } else {
+                                            let sym = self.interner.intern(&name[1..]);
+                                            self.chunk.code.push(OpCode::LoadVar(sym));
+                                        }
+                                        
+                                        if let Expr::Variable { span: prop_span, .. } = constant {
+                                            let prop_name = self.get_text(*prop_span);
+                                            let prop_sym = self.interner.intern(&prop_name[1..]);
+                                            self.chunk.code.push(OpCode::IssetStaticProp(prop_sym));
+                                        }
+                                    } else {
+                                        let idx = self.add_constant(Val::Bool(false));
+                                        self.chunk.code.push(OpCode::Const(idx as u16));
+                                    }
+                                } else {
+                                    let idx = self.add_constant(Val::Bool(false));
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+                            }
+                            _ => {
+                                let idx = self.add_constant(Val::Bool(false));
+                                self.chunk.code.push(OpCode::Const(idx as u16));
+                            }
+                        }
+                        
+                        if i < vars.len() - 1 {
+                            self.chunk.code.push(OpCode::Dup);
+                            let jump_idx = self.chunk.code.len();
+                            self.chunk.code.push(OpCode::JmpIfFalse(0));
+                            self.chunk.code.push(OpCode::Pop); 
+                            end_jumps.push(jump_idx);
+                        }
+                    }
+                    
+                    let end_label = self.chunk.code.len();
+                    for idx in end_jumps {
+                        self.patch_jump(idx, end_label);
+                    }
+                }
+            }
+            Expr::Empty { expr, .. } => {
+                match expr {
+                    Expr::Variable { span, .. } => {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            let sym = self.interner.intern(&name[1..]);
+                            self.chunk.code.push(OpCode::IssetVar(sym));
+                        } else {
+                            let idx = self.add_constant(Val::Bool(false));
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                        }
+                    }
+                    Expr::ArrayDimFetch { array, dim, .. } => {
+                        self.emit_expr(array);
+                        if let Some(d) = dim {
+                            self.emit_expr(d);
+                            self.chunk.code.push(OpCode::IssetDim);
+                        } else {
+                             let idx = self.add_constant(Val::Bool(false));
+                             self.chunk.code.push(OpCode::Const(idx as u16));
+                        }
+                    }
+                    Expr::PropertyFetch { target, property, .. } => {
+                        self.emit_expr(target);
+                        if let Expr::Variable { span, .. } = property {
+                            let name = self.get_text(*span);
+                            let sym = self.interner.intern(name);
+                            self.chunk.code.push(OpCode::IssetProp(sym));
+                        } else {
+                            self.chunk.code.push(OpCode::Pop);
+                            let idx = self.add_constant(Val::Bool(false));
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                        }
+                    }
+                    Expr::ClassConstFetch { class, constant, .. } => {
+                        let is_static_prop = if let Expr::Variable { span, .. } = constant {
+                            let name = self.get_text(*span);
+                            name.starts_with(b"$")
+                        } else {
+                            false
+                        };
+
+                        if is_static_prop {
+                            if let Expr::Variable { span, .. } = class {
+                                let name = self.get_text(*span);
+                                if !name.starts_with(b"$") {
+                                    let idx = self.add_constant(Val::String(name.to_vec()));
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                } else {
+                                    let sym = self.interner.intern(&name[1..]);
+                                    self.chunk.code.push(OpCode::LoadVar(sym));
+                                }
+                                
+                                if let Expr::Variable { span: prop_span, .. } = constant {
+                                    let prop_name = self.get_text(*prop_span);
+                                    let prop_sym = self.interner.intern(&prop_name[1..]);
+                                    self.chunk.code.push(OpCode::IssetStaticProp(prop_sym));
+                                }
+                            } else {
+                                let idx = self.add_constant(Val::Bool(false));
+                                self.chunk.code.push(OpCode::Const(idx as u16));
+                            }
+                        } else {
+                            let idx = self.add_constant(Val::Bool(false));
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                        }
+                    }
+                    _ => {
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::BoolNot);
+                        return;
+                    }
+                }
+                
+                let jump_if_not_set = self.chunk.code.len();
+                self.chunk.code.push(OpCode::JmpIfFalse(0));
+                
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::BoolNot);
+                
+                let jump_end = self.chunk.code.len();
+                self.chunk.code.push(OpCode::Jmp(0));
+                
+                let label_true = self.chunk.code.len();
+                self.patch_jump(jump_if_not_set, label_true);
+                
+                self.chunk.code.push(OpCode::Pop);
+                let idx = self.add_constant(Val::Bool(true));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+                
+                let label_end = self.chunk.code.len();
+                self.patch_jump(jump_end, label_end);
+            }
+            Expr::Eval { expr, .. } => {
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::Include);
+            }
             Expr::Yield { key, value, from, .. } => {
                 self.is_generator = true;
                 if *from {
@@ -1024,6 +1331,7 @@ impl<'src> Emitter<'src> {
                     chunk: Rc::new(func_chunk),
                     is_static: *is_static,
                     is_generator,
+                    statics: Rc::new(RefCell::new(HashMap::new())),
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -1380,6 +1688,38 @@ impl<'src> Emitter<'src> {
     fn add_constant(&mut self, val: Val) -> usize {
         self.chunk.constants.push(val);
         self.chunk.constants.len() - 1
+    }
+
+    fn eval_constant_expr(&self, expr: &Expr) -> Val {
+        match expr {
+            Expr::Integer { value, .. } => {
+                let s_str = std::str::from_utf8(value).unwrap_or("0");
+                if let Ok(i) = s_str.parse::<i64>() {
+                    Val::Int(i)
+                } else {
+                    Val::Int(0)
+                }
+            }
+            Expr::Float { value, .. } => {
+                let s_str = std::str::from_utf8(value).unwrap_or("0.0");
+                if let Ok(f) = s_str.parse::<f64>() {
+                    Val::Float(f)
+                } else {
+                    Val::Float(0.0)
+                }
+            }
+            Expr::String { value, .. } => {
+                 let s = value;
+                 if s.len() >= 2 && ((s[0] == b'"' && s[s.len()-1] == b'"') || (s[0] == b'\'' && s[s.len()-1] == b'\'')) {
+                     Val::String(s[1..s.len()-1].to_vec())
+                 } else {
+                     Val::String(s.to_vec())
+                 }
+            }
+            Expr::Boolean { value, .. } => Val::Bool(*value),
+            Expr::Null { .. } => Val::Null,
+            _ => Val::Null,
+        }
     }
     
     fn get_text(&self, span: php_parser::span::Span) -> &'src [u8] {

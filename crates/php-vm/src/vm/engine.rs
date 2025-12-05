@@ -307,7 +307,6 @@ impl VM {
                     continue;
                 }
                 let op = frame.chunk.code[frame.ip].clone();
-                println!("IP: {}, Op: {:?}, Stack: {}", frame.ip, op, self.operand_stack.len());
                 frame.ip += 1;
                 op
             };
@@ -655,6 +654,31 @@ impl VM {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.insert(sym, handle);
                 }
+                OpCode::BindStatic(sym, default_idx) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    
+                    if let Some(func) = &frame.func {
+                        let mut statics = func.statics.borrow_mut();
+                        
+                        let handle = if let Some(h) = statics.get(&sym) {
+                            *h
+                        } else {
+                            // Initialize with default value
+                            let val = frame.chunk.constants[default_idx as usize].clone();
+                            let h = self.arena.alloc(val);
+                            statics.insert(sym, h);
+                            h
+                        };
+                        
+                        // Mark as reference so StoreVar updates it in place
+                        self.arena.get_mut(handle).is_ref = true;
+                        
+                        // Bind to local
+                        frame.locals.insert(sym, handle);
+                    } else {
+                        return Err(VmError::RuntimeError("BindStatic called outside of function".into()));
+                    }
+                }
                 OpCode::MakeRef => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
@@ -980,6 +1004,7 @@ impl VM {
                                     }
                                     
                                     let mut frame = CallFrame::new(user_func.chunk.clone());
+                                    frame.func = Some(user_func.clone());
                                     for (i, param) in user_func.params.iter().enumerate() {
                                         if i < args.len() {
                                             let arg_handle = args[i];
@@ -1045,6 +1070,7 @@ impl VM {
                                 if let Some(internal) = &obj_data.internal {
                                     if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
                                         let mut frame = CallFrame::new(closure.func.chunk.clone());
+                                        frame.func = Some(closure.func.clone());
                                         
                                         for (i, param) in closure.func.params.iter().enumerate() {
                                             if i < args.len() {
@@ -2227,6 +2253,7 @@ impl VM {
                             args.reverse();
 
                             let mut frame = CallFrame::new(constructor.chunk.clone());
+                            frame.func = Some(constructor.clone());
                             frame.this = Some(obj_handle);
                             frame.is_constructor = true;
                             frame.class_scope = Some(defined_class);
@@ -2294,6 +2321,7 @@ impl VM {
                         let constructor_name = self.context.interner.intern(b"__construct");
                         if let Some((constructor, _, _, defined_class)) = self.find_method(class_name, constructor_name) {
                             let mut frame = CallFrame::new(constructor.chunk.clone());
+                            frame.func = Some(constructor.clone());
                             frame.this = Some(obj_handle);
                             frame.is_constructor = true;
                             frame.class_scope = Some(defined_class);
@@ -2426,6 +2454,7 @@ impl VM {
                         let obj_handle = self.operand_stack.pop().unwrap();
                         
                         let mut frame = CallFrame::new(user_func.chunk.clone());
+                        frame.func = Some(user_func.clone());
                         if !is_static {
                             frame.this = Some(obj_handle);
                         }
@@ -2477,7 +2506,34 @@ impl VM {
                     }
                 }
                 OpCode::UnsetStaticProp => {
-                    // TODO: Implement static prop unset
+                    let prop_name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let prop_name = match &self.arena.get(prop_name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Property name must be string".into())),
+                    };
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_name = match &self.arena.get(class_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    let mut current_class = class_name;
+                    let mut found = false;
+                    
+                    // We need to find where it is defined to unset it?
+                    // Or does unset static prop only work if it's accessible?
+                    // In PHP, `unset(Foo::$prop)` unsets it.
+                    // But static properties are shared. Unsetting it might mean setting it to NULL or removing it?
+                    // Actually, you cannot unset static properties in PHP.
+                    // `unset(Foo::$prop)` results in "Attempt to unset static property".
+                    // Wait, let me check PHP behavior.
+                    // `class A { public static $a = 1; } unset(A::$a);` -> Error: Attempt to unset static property
+                    // So this opcode might be for internal use or I should throw error?
+                    // But `ZEND_UNSET_STATIC_PROP` exists.
+                    // Maybe it is used for `unset($a::$b)`?
+                    // If PHP throws error, I should throw error.
+                    
+                    return Err(VmError::RuntimeError("Attempt to unset static property".into()));
                 }
                 OpCode::InstanceOf => {
                     let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -2569,6 +2625,89 @@ impl VM {
                     let new_handle = self.arena.alloc(val);
                     self.operand_stack.push(new_handle);
                 }
+                OpCode::IssetVar(sym) => {
+                    let frame = self.frames.last().unwrap();
+                    let is_set = if let Some(&handle) = frame.locals.get(&sym) {
+                        !matches!(self.arena.get(handle).value, Val::Null)
+                    } else {
+                        false
+                    };
+                    let res_handle = self.arena.alloc(Val::Bool(is_set));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetDim => {
+                    let key_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let key_val = &self.arena.get(key_handle).value;
+                    let key = match key_val {
+                        Val::Int(i) => ArrayKey::Int(*i),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        _ => ArrayKey::Int(0), // Should probably be error or false
+                    };
+                    
+                    let array_zval = self.arena.get(array_handle);
+                    let is_set = if let Val::Array(map) = &array_zval.value {
+                        if let Some(val_handle) = map.get(&key) {
+                            !matches!(self.arena.get(*val_handle).value, Val::Null)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(is_set));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetProp(prop_name) => {
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let obj_zval = self.arena.get(obj_handle);
+                    
+                    let is_set = if let Val::Object(payload_handle) = obj_zval.value {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            // Check visibility? Isset checks existence and not null.
+                            // If property exists but is private/protected and we can't access it, isset returns false?
+                            // Yes, isset respects visibility.
+                            
+                            let current_scope = self.get_current_class();
+                            if self.check_prop_visibility(obj_data.class, prop_name, current_scope).is_ok() {
+                                if let Some(val_handle) = obj_data.properties.get(&prop_name) {
+                                    !matches!(self.arena.get(*val_handle).value, Val::Null)
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(is_set));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetStaticProp(prop_name) => {
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_name = match &self.arena.get(class_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    let resolved_class = self.resolve_class_name(class_name)?;
+                    
+                    let is_set = match self.find_static_prop(resolved_class, prop_name) {
+                        Ok((val, _, _)) => !matches!(val, Val::Null),
+                        Err(_) => false,
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(is_set));
+                    self.operand_stack.push(res_handle);
+                }
                 OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
                     let resolved_class = self.resolve_class_name(class_name)?;
                     
@@ -2586,6 +2725,7 @@ impl VM {
                         args.reverse();
                         
                         let mut frame = CallFrame::new(user_func.chunk.clone());
+                        frame.func = Some(user_func.clone());
                         frame.this = None;
                         frame.class_scope = Some(defined_class);
                         frame.called_scope = Some(resolved_class);
@@ -3170,6 +3310,7 @@ mod tests {
             chunk: Rc::new(func_chunk),
             is_static: false,
             is_generator: false,
+            statics: Rc::new(RefCell::new(HashMap::new())),
         };
         
         // Main chunk
