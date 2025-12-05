@@ -52,3 +52,205 @@ pub fn php_str_repeat(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let repeated = s.repeat(count as usize);
     Ok(vm.arena.alloc(Val::String(repeated)))
 }
+
+pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    for arg in args {
+        dump_value(vm, *arg, 0);
+    }
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+fn dump_value(vm: &VM, handle: Handle, depth: usize) {
+    let val = vm.arena.get(handle);
+    let indent = "  ".repeat(depth);
+    
+    match &val.value {
+        Val::String(s) => {
+            println!("{}string({}) \"{}\"", indent, s.len(), String::from_utf8_lossy(s));
+        }
+        Val::Int(i) => {
+            println!("{}int({})", indent, i);
+        }
+        Val::Float(f) => {
+            println!("{}float({})", indent, f);
+        }
+        Val::Bool(b) => {
+            println!("{}bool({})", indent, b);
+        }
+        Val::Null => {
+            println!("{}NULL", indent);
+        }
+        Val::Array(arr) => {
+            println!("{}array({}) {{", indent, arr.len());
+            for (key, val_handle) in arr.iter() {
+                match key {
+                    crate::core::value::ArrayKey::Int(i) => print!("{}  [{}]=>\n", indent, i),
+                    crate::core::value::ArrayKey::Str(s) => print!("{}  [\"{}\"]=>\n", indent, String::from_utf8_lossy(s)),
+                }
+                dump_value(vm, *val_handle, depth + 1);
+            }
+            println!("{}}}", indent);
+        }
+        Val::Object(handle) => {
+            // Dereference the object payload
+            let payload_val = vm.arena.get(*handle);
+            if let Val::ObjPayload(obj) = &payload_val.value {
+                let class_name = vm.context.interner.lookup(obj.class).unwrap_or(b"<unknown>");
+                println!("{}object({})", indent, String::from_utf8_lossy(class_name));
+                // TODO: Dump properties
+            } else {
+                println!("{}object(INVALID)", indent);
+            }
+        }
+        Val::ObjPayload(_) => {
+             println!("{}ObjPayload(Internal)", indent);
+        }
+        Val::Resource(_) => {
+            println!("{}resource", indent);
+        }
+        Val::AppendPlaceholder => {
+            println!("{}AppendPlaceholder", indent);
+        }
+    }
+}
+
+pub fn php_count(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("count() expects exactly 1 parameter".into());
+    }
+    
+    let val = vm.arena.get(args[0]);
+    let count = match &val.value {
+        Val::Array(arr) => arr.len(),
+        Val::Null => 0,
+        _ => 1,
+    };
+    
+    Ok(vm.arena.alloc(Val::Int(count as i64)))
+}
+
+pub fn php_is_string(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_string() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::String(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_int(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_int() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Int(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_array(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_array() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Array(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_bool(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_bool() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Bool(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_null(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_null() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Null);
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    // implode(separator, array) or implode(array)
+    let (sep, arr_handle) = if args.len() == 1 {
+        (vec![], args[0])
+    } else if args.len() == 2 {
+        let sep_val = vm.arena.get(args[0]);
+        let sep = match &sep_val.value {
+            Val::String(s) => s.clone(),
+            _ => return Err("implode(): Parameter 1 must be string".into()),
+        };
+        (sep, args[1])
+    } else {
+        return Err("implode() expects 1 or 2 parameters".into());
+    };
+
+    let arr_val = vm.arena.get(arr_handle);
+    let arr = match &arr_val.value {
+        Val::Array(a) => a,
+        _ => return Err("implode(): Parameter 2 must be array".into()),
+    };
+
+    let mut result = Vec::new();
+    for (i, (_, val_handle)) in arr.iter().enumerate() {
+        if i > 0 {
+            result.extend_from_slice(&sep);
+        }
+        let val = vm.arena.get(*val_handle);
+        match &val.value {
+            Val::String(s) => result.extend_from_slice(s),
+            Val::Int(n) => result.extend_from_slice(n.to_string().as_bytes()),
+            Val::Float(f) => result.extend_from_slice(f.to_string().as_bytes()),
+            Val::Bool(b) => if *b { result.push(b'1'); },
+            Val::Null => {},
+            _ => return Err("implode(): Array elements must be stringable".into()),
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(result)))
+}
+
+pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("explode() expects exactly 2 parameters".into());
+    }
+
+    let sep_val = vm.arena.get(args[0]);
+    let sep = match &sep_val.value {
+        Val::String(s) => s.clone(),
+        _ => return Err("explode(): Parameter 1 must be string".into()),
+    };
+
+    if sep.is_empty() {
+        return Err("explode(): Empty delimiter".into());
+    }
+
+    let str_val = vm.arena.get(args[1]);
+    let s = match &str_val.value {
+        Val::String(s) => s.clone(),
+        _ => return Err("explode(): Parameter 2 must be string".into()),
+    };
+
+    // Naive implementation for Vec<u8>
+    let mut result_arr = indexmap::IndexMap::new();
+    let mut start = 0;
+    let mut idx = 0;
+    
+    // Helper to find sub-slice
+    fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack.windows(needle.len()).position(|window| window == needle)
+    }
+
+    let mut current_slice = &s[..];
+    let mut offset = 0;
+
+    while let Some(pos) = find_subsequence(current_slice, &sep) {
+        let part = &current_slice[..pos];
+        let val = vm.arena.alloc(Val::String(part.to_vec()));
+        result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
+        idx += 1;
+
+        offset += pos + sep.len();
+        current_slice = &s[offset..];
+    }
+    
+    // Last part
+    let val = vm.arena.alloc(Val::String(current_slice.to_vec()));
+    result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
+
+    Ok(vm.arena.alloc(Val::Array(result_arr)))
+}

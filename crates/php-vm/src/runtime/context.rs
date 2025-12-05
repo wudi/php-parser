@@ -6,6 +6,7 @@ use crate::core::value::{Symbol, Val, Handle, Visibility};
 use crate::core::interner::Interner;
 use crate::vm::engine::VM;
 use crate::compiler::chunk::{CodeChunk, UserFunc, FuncParam};
+use crate::builtins::stdlib;
 
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 
@@ -26,8 +27,21 @@ pub struct EngineContext {
 
 impl EngineContext {
     pub fn new() -> Self {
+        let mut functions = HashMap::new();
+        functions.insert(b"strlen".to_vec(), stdlib::php_strlen as NativeHandler);
+        functions.insert(b"str_repeat".to_vec(), stdlib::php_str_repeat as NativeHandler);
+        functions.insert(b"var_dump".to_vec(), stdlib::php_var_dump as NativeHandler);
+        functions.insert(b"count".to_vec(), stdlib::php_count as NativeHandler);
+        functions.insert(b"is_string".to_vec(), stdlib::php_is_string as NativeHandler);
+        functions.insert(b"is_int".to_vec(), stdlib::php_is_int as NativeHandler);
+        functions.insert(b"is_array".to_vec(), stdlib::php_is_array as NativeHandler);
+        functions.insert(b"is_bool".to_vec(), stdlib::php_is_bool as NativeHandler);
+        functions.insert(b"is_null".to_vec(), stdlib::php_is_null as NativeHandler);
+        functions.insert(b"implode".to_vec(), stdlib::php_implode as NativeHandler);
+        functions.insert(b"explode".to_vec(), stdlib::php_explode as NativeHandler);
+
         Self {
-            functions: HashMap::new(),
+            functions,
             constants: HashMap::new(),
         }
     }

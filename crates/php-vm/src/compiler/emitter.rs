@@ -449,6 +449,14 @@ impl<'src> Emitter<'src> {
                 let idx = self.add_constant(Val::String(s.to_vec()));
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
+            Expr::Boolean { value, .. } => {
+                let idx = self.add_constant(Val::Bool(*value));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+            }
+            Expr::Null { .. } => {
+                let idx = self.add_constant(Val::Null);
+                self.chunk.code.push(OpCode::Const(idx as u16));
+            }
             Expr::Binary { left, op, right, .. } => {
                 self.emit_expr(left);
                 self.emit_expr(right);
@@ -468,6 +476,16 @@ impl<'src> Emitter<'src> {
                     BinaryOp::LtEq => self.chunk.code.push(OpCode::IsLessOrEqual),
                     _ => {} 
                 }
+            }
+            Expr::Print { expr, .. } => {
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::Echo);
+                let idx = self.add_constant(Val::Int(1));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+            }
+            Expr::Include { expr, .. } => {
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::Include);
             }
             Expr::Unary { op, expr, .. } => {
                 match op {
