@@ -24,6 +24,7 @@ pub enum OpCode {
     // Functions
     Call(u8),        // Call function with N args
     Return,
+    DefFunc(Symbol, u32), // (name, func_idx) -> Define global function
     
     // System
     Include,         // Runtime compilation
@@ -60,6 +61,9 @@ pub enum OpCode {
     AssignProp(Symbol),     // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
     
+    // Closures
+    Closure(u32, u32), // (func_idx, num_captures) -> [Closure]
+
     // Exceptions
     Throw, // [Obj] -> !
 }

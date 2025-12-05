@@ -48,12 +48,21 @@ impl PartialEq for Val {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ObjectData {
     // Placeholder for object data
     pub class: Symbol,
     pub properties: IndexMap<Symbol, Handle>,
+    pub internal: Option<Rc<dyn Any>>, // For internal classes like Closure
 }
+
+impl PartialEq for ObjectData {
+    fn eq(&self, other: &Self) -> bool {
+        self.class == other.class && self.properties == other.properties
+        // Ignore internal for equality for now, or check ptr_eq
+    }
+}
+
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ArrayKey {

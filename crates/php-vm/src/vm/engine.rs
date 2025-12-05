@@ -6,7 +6,7 @@ use crate::core::heap::Arena;
 use crate::core::value::{Val, ArrayKey, Handle, ObjectData, Symbol, Visibility};
 use crate::vm::stack::Stack;
 use crate::vm::opcode::OpCode;
-use crate::compiler::chunk::{CodeChunk, UserFunc};
+use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData};
 use crate::vm::frame::CallFrame;
 use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 
@@ -385,6 +385,52 @@ impl VM {
                     }
                 }
 
+                OpCode::Closure(func_idx, num_captures) => {
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[func_idx as usize].clone()
+                    };
+                    
+                    let user_func = if let Val::Resource(rc) = val {
+                        if let Ok(func) = rc.downcast::<UserFunc>() {
+                            func
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid function constant for closure".into()));
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("Invalid function constant for closure".into()));
+                    };
+                    
+                    let mut captures = IndexMap::new();
+                    let mut captured_vals = Vec::with_capacity(num_captures as usize);
+                    for _ in 0..num_captures {
+                        captured_vals.push(self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?);
+                    }
+                    captured_vals.reverse();
+                    
+                    for (i, sym) in user_func.uses.iter().enumerate() {
+                        if i < captured_vals.len() {
+                            captures.insert(*sym, captured_vals[i]);
+                        }
+                    }
+                    
+                    let closure_data = ClosureData {
+                        func: user_func,
+                        captures,
+                    };
+                    
+                    let closure_class_sym = self.context.interner.intern(b"Closure");
+                    let obj_data = ObjectData {
+                        class: closure_class_sym,
+                        properties: IndexMap::new(),
+                        internal: Some(Rc::new(closure_data)),
+                    };
+                    
+                    let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
+                    let obj_handle = self.arena.alloc(Val::Object(payload_handle));
+                    self.operand_stack.push(obj_handle);
+                }
+
                 OpCode::Call(arg_count) => {
                     let mut args = Vec::with_capacity(arg_count as usize);
                     for _ in 0..arg_count {
@@ -395,31 +441,63 @@ impl VM {
                     let func_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let func_val = self.arena.get(func_handle);
                     
-                    let func_name_bytes = match &func_val.value {
-                        Val::String(s) => s.clone(),
-                        _ => return Err(VmError::RuntimeError("Call expects function name as string".into())),
-                    };
-                    
-                    let handler = self.context.engine.functions.get(&func_name_bytes).copied();
-                    
-                    if let Some(handler) = handler {
-                        let result_handle = handler(self, &args).map_err(VmError::RuntimeError)?;
-                        self.operand_stack.push(result_handle);
-                    } else {
-                        let sym = self.context.interner.intern(&func_name_bytes);
-                        if let Some(user_func) = self.context.user_functions.get(&sym).cloned() {
-                            if user_func.params.len() != args.len() {
-                                return Err(VmError::RuntimeError(format!("Function expects {} args, got {}", user_func.params.len(), args.len())));
-                            }
+                    match &func_val.value {
+                        Val::String(s) => {
+                            let func_name_bytes = s.clone();
+                            let handler = self.context.engine.functions.get(&func_name_bytes).copied();
                             
-                            let mut frame = CallFrame::new(user_func.chunk.clone());
-                            for (i, param_sym) in user_func.params.iter().enumerate() {
-                                frame.locals.insert(*param_sym, args[i]);
+                            if let Some(handler) = handler {
+                                let result_handle = handler(self, &args).map_err(VmError::RuntimeError)?;
+                                self.operand_stack.push(result_handle);
+                            } else {
+                                let sym = self.context.interner.intern(&func_name_bytes);
+                                if let Some(user_func) = self.context.user_functions.get(&sym).cloned() {
+                                    if user_func.params.len() != args.len() {
+                                        // return Err(VmError::RuntimeError(format!("Function expects {} args, got {}", user_func.params.len(), args.len())));
+                                        // PHP allows extra args, but warns on missing. For now, ignore.
+                                    }
+                                    
+                                    let mut frame = CallFrame::new(user_func.chunk.clone());
+                                    for (i, param_sym) in user_func.params.iter().enumerate() {
+                                        if i < args.len() {
+                                            frame.locals.insert(*param_sym, args[i]);
+                                        }
+                                    }
+                                    self.frames.push(frame);
+                                } else {
+                                    return Err(VmError::RuntimeError(format!("Undefined function: {:?}", String::from_utf8_lossy(&func_name_bytes))));
+                                }
                             }
-                            self.frames.push(frame);
-                        } else {
-                            return Err(VmError::RuntimeError(format!("Undefined function: {:?}", String::from_utf8_lossy(&func_name_bytes))));
                         }
+                        Val::Object(payload_handle) => {
+                            let payload_val = self.arena.get(*payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload_val.value {
+                                if let Some(internal) = &obj_data.internal {
+                                    if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
+                                        let mut frame = CallFrame::new(closure.func.chunk.clone());
+                                        
+                                        for (i, param_sym) in closure.func.params.iter().enumerate() {
+                                            if i < args.len() {
+                                                frame.locals.insert(*param_sym, args[i]);
+                                            }
+                                        }
+                                        
+                                        for (sym, handle) in &closure.captures {
+                                            frame.locals.insert(*sym, *handle);
+                                        }
+                                        
+                                        self.frames.push(frame);
+                                    } else {
+                                        return Err(VmError::RuntimeError("Object is not a closure".into()));
+                                    }
+                                } else {
+                                    return Err(VmError::RuntimeError("Object is not a closure".into()));
+                                }
+                            } else {
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            }
+                        }
+                        _ => return Err(VmError::RuntimeError("Call expects function name or closure".into())),
                     }
                 }
 
@@ -445,6 +523,18 @@ impl VM {
                         }
                     } else {
                         self.operand_stack.push(ret_val);
+                    }
+                }
+
+                OpCode::DefFunc(name, func_idx) => {
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[func_idx as usize].clone()
+                    };
+                    if let Val::Resource(rc) = val {
+                        if let Ok(func) = rc.downcast::<UserFunc>() {
+                            self.context.user_functions.insert(name, func);
+                        }
                     }
                 }
                 
@@ -748,6 +838,7 @@ impl VM {
                         let obj_data = ObjectData {
                             class: class_name,
                             properties,
+                            internal: None,
                         };
                         
                         let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
@@ -1383,6 +1474,7 @@ mod tests {
         
         let user_func = UserFunc {
             params: vec![sym_a, sym_b],
+            uses: Vec::new(),
             chunk: Rc::new(func_chunk),
         };
         

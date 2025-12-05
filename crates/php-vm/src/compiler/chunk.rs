@@ -1,11 +1,19 @@
-use crate::core::value::{Symbol, Val};
+use crate::core::value::{Symbol, Val, Handle};
 use crate::vm::opcode::OpCode;
 use std::rc::Rc;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
 pub struct UserFunc {
     pub params: Vec<Symbol>,
+    pub uses: Vec<Symbol>,
     pub chunk: Rc<CodeChunk>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClosureData {
+    pub func: Rc<UserFunc>,
+    pub captures: IndexMap<Symbol, Handle>,
 }
 
 #[derive(Debug, Clone)]

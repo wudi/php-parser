@@ -112,6 +112,34 @@ impl<'src> Emitter<'src> {
                 let end_label = self.chunk.code.len();
                 self.patch_jump(jump_end_idx, end_label);
             }
+            Stmt::Function { name, params, body, .. } => {
+                let func_name_str = self.get_text(name.span);
+                let func_sym = self.interner.intern(func_name_str);
+                
+                // Compile body
+                let mut func_emitter = Emitter::new(self.source, self.interner);
+                let func_chunk = func_emitter.compile(body);
+                
+                // Extract params
+                let mut param_syms = Vec::new();
+                for param in *params {
+                    let p_name = self.get_text(param.name.span);
+                    if p_name.starts_with(b"$") {
+                        param_syms.push(self.interner.intern(&p_name[1..]));
+                    }
+                }
+                
+                let user_func = UserFunc {
+                    params: param_syms,
+                    uses: Vec::new(),
+                    chunk: Rc::new(func_chunk),
+                };
+                
+                let func_res = Val::Resource(Rc::new(user_func));
+                let const_idx = self.add_constant(func_res);
+                
+                self.chunk.code.push(OpCode::DefFunc(func_sym, const_idx as u32));
+            }
             Stmt::Class { name, members, extends, .. } => {
                 let class_name_str = self.get_text(name.span);
                 let class_sym = self.interner.intern(class_name_str);
@@ -148,6 +176,7 @@ impl<'src> Emitter<'src> {
                             
                             let user_func = UserFunc {
                                 params: param_syms,
+                                uses: Vec::new(),
                                 chunk: Rc::new(method_chunk),
                             };
                             
@@ -405,11 +434,45 @@ impl<'src> Emitter<'src> {
                     _ => {} 
                 }
             }
-            Expr::Call { func, args, .. } => {
-                for arg in *args {
-                    self.emit_expr(&arg.value);
+            Expr::Closure { params, uses, body, .. } => {
+                // Compile body
+                let mut func_emitter = Emitter::new(self.source, self.interner);
+                let func_chunk = func_emitter.compile(body);
+                
+                // Extract params
+                let mut param_syms = Vec::new();
+                for param in *params {
+                    let p_name = self.get_text(param.name.span);
+                    if p_name.starts_with(b"$") {
+                        param_syms.push(self.interner.intern(&p_name[1..]));
+                    }
                 }
                 
+                // Extract uses
+                let mut use_syms = Vec::new();
+                for use_var in *uses {
+                    let u_name = self.get_text(use_var.var.span);
+                    if u_name.starts_with(b"$") {
+                        let sym = self.interner.intern(&u_name[1..]);
+                        use_syms.push(sym);
+                        
+                        // Emit code to push the captured variable onto the stack
+                        self.chunk.code.push(OpCode::LoadVar(sym));
+                    }
+                }
+                
+                let user_func = UserFunc {
+                    params: param_syms,
+                    uses: use_syms.clone(),
+                    chunk: Rc::new(func_chunk),
+                };
+                
+                let func_res = Val::Resource(Rc::new(user_func));
+                let const_idx = self.add_constant(func_res);
+                
+                self.chunk.code.push(OpCode::Closure(const_idx as u32, use_syms.len() as u32));
+            }
+            Expr::Call { func, args, .. } => {
                 match func {
                     Expr::Variable { span, .. } => {
                         let name = self.get_text(*span);
@@ -421,6 +484,10 @@ impl<'src> Emitter<'src> {
                         }
                     }
                     _ => self.emit_expr(func),
+                }
+
+                for arg in *args {
+                    self.emit_expr(&arg.value);
                 }
                 
                 self.chunk.code.push(OpCode::Call(args.len() as u8));
