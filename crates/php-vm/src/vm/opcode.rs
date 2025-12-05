@@ -16,6 +16,10 @@ pub enum OpCode {
     // Variables
     LoadVar(Symbol),  // Push local variable value
     StoreVar(Symbol), // Pop value, store in local
+    AssignRef(Symbol), // Pop value (handle), mark as ref, store in local
+    AssignDimRef,      // [Array, Index, ValueRef] -> Assigns ref to array index
+    MakeVarRef(Symbol), // Convert local var to reference (COW if needed), push handle
+    MakeRef,            // Convert top of stack to reference
     
     // Control Flow
     Jmp(u32),
@@ -44,6 +48,7 @@ pub enum OpCode {
     IterValid(u32),  // [Array, Index]. If invalid (end), pop both and jump.
     IterNext,        // [Array, Index] -> [Array, Index+1]
     IterGetVal(Symbol), // [Array, Index] -> Assigns val to local
+    IterGetValRef(Symbol), // [Array, Index] -> Assigns val ref to local
     IterGetKey(Symbol), // [Array, Index] -> Assigns key to local
 
     // Objects

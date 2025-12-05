@@ -6,7 +6,7 @@ use crate::core::heap::Arena;
 use crate::core::value::{Val, ArrayKey, Handle, ObjectData, Symbol, Visibility};
 use crate::vm::stack::Stack;
 use crate::vm::opcode::OpCode;
-use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData};
+use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData, FuncParam};
 use crate::vm::frame::CallFrame;
 use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 
@@ -345,7 +345,82 @@ impl VM {
                 OpCode::StoreVar(sym) => {
                     let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let frame = self.frames.last_mut().unwrap();
-                    frame.locals.insert(sym, val_handle);
+                    
+                    // Check if the target variable is a reference
+                    let mut is_target_ref = false;
+                    if let Some(&old_handle) = frame.locals.get(&sym) {
+                        if self.arena.get(old_handle).is_ref {
+                            is_target_ref = true;
+                            // Assigning to a reference: update the value in place
+                            let new_val = self.arena.get(val_handle).value.clone();
+                            self.arena.get_mut(old_handle).value = new_val;
+                        }
+                    }
+                    
+                    if !is_target_ref {
+                        // Not assigning to a reference.
+                        // Check if we need to unref (copy) the value from the stack
+                        let final_handle = if self.arena.get(val_handle).is_ref {
+                            let val = self.arena.get(val_handle).value.clone();
+                            self.arena.alloc(val)
+                        } else {
+                            val_handle
+                        };
+                        
+                        frame.locals.insert(sym, final_handle);
+                    }
+                }
+                OpCode::AssignRef(sym) => {
+                    let ref_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    // Mark the handle as a reference (idempotent if already ref)
+                    self.arena.get_mut(ref_handle).is_ref = true;
+                    
+                    let frame = self.frames.last_mut().unwrap();
+                    // Overwrite the local slot with the reference handle
+                    frame.locals.insert(sym, ref_handle);
+                }
+                OpCode::MakeVarRef(sym) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    
+                    // Get current handle or create NULL
+                    let handle = if let Some(&h) = frame.locals.get(&sym) {
+                        h
+                    } else {
+                        let null = self.arena.alloc(Val::Null);
+                        frame.locals.insert(sym, null);
+                        null
+                    };
+                    
+                    // Check if it is already a ref
+                    if self.arena.get(handle).is_ref {
+                        self.operand_stack.push(handle);
+                    } else {
+                        // Not a ref. We must upgrade it.
+                        // To avoid affecting other variables sharing this handle, we MUST clone.
+                        let val = self.arena.get(handle).value.clone();
+                        let new_handle = self.arena.alloc(val);
+                        self.arena.get_mut(new_handle).is_ref = true;
+                        
+                        // Update the local variable to point to the new ref handle
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.locals.insert(sym, new_handle);
+                        
+                        self.operand_stack.push(new_handle);
+                    }
+                }
+                OpCode::MakeRef => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    if self.arena.get(handle).is_ref {
+                        self.operand_stack.push(handle);
+                    } else {
+                        // Convert to ref. Clone to ensure uniqueness/safety.
+                        let val = self.arena.get(handle).value.clone();
+                        let new_handle = self.arena.alloc(val);
+                        self.arena.get_mut(new_handle).is_ref = true;
+                        self.operand_stack.push(new_handle);
+                    }
                 }
                 
                 OpCode::Jmp(target) => {
@@ -458,9 +533,37 @@ impl VM {
                                     }
                                     
                                     let mut frame = CallFrame::new(user_func.chunk.clone());
-                                    for (i, param_sym) in user_func.params.iter().enumerate() {
+                                    for (i, param) in user_func.params.iter().enumerate() {
                                         if i < args.len() {
-                                            frame.locals.insert(*param_sym, args[i]);
+                                            let arg_handle = args[i];
+                                            if param.by_ref {
+                                                // Pass by reference: ensure arg is a ref
+                                                if !self.arena.get(arg_handle).is_ref {
+                                                    // If passed value is not a ref, we must upgrade it?
+                                                    // PHP Error: "Only variables can be passed by reference"
+                                                    // But here we just have a handle.
+                                                    // If it's a literal, we can't make it a ref to a variable.
+                                                    // But for now, let's just mark it as ref if it isn't?
+                                                    // Actually, if the caller passed a variable, they should have used MakeVarRef?
+                                                    // No, the caller doesn't know if the function expects a ref at compile time (unless we check signature).
+                                                    // In PHP, the call site must use `foo(&$a)` if it wants to be explicit, but modern PHP allows `foo($a)` if the function is defined as `function foo(&$a)`.
+                                                    // So the VM must handle the upgrade.
+                                                    
+                                                    // We need to check if we can make it a ref.
+                                                    // For now, we just mark it.
+                                                    self.arena.get_mut(arg_handle).is_ref = true;
+                                                }
+                                                frame.locals.insert(param.name, arg_handle);
+                                            } else {
+                                                // Pass by value: if arg is ref, we must deref (copy value)
+                                                let final_handle = if self.arena.get(arg_handle).is_ref {
+                                                    let val = self.arena.get(arg_handle).value.clone();
+                                                    self.arena.alloc(val)
+                                                } else {
+                                                    arg_handle
+                                                };
+                                                frame.locals.insert(param.name, final_handle);
+                                            }
                                         }
                                     }
                                     self.frames.push(frame);
@@ -476,9 +579,23 @@ impl VM {
                                     if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
                                         let mut frame = CallFrame::new(closure.func.chunk.clone());
                                         
-                                        for (i, param_sym) in closure.func.params.iter().enumerate() {
+                                        for (i, param) in closure.func.params.iter().enumerate() {
                                             if i < args.len() {
-                                                frame.locals.insert(*param_sym, args[i]);
+                                                let arg_handle = args[i];
+                                                if param.by_ref {
+                                                    if !self.arena.get(arg_handle).is_ref {
+                                                        self.arena.get_mut(arg_handle).is_ref = true;
+                                                    }
+                                                    frame.locals.insert(param.name, arg_handle);
+                                                } else {
+                                                    let final_handle = if self.arena.get(arg_handle).is_ref {
+                                                        let val = self.arena.get(arg_handle).value.clone();
+                                                        self.arena.alloc(val)
+                                                    } else {
+                                                        arg_handle
+                                                    };
+                                                    frame.locals.insert(param.name, final_handle);
+                                                }
                                             }
                                         }
                                         
@@ -510,8 +627,33 @@ impl VM {
 
                     let popped_frame = self.frames.pop().expect("Frame stack empty on Return");
 
+                    // Handle return by reference
+                    let final_ret_val = if popped_frame.chunk.returns_ref {
+                        // Function returns by reference: keep the handle as is (even if it is a ref)
+                        // But we must ensure it IS a ref?
+                        // PHP: "Only variable references should be returned by reference"
+                        // If we return a literal, PHP notices.
+                        // But here we just pass the handle.
+                        // If the handle points to a value that is NOT a ref, should we make it a ref?
+                        // No, usually you return a variable which might be a ref.
+                        // If you return $a, and $a is not a ref, but function is &foo(), then $a becomes a ref?
+                        // Yes, implicitly.
+                        if !self.arena.get(ret_val).is_ref {
+                             self.arena.get_mut(ret_val).is_ref = true;
+                        }
+                        ret_val
+                    } else {
+                        // Function returns by value: if ret_val is a ref, dereference (copy) it.
+                        if self.arena.get(ret_val).is_ref {
+                            let val = self.arena.get(ret_val).value.clone();
+                            self.arena.alloc(val)
+                        } else {
+                            ret_val
+                        }
+                    };
+
                     if self.frames.is_empty() {
-                        self.last_return_value = Some(ret_val);
+                        self.last_return_value = Some(final_ret_val);
                         return Ok(());
                     }
 
@@ -522,7 +664,7 @@ impl VM {
                              return Err(VmError::RuntimeError("Constructor frame missing 'this'".into()));
                         }
                     } else {
-                        self.operand_stack.push(ret_val);
+                        self.operand_stack.push(final_ret_val);
                     }
                 }
 
@@ -604,7 +746,22 @@ impl VM {
                     let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let key_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    self.assign_dim_value(array_handle, key_handle, val_handle)?;
+                }
+
+                OpCode::AssignDimRef => {
+                    let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let key_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
                     self.assign_dim(array_handle, key_handle, val_handle)?;
+                    
+                    // assign_dim pushes the new array handle.
+                    let new_array_handle = self.operand_stack.pop().unwrap();
+                    
+                    // We want to return [Val, NewArray] so that we can StoreVar(NewArray) and leave Val.
+                    self.operand_stack.push(val_handle);
+                    self.operand_stack.push(new_array_handle);
                 }
 
                 OpCode::StoreDim => {
@@ -713,12 +870,68 @@ impl VM {
                     if let Val::Array(map) = array_val {
                         if let Some((_, val_handle)) = map.get_index(idx) {
                             // Store in local
+                            // If the value is a reference, we must dereference it for value iteration
+                            let val_h = *val_handle;
+                            let final_handle = if self.arena.get(val_h).is_ref {
+                                let val = self.arena.get(val_h).value.clone();
+                                self.arena.alloc(val)
+                            } else {
+                                val_h
+                            };
+
                             let frame = self.frames.last_mut().unwrap();
-                            frame.locals.insert(sym, *val_handle);
+                            frame.locals.insert(sym, final_handle);
                         } else {
                             return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
                         }
                     }
+                }
+
+                OpCode::IterGetValRef(sym) => {
+                    // Stack: [Array, Index]
+                    let idx_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_handle = self.operand_stack.peek_at(1).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let idx = match self.arena.get(idx_handle).value {
+                        Val::Int(i) => i as usize,
+                        _ => return Err(VmError::RuntimeError("Iterator index must be int".into())),
+                    };
+                    
+                    // Check if we need to upgrade the element.
+                    let (needs_upgrade, val_handle) = {
+                        let array_zval = self.arena.get(array_handle);
+                        if let Val::Array(map) = &array_zval.value {
+                            if let Some((_, h)) = map.get_index(idx) {
+                                let is_ref = self.arena.get(*h).is_ref;
+                                (!is_ref, *h)
+                            } else {
+                                return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
+                            }
+                        } else {
+                             return Err(VmError::RuntimeError("IterGetValRef expects array".into()));
+                        }
+                    };
+                    
+                    let final_handle = if needs_upgrade {
+                        // Upgrade: Clone value, make ref, update array.
+                        let val = self.arena.get(val_handle).value.clone();
+                        let new_handle = self.arena.alloc(val);
+                        self.arena.get_mut(new_handle).is_ref = true;
+                        
+                        // Update array
+                        let array_zval_mut = self.arena.get_mut(array_handle);
+                        if let Val::Array(map) = &mut array_zval_mut.value {
+                             if let Some((_, h_ref)) = map.get_index_mut(idx) {
+                                 *h_ref = new_handle;
+                             }
+                        }
+                        new_handle
+                    } else {
+                        val_handle
+                    };
+                    
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.insert(sym, final_handle);
                 }
                 
                 OpCode::IterGetKey(sym) => {
@@ -862,7 +1075,21 @@ impl VM {
 
                             for (i, param) in constructor.params.iter().enumerate() {
                                 if i < args.len() {
-                                    frame.locals.insert(*param, args[i]);
+                                    let arg_handle = args[i];
+                                    if param.by_ref {
+                                        if !self.arena.get(arg_handle).is_ref {
+                                            self.arena.get_mut(arg_handle).is_ref = true;
+                                        }
+                                        frame.locals.insert(param.name, arg_handle);
+                                    } else {
+                                        let final_handle = if self.arena.get(arg_handle).is_ref {
+                                            let val = self.arena.get(arg_handle).value.clone();
+                                            self.arena.alloc(val)
+                                        } else {
+                                            arg_handle
+                                        };
+                                        frame.locals.insert(param.name, final_handle);
+                                    }
                                 }
                             }
                             self.frames.push(frame);
@@ -982,7 +1209,21 @@ impl VM {
                         
                         for (i, param) in user_func.params.iter().enumerate() {
                             if i < args.len() {
-                                frame.locals.insert(*param, args[i]);
+                                let arg_handle = args[i];
+                                if param.by_ref {
+                                    if !self.arena.get(arg_handle).is_ref {
+                                        self.arena.get_mut(arg_handle).is_ref = true;
+                                    }
+                                    frame.locals.insert(param.name, arg_handle);
+                                } else {
+                                    let final_handle = if self.arena.get(arg_handle).is_ref {
+                                        let val = self.arena.get(arg_handle).value.clone();
+                                        self.arena.alloc(val)
+                                    } else {
+                                        arg_handle
+                                    };
+                                    frame.locals.insert(param.name, final_handle);
+                                }
                             }
                         }
                         
@@ -1014,7 +1255,21 @@ impl VM {
                         
                         for (i, param) in user_func.params.iter().enumerate() {
                             if i < args.len() {
-                                frame.locals.insert(*param, args[i]);
+                                let arg_handle = args[i];
+                                if param.by_ref {
+                                    if !self.arena.get(arg_handle).is_ref {
+                                        self.arena.get_mut(arg_handle).is_ref = true;
+                                    }
+                                    frame.locals.insert(param.name, arg_handle);
+                                } else {
+                                    let final_handle = if self.arena.get(arg_handle).is_ref {
+                                        let val = self.arena.get(arg_handle).value.clone();
+                                        self.arena.alloc(val)
+                                    } else {
+                                        arg_handle
+                                    };
+                                    frame.locals.insert(param.name, final_handle);
+                                }
                             }
                         }
                         
@@ -1122,6 +1377,32 @@ impl VM {
             }
             _ => Err(VmError::RuntimeError("Type error: expected Ints".into())),
         }
+    }
+
+    fn assign_dim_value(&mut self, array_handle: Handle, key_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
+        // Check if we have a reference at the key
+        let key_val = &self.arena.get(key_handle).value;
+        let key = match key_val {
+            Val::Int(i) => ArrayKey::Int(*i),
+            Val::String(s) => ArrayKey::Str(s.clone()),
+            _ => return Err(VmError::RuntimeError("Invalid array key".into())),
+        };
+
+        let array_zval = self.arena.get(array_handle);
+        if let Val::Array(map) = &array_zval.value {
+            if let Some(existing_handle) = map.get(&key) {
+                if self.arena.get(*existing_handle).is_ref {
+                    // Update the value pointed to by the reference
+                    let new_val = self.arena.get(val_handle).value.clone();
+                    self.arena.get_mut(*existing_handle).value = new_val;
+                    
+                    self.operand_stack.push(array_handle);
+                    return Ok(());
+                }
+            }
+        }
+        
+        self.assign_dim(array_handle, key_handle, val_handle)
     }
 
     fn assign_dim(&mut self, array_handle: Handle, key_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
@@ -1259,8 +1540,20 @@ impl VM {
             };
 
             if remaining_keys.is_empty() {
-                // We are at the last key. Just assign val.
-                map.insert(key, val_handle);
+                // We are at the last key.
+                let mut updated_ref = false;
+                if let Some(existing_handle) = map.get(&key) {
+                    if self.arena.get(*existing_handle).is_ref {
+                        // Update Ref value
+                        let new_val = self.arena.get(val_handle).value.clone();
+                        self.arena.get_mut(*existing_handle).value = new_val;
+                        updated_ref = true;
+                    }
+                }
+                
+                if !updated_ref {
+                    map.insert(key, val_handle);
+                }
             } else {
                 // We need to go deeper.
                 let next_handle = if let Some(h) = map.get(&key) {
@@ -1473,7 +1766,10 @@ mod tests {
         func_chunk.code.push(OpCode::Return);
         
         let user_func = UserFunc {
-            params: vec![sym_a, sym_b],
+            params: vec![
+                FuncParam { name: sym_a, by_ref: false },
+                FuncParam { name: sym_b, by_ref: false }
+            ],
             uses: Vec::new(),
             chunk: Rc::new(func_chunk),
         };

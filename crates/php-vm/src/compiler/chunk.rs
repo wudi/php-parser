@@ -5,9 +5,15 @@ use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
 pub struct UserFunc {
-    pub params: Vec<Symbol>,
+    pub params: Vec<FuncParam>,
     pub uses: Vec<Symbol>,
     pub chunk: Rc<CodeChunk>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncParam {
+    pub name: Symbol,
+    pub by_ref: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +33,7 @@ pub struct CatchEntry {
 #[derive(Debug, Default)]
 pub struct CodeChunk {
     pub name: Symbol,         // File/Func name
+    pub returns_ref: bool,    // Function returns by reference
     pub code: Vec<OpCode>,    // Instructions
     pub constants: Vec<Val>,  // Literals (Ints, Strings)
     pub lines: Vec<u32>,      // Line numbers for debug
