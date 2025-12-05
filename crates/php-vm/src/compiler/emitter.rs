@@ -1,4 +1,4 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst, CastKind};
 use php_parser::lexer::token::{Token, TokenKind};
 use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry, FuncParam};
 use crate::vm::opcode::OpCode;
@@ -462,6 +462,12 @@ impl<'src> Emitter<'src> {
                 let idx = self.add_constant(Val::Int(i));
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
+            Expr::Float { value, .. } => {
+                let s = std::str::from_utf8(value).unwrap_or("0.0");
+                let f: f64 = s.parse().unwrap_or(0.0);
+                let idx = self.add_constant(Val::Float(f));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+            }
             Expr::String { value, .. } => {
                 let s = if value.len() >= 2 {
                     &value[1..value.len()-1]
@@ -487,7 +493,14 @@ impl<'src> Emitter<'src> {
                     BinaryOp::Minus => self.chunk.code.push(OpCode::Sub),
                     BinaryOp::Mul => self.chunk.code.push(OpCode::Mul),
                     BinaryOp::Div => self.chunk.code.push(OpCode::Div),
+                    BinaryOp::Mod => self.chunk.code.push(OpCode::Mod),
                     BinaryOp::Concat => self.chunk.code.push(OpCode::Concat),
+                    BinaryOp::Pow => self.chunk.code.push(OpCode::Pow),
+                    BinaryOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                    BinaryOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                    BinaryOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                    BinaryOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                    BinaryOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
                     BinaryOp::EqEq => self.chunk.code.push(OpCode::IsEqual),
                     BinaryOp::EqEqEq => self.chunk.code.push(OpCode::IsIdentical),
                     BinaryOp::NotEq => self.chunk.code.push(OpCode::IsNotEqual),
@@ -496,6 +509,9 @@ impl<'src> Emitter<'src> {
                     BinaryOp::Lt => self.chunk.code.push(OpCode::IsLess),
                     BinaryOp::GtEq => self.chunk.code.push(OpCode::IsGreaterOrEqual),
                     BinaryOp::LtEq => self.chunk.code.push(OpCode::IsLessOrEqual),
+                    BinaryOp::Spaceship => self.chunk.code.push(OpCode::Spaceship),
+                    BinaryOp::Instanceof => self.chunk.code.push(OpCode::InstanceOf),
+                    // TODO: Coalesce, LogicalAnd, LogicalOr (Short-circuiting)
                     _ => {} 
                 }
             }
@@ -527,21 +543,137 @@ impl<'src> Emitter<'src> {
                         }
                     }
                     UnaryOp::Minus => {
-                        self.emit_expr(expr);
-                        // TODO: OpCode::Negate
-                        // For now, 0 - expr
+                        // 0 - expr
                         let idx = self.add_constant(Val::Int(0));
                         self.chunk.code.push(OpCode::Const(idx as u16));
-                        // Swap? No, 0 - expr is wrong order.
-                        // We need Negate opcode.
-                        // Or push 0 first? But we already emitted expr.
-                        // Let's just implement Negate later or use 0 - expr trick if we emit 0 first.
-                        // But we can't easily emit 0 first here without changing order.
-                        // Let's assume we have Negate or just ignore for now as it's not critical for references.
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::Sub);
+                    }
+                    UnaryOp::Not => {
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::BoolNot);
+                    }
+                    UnaryOp::BitNot => {
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::BitwiseNot);
+                    }
+                    UnaryOp::PreInc => {
+                        if let Expr::Variable { span, .. } = expr {
+                            let name = self.get_text(*span);
+                            if name.starts_with(b"$") {
+                                let sym = self.interner.intern(&name[1..]);
+                                self.chunk.code.push(OpCode::MakeVarRef(sym));
+                                self.chunk.code.push(OpCode::PreInc);
+                            }
+                        }
+                    }
+                    UnaryOp::PreDec => {
+                        if let Expr::Variable { span, .. } = expr {
+                            let name = self.get_text(*span);
+                            if name.starts_with(b"$") {
+                                let sym = self.interner.intern(&name[1..]);
+                                self.chunk.code.push(OpCode::MakeVarRef(sym));
+                                self.chunk.code.push(OpCode::PreDec);
+                            }
+                        }
                     }
                     _ => {
                         self.emit_expr(expr);
                     }
+                }
+            }
+            Expr::PostInc { var, .. } => {
+                if let Expr::Variable { span, .. } = var {
+                    let name = self.get_text(*span);
+                    if name.starts_with(b"$") {
+                        let sym = self.interner.intern(&name[1..]);
+                        self.chunk.code.push(OpCode::MakeVarRef(sym));
+                        self.chunk.code.push(OpCode::PostInc);
+                    }
+                }
+            }
+            Expr::PostDec { var, .. } => {
+                if let Expr::Variable { span, .. } = var {
+                    let name = self.get_text(*span);
+                    if name.starts_with(b"$") {
+                        let sym = self.interner.intern(&name[1..]);
+                        self.chunk.code.push(OpCode::MakeVarRef(sym));
+                        self.chunk.code.push(OpCode::PostDec);
+                    }
+                }
+            }
+            Expr::Ternary { condition, if_true, if_false, .. } => {
+                self.emit_expr(condition);
+                if let Some(true_expr) = if_true {
+                    // cond ? true : false
+                    let else_jump = self.chunk.code.len();
+                    self.chunk.code.push(OpCode::JmpIfFalse(0)); // Placeholder
+                    
+                    self.emit_expr(true_expr);
+                    let end_jump = self.chunk.code.len();
+                    self.chunk.code.push(OpCode::Jmp(0)); // Placeholder
+                    
+                    let else_label = self.chunk.code.len();
+                    self.chunk.code[else_jump] = OpCode::JmpIfFalse(else_label as u32);
+                    
+                    self.emit_expr(if_false);
+                    let end_label = self.chunk.code.len();
+                    self.chunk.code[end_jump] = OpCode::Jmp(end_label as u32);
+                } else {
+                    // cond ?: false (Elvis)
+                    let end_jump = self.chunk.code.len();
+                    self.chunk.code.push(OpCode::JmpNzEx(0)); // Placeholder
+                    
+                    self.chunk.code.push(OpCode::Pop); // Pop cond if false
+                    self.emit_expr(if_false);
+                    
+                    let end_label = self.chunk.code.len();
+                    self.chunk.code[end_jump] = OpCode::JmpNzEx(end_label as u32);
+                }
+            }
+            Expr::Cast { kind, expr, .. } => {
+                self.emit_expr(expr);
+                // Map CastKind to OpCode::Cast(u8)
+                // 0=Int, 1=Bool, 2=Float, 3=String, 4=Array, 5=Object, 6=Unset
+                let cast_op = match kind {
+                    CastKind::Int => 0,
+                    CastKind::Bool => 1,
+                    CastKind::Float => 2,
+                    CastKind::String => 3,
+                    CastKind::Array => 4,
+                    CastKind::Object => 5,
+                    CastKind::Unset => 6,
+                    _ => 0, // TODO
+                };
+                self.chunk.code.push(OpCode::Cast(cast_op));
+            }
+            Expr::Clone { expr, .. } => {
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::Clone);
+            }
+            Expr::Yield { key, value, from, .. } => {
+                if *from {
+                    if let Some(v) = value {
+                        self.emit_expr(v);
+                    } else {
+                        let idx = self.add_constant(Val::Null);
+                        self.chunk.code.push(OpCode::Const(idx as u16));
+                    }
+                    self.chunk.code.push(OpCode::YieldFrom);
+                } else {
+                    if let Some(k) = key {
+                        self.emit_expr(k);
+                    } else {
+                        let idx = self.add_constant(Val::Int(0)); 
+                        self.chunk.code.push(OpCode::Const(idx as u16)); 
+                    }
+                    if let Some(v) = value {
+                        self.emit_expr(v);
+                    } else {
+                        let idx = self.add_constant(Val::Null);
+                        self.chunk.code.push(OpCode::Const(idx as u16));
+                    }
+                    self.chunk.code.push(OpCode::Yield);
                 }
             }
             Expr::Closure { params, uses, body, by_ref, .. } => {
@@ -620,7 +752,7 @@ impl<'src> Emitter<'src> {
                 }
             }
             Expr::Array { items, .. } => {
-                self.chunk.code.push(OpCode::InitArray);
+                self.chunk.code.push(OpCode::InitArray(items.len() as u32));
                 for item in *items {
                     if item.unpack {
                         continue;
@@ -880,7 +1012,15 @@ impl<'src> Emitter<'src> {
                                 AssignOp::Minus => self.chunk.code.push(OpCode::Sub),
                                 AssignOp::Mul => self.chunk.code.push(OpCode::Mul),
                                 AssignOp::Div => self.chunk.code.push(OpCode::Div),
+                                AssignOp::Mod => self.chunk.code.push(OpCode::Mod),
                                 AssignOp::Concat => self.chunk.code.push(OpCode::Concat),
+                                AssignOp::Pow => self.chunk.code.push(OpCode::Pow),
+                                AssignOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                                AssignOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                                AssignOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                                AssignOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                                AssignOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
+                                // TODO: Coalesce (??=)
                                 _ => {} // TODO: Implement other ops
                             }
                             

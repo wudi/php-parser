@@ -3,15 +3,25 @@ use crate::core::value::{Symbol, Visibility};
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     // Stack Ops
+    Nop,
     Const(u16),      // Push constant from table
     Pop,
     
     // Arithmetic
-    Add, Sub, Mul, Div, Concat,
+    Add, Sub, Mul, Div, Mod, Pow,
+    Concat, FastConcat,
+    
+    // Bitwise
+    BitwiseAnd, BitwiseOr, BitwiseXor, BitwiseNot,
+    ShiftLeft, ShiftRight,
     
     // Comparison
     IsEqual, IsNotEqual, IsIdentical, IsNotIdentical,
     IsGreater, IsLess, IsGreaterOrEqual, IsLessOrEqual,
+    Spaceship,
+
+    // Logical
+    BoolNot, BoolXor,
 
     // Variables
     LoadVar(Symbol),  // Push local variable value
@@ -20,28 +30,42 @@ pub enum OpCode {
     AssignDimRef,      // [Array, Index, ValueRef] -> Assigns ref to array index
     MakeVarRef(Symbol), // Convert local var to reference (COW if needed), push handle
     MakeRef,            // Convert top of stack to reference
+    UnsetVar(Symbol),
     
     // Control Flow
     Jmp(u32),
     JmpIfFalse(u32),
+    JmpIfTrue(u32),
+    JmpZEx(u32),
+    JmpNzEx(u32),
+    Coalesce(u32),
     
     // Functions
     Call(u8),        // Call function with N args
     Return,
     DefFunc(Symbol, u32), // (name, func_idx) -> Define global function
+    Recv(u32), RecvInit(u32, u16), // Arg index, default val index
+    SendVal, SendVar, SendRef,
     
     // System
     Include,         // Runtime compilation
     Echo,
+    Exit,
+    Silence(bool),
+    Ticks(u32),
 
     // Arrays
-    InitArray,
+    InitArray(u32),
     FetchDim,
     AssignDim,
     StoreDim, // AssignDim but with [val, key, array] stack order (popped as array, key, val)
     StoreNestedDim(u8), // Store into nested array. Arg is depth (number of keys). Stack: [val, key_n, ..., key_1, array]
     AppendArray,
     StoreAppend, // AppendArray but with [val, array] stack order (popped as array, val)
+    UnsetDim,
+    InArray,
+    ArrayKeyExists,
+    Count,
 
     // Iteration
     IterInit(u32),   // [Array] -> [Array, Index]. If empty, pop and jump.
@@ -50,6 +74,9 @@ pub enum OpCode {
     IterGetVal(Symbol), // [Array, Index] -> Assigns val to local
     IterGetValRef(Symbol), // [Array, Index] -> Assigns ref to local
     IterGetKey(Symbol), // [Array, Index] -> Assigns key to local
+    FeResetR(u32), FeFetchR(u32),
+    FeResetRw(u32), FeFetchRw(u32),
+    FeFree,
 
     // Constants
     FetchGlobalConst(Symbol),
@@ -69,10 +96,37 @@ pub enum OpCode {
     FetchProp(Symbol),      // [Obj] -> [Val]
     AssignProp(Symbol),     // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
+    UnsetObj,
+    UnsetStaticProp,
+    InstanceOf,
+    GetClass,
+    GetCalledClass,
+    GetType,
+    Clone,
     
     // Closures
     Closure(u32, u32), // (func_idx, num_captures) -> [Closure]
 
     // Exceptions
     Throw, // [Obj] -> !
+    Catch,
+    
+    // Generators
+    Yield,
+    YieldFrom,
+    
+    // Assignment Ops
+    AssignOp(u8), // 0=Add, 1=Sub, 2=Mul, 3=Div, 4=Mod, 5=Sl, 6=Sr, 7=Concat, 8=BwOr, 9=BwAnd, 10=BwXor, 11=Pow
+    PreInc, PreDec, PostInc, PostDec,
+    
+    // Casts
+    Cast(u8), // 0=Int, 1=Bool, 2=Float, 3=String, 4=Array, 5=Object, 6=Unset
+    
+    // Type Check
+    TypeCheck,
+    Defined,
+    
+    // Match
+    Match,
+    MatchError,
 }

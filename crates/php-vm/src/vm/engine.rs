@@ -310,6 +310,7 @@ impl VM {
                     let ex_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     return Err(VmError::Exception(ex_handle));
                 }
+                OpCode::Catch => {}
                 OpCode::Const(idx) => {
                     let frame = self.frames.last().unwrap();
                     let val = frame.chunk.constants[idx as usize].clone();
@@ -319,10 +320,39 @@ impl VM {
                 OpCode::Pop => {
                     self.operand_stack.pop();
                 }
+                OpCode::BitwiseNot => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(handle).value.clone();
+                    let res = match val {
+                        Val::Int(i) => Val::Int(!i),
+                        _ => Val::Null, // TODO: Support other types
+                    };
+                    let res_handle = self.arena.alloc(res);
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::BoolNot => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(handle);
+                    let b = match val.value {
+                        Val::Bool(v) => v,
+                        Val::Int(v) => v != 0,
+                        Val::Null => false,
+                        _ => true, 
+                    };
+                    let res_handle = self.arena.alloc(Val::Bool(!b));
+                    self.operand_stack.push(res_handle);
+                }
                 OpCode::Add => self.binary_op(|a, b| a + b)?,
                 OpCode::Sub => self.binary_op(|a, b| a - b)?,
                 OpCode::Mul => self.binary_op(|a, b| a * b)?,
                 OpCode::Div => self.binary_op(|a, b| a / b)?,
+                OpCode::Mod => self.binary_op(|a, b| a % b)?,
+                OpCode::Pow => self.binary_op(|a, b| a.pow(b as u32))?,
+                OpCode::BitwiseAnd => self.binary_op(|a, b| a & b)?,
+                OpCode::BitwiseOr => self.binary_op(|a, b| a | b)?,
+                OpCode::BitwiseXor => self.binary_op(|a, b| a ^ b)?,
+                OpCode::ShiftLeft => self.binary_op(|a, b| a << b)?,
+                OpCode::ShiftRight => self.binary_op(|a, b| a >> b)?,
                 
                 OpCode::LoadVar(sym) => {
                     let frame = self.frames.last().unwrap();
@@ -380,6 +410,157 @@ impl VM {
                     // Overwrite the local slot with the reference handle
                     frame.locals.insert(sym, ref_handle);
                 }
+                OpCode::AssignOp(op) => {
+                    let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let var_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    if self.arena.get(var_handle).is_ref {
+                        let current_val = self.arena.get(var_handle).value.clone();
+                        let val = self.arena.get(val_handle).value.clone();
+                        
+                        let res = match op {
+                            0 => match (current_val, val) { // Add
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a + b),
+                                _ => Val::Null,
+                            },
+                            1 => match (current_val, val) { // Sub
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a - b),
+                                _ => Val::Null,
+                            },
+                            2 => match (current_val, val) { // Mul
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a * b),
+                                _ => Val::Null,
+                            },
+                            3 => match (current_val, val) { // Div
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a / b),
+                                _ => Val::Null,
+                            },
+                            4 => match (current_val, val) { // Mod
+                                (Val::Int(a), Val::Int(b)) => {
+                                    if b == 0 {
+                                        return Err(VmError::RuntimeError("Modulo by zero".into()));
+                                    }
+                                    Val::Int(a % b)
+                                },
+                                _ => Val::Null,
+                            },
+                            5 => match (current_val, val) { // ShiftLeft
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a << b),
+                                _ => Val::Null,
+                            },
+                            6 => match (current_val, val) { // ShiftRight
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a >> b),
+                                _ => Val::Null,
+                            },
+                            7 => match (current_val, val) { // Concat
+                                (Val::String(a), Val::String(b)) => {
+                                    let mut s = String::from_utf8_lossy(&a).to_string();
+                                    s.push_str(&String::from_utf8_lossy(&b));
+                                    Val::String(s.into_bytes())
+                                },
+                                (Val::String(a), Val::Int(b)) => {
+                                    let mut s = String::from_utf8_lossy(&a).to_string();
+                                    s.push_str(&b.to_string());
+                                    Val::String(s.into_bytes())
+                                },
+                                (Val::Int(a), Val::String(b)) => {
+                                    let mut s = a.to_string();
+                                    s.push_str(&String::from_utf8_lossy(&b));
+                                    Val::String(s.into_bytes())
+                                },
+                                _ => Val::Null,
+                            },
+                            8 => match (current_val, val) { // BitwiseOr
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a | b),
+                                _ => Val::Null,
+                            },
+                            9 => match (current_val, val) { // BitwiseAnd
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a & b),
+                                _ => Val::Null,
+                            },
+                            10 => match (current_val, val) { // BitwiseXor
+                                (Val::Int(a), Val::Int(b)) => Val::Int(a ^ b),
+                                _ => Val::Null,
+                            },
+                            11 => match (current_val, val) { // Pow
+                                (Val::Int(a), Val::Int(b)) => {
+                                    if b < 0 {
+                                        return Err(VmError::RuntimeError("Negative exponent not supported for int pow".into()));
+                                    }
+                                    Val::Int(a.pow(b as u32))
+                                },
+                                _ => Val::Null,
+                            },
+                            _ => Val::Null,
+                        };
+                        
+                        self.arena.get_mut(var_handle).value = res.clone();
+                        let res_handle = self.arena.alloc(res);
+                        self.operand_stack.push(res_handle);
+                    } else {
+                        return Err(VmError::RuntimeError("AssignOp on non-reference".into()));
+                    }
+                }
+                OpCode::PreInc => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    if self.arena.get(handle).is_ref {
+                        let val = &self.arena.get(handle).value;
+                        let new_val = match val {
+                            Val::Int(i) => Val::Int(i + 1),
+                            _ => Val::Null,
+                        };
+                        self.arena.get_mut(handle).value = new_val.clone();
+                        let res_handle = self.arena.alloc(new_val);
+                        self.operand_stack.push(res_handle);
+                    } else {
+                         return Err(VmError::RuntimeError("PreInc on non-reference".into()));
+                    }
+                }
+                OpCode::PreDec => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    if self.arena.get(handle).is_ref {
+                        let val = &self.arena.get(handle).value;
+                        let new_val = match val {
+                            Val::Int(i) => Val::Int(i - 1),
+                            _ => Val::Null,
+                        };
+                        self.arena.get_mut(handle).value = new_val.clone();
+                        let res_handle = self.arena.alloc(new_val);
+                        self.operand_stack.push(res_handle);
+                    } else {
+                         return Err(VmError::RuntimeError("PreDec on non-reference".into()));
+                    }
+                }
+                OpCode::PostInc => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    if self.arena.get(handle).is_ref {
+                        let val = self.arena.get(handle).value.clone();
+                        let new_val = match &val {
+                            Val::Int(i) => Val::Int(i + 1),
+                            _ => Val::Null,
+                        };
+                        self.arena.get_mut(handle).value = new_val;
+                        let res_handle = self.arena.alloc(val); // Return OLD value
+                        self.operand_stack.push(res_handle);
+                    } else {
+                         return Err(VmError::RuntimeError("PostInc on non-reference".into()));
+                    }
+                }
+                OpCode::PostDec => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    if self.arena.get(handle).is_ref {
+                        let val = self.arena.get(handle).value.clone();
+                        let new_val = match &val {
+                            Val::Int(i) => Val::Int(i - 1),
+                            _ => Val::Null,
+                        };
+                        self.arena.get_mut(handle).value = new_val;
+                        let res_handle = self.arena.alloc(val); // Return OLD value
+                        self.operand_stack.push(res_handle);
+                    } else {
+                         return Err(VmError::RuntimeError("PostDec on non-reference".into()));
+                    }
+                }
                 OpCode::MakeVarRef(sym) => {
                     let frame = self.frames.last_mut().unwrap();
                     
@@ -408,6 +589,10 @@ impl VM {
                         
                         self.operand_stack.push(new_handle);
                     }
+                }
+                OpCode::UnsetVar(sym) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.remove(&sym);
                 }
                 OpCode::MakeRef => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -443,6 +628,71 @@ impl VM {
                         frame.ip = target as usize;
                     }
                 }
+                OpCode::JmpIfTrue(target) => {
+                    let condition_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let condition_val = self.arena.get(condition_handle);
+                    
+                    let is_true = match condition_val.value {
+                        Val::Bool(b) => b,
+                        Val::Int(i) => i != 0,
+                        Val::Null => false,
+                        _ => true, 
+                    };
+                    
+                    if is_true {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    }
+                }
+                OpCode::JmpZEx(target) => {
+                    let condition_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let condition_val = self.arena.get(condition_handle);
+                    
+                    let is_false = match condition_val.value {
+                        Val::Bool(b) => !b,
+                        Val::Int(i) => i == 0,
+                        Val::Null => true,
+                        _ => false, 
+                    };
+                    
+                    if is_false {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    } else {
+                        self.operand_stack.pop();
+                    }
+                }
+                OpCode::JmpNzEx(target) => {
+                    let condition_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let condition_val = self.arena.get(condition_handle);
+                    
+                    let is_true = match condition_val.value {
+                        Val::Bool(b) => b,
+                        Val::Int(i) => i != 0,
+                        Val::Null => false,
+                        _ => true, 
+                    };
+                    
+                    if is_true {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    } else {
+                        self.operand_stack.pop();
+                    }
+                }
+                OpCode::Coalesce(target) => {
+                    let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(handle);
+                    
+                    let is_null = matches!(val.value, Val::Null);
+                    
+                    if !is_null {
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    } else {
+                        self.operand_stack.pop();
+                    }
+                }
 
                 OpCode::Echo => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -458,6 +708,83 @@ impl VM {
                         Val::Null => {},
                         _ => print!("{:?}", val.value),
                     }
+                }
+                OpCode::Exit => {
+                    if let Some(handle) = self.operand_stack.pop() {
+                        let val = self.arena.get(handle);
+                        match &val.value {
+                            Val::String(s) => {
+                                let s = String::from_utf8_lossy(s);
+                                print!("{}", s);
+                            }
+                            Val::Int(_) => {}
+                            _ => {}
+                        }
+                    }
+                    self.frames.clear();
+                    return Ok(());
+                }
+                OpCode::Silence(_) => {}
+                OpCode::Ticks(_) => {}
+                OpCode::Cast(kind) => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(handle).value.clone();
+                    let new_val = match kind {
+                        0 => match val { // Int
+                            Val::Int(i) => Val::Int(i),
+                            Val::Float(f) => Val::Int(f as i64),
+                            Val::Bool(b) => Val::Int(if b { 1 } else { 0 }),
+                            Val::String(s) => {
+                                let s = String::from_utf8_lossy(&s);
+                                Val::Int(s.parse().unwrap_or(0))
+                            }
+                            Val::Null => Val::Int(0),
+                            _ => Val::Int(0),
+                        },
+                        1 => match val { // Bool
+                            Val::Bool(b) => Val::Bool(b),
+                            Val::Int(i) => Val::Bool(i != 0),
+                            Val::Null => Val::Bool(false),
+                            _ => Val::Bool(true),
+                        },
+                        2 => match val { // Float
+                            Val::Float(f) => Val::Float(f),
+                            Val::Int(i) => Val::Float(i as f64),
+                            Val::String(s) => {
+                                let s = String::from_utf8_lossy(&s);
+                                Val::Float(s.parse().unwrap_or(0.0))
+                            }
+                            _ => Val::Float(0.0),
+                        },
+                        3 => match val { // String
+                            Val::String(s) => Val::String(s),
+                            Val::Int(i) => Val::String(i.to_string().into_bytes()),
+                            Val::Float(f) => Val::String(f.to_string().into_bytes()),
+                            Val::Bool(b) => Val::String(if b { b"1".to_vec() } else { b"".to_vec() }),
+                            Val::Null => Val::String(Vec::new()),
+                            _ => Val::String(b"Array".to_vec()),
+                        },
+                        _ => val,
+                    };
+                    let res_handle = self.arena.alloc(new_val);
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::TypeCheck => {}
+                OpCode::Defined => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = &self.arena.get(handle).value;
+                    let name = match val {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("defined() expects string".into())),
+                    };
+                    
+                    let defined = self.context.constants.contains_key(&name) || self.context.engine.constants.contains_key(&name);
+                    let res_handle = self.arena.alloc(Val::Bool(defined));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::Match => {}
+                OpCode::MatchError => {
+                    return Err(VmError::RuntimeError("UnhandledMatchError".into()));
                 }
 
                 OpCode::Closure(func_idx, num_captures) => {
@@ -667,6 +994,17 @@ impl VM {
                         self.operand_stack.push(final_ret_val);
                     }
                 }
+                OpCode::Recv(_) => {}
+                OpCode::RecvInit(_, _) => {}
+                OpCode::SendVal => {} 
+                OpCode::SendVar => {}
+                OpCode::SendRef => {}
+                OpCode::Yield => {
+                    return Err(VmError::RuntimeError("Generators not implemented".into()));
+                }
+                OpCode::YieldFrom => {
+                    return Err(VmError::RuntimeError("Generators not implemented".into()));
+                }
 
                 OpCode::DefFunc(name, func_idx) => {
                     let val = {
@@ -711,7 +1049,8 @@ impl VM {
                     self.frames.push(frame);
                 }
                 
-                OpCode::InitArray => {
+                OpCode::Nop => {},
+                OpCode::InitArray(_size) => {
                     let handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new()));
                     self.operand_stack.push(handle);
                 }
@@ -781,6 +1120,75 @@ impl VM {
                     let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     self.append_array(array_handle, val_handle)?;
+                }
+                OpCode::UnsetDim => {
+                    let key_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let key_val = &self.arena.get(key_handle).value;
+                    let key = match key_val {
+                        Val::Int(i) => ArrayKey::Int(*i),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
+                    };
+                    
+                    let array_zval_mut = self.arena.get_mut(array_handle);
+                    if let Val::Array(map) = &mut array_zval_mut.value {
+                        map.remove(&key);
+                    }
+                }
+                OpCode::InArray => {
+                    let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let needle_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let array_val = &self.arena.get(array_handle).value;
+                    let needle_val = &self.arena.get(needle_handle).value;
+                    
+                    let found = if let Val::Array(map) = array_val {
+                        map.values().any(|h| {
+                            let v = &self.arena.get(*h).value;
+                            v == needle_val 
+                        })
+                    } else {
+                        false
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(found));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::ArrayKeyExists => {
+                    let array_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let key_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let key_val = &self.arena.get(key_handle).value;
+                    let key = match key_val {
+                        Val::Int(i) => ArrayKey::Int(*i),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
+                    };
+                    
+                    let array_val = &self.arena.get(array_handle).value;
+                    let found = if let Val::Array(map) = array_val {
+                        map.contains_key(&key)
+                    } else {
+                        false
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(found));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::Count => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = &self.arena.get(handle).value;
+                    
+                    let count = match val {
+                        Val::Array(map) => map.len(),
+                        Val::Null => 0,
+                        _ => 1,
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Int(count as i64));
+                    self.operand_stack.push(res_handle);
                 }
 
                 OpCode::StoreNestedDim(depth) => {
@@ -960,6 +1368,57 @@ impl VM {
                             return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
                         }
                     }
+                }
+                OpCode::FeResetR(target) => {
+                    let array_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_val = &self.arena.get(array_handle).value;
+                    let len = match array_val {
+                        Val::Array(map) => map.len(),
+                        _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
+                    };
+                    if len == 0 {
+                        self.operand_stack.pop();
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    } else {
+                        let idx_handle = self.arena.alloc(Val::Int(0));
+                        self.operand_stack.push(idx_handle);
+                    }
+                }
+                OpCode::FeFetchR(target) => {
+                    let idx_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let array_handle = self.operand_stack.peek_at(1).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let idx = match self.arena.get(idx_handle).value {
+                        Val::Int(i) => i as usize,
+                        _ => return Err(VmError::RuntimeError("Iterator index must be int".into())),
+                    };
+                    
+                    let array_val = &self.arena.get(array_handle).value;
+                    let len = match array_val {
+                        Val::Array(map) => map.len(),
+                        _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
+                    };
+                    
+                    if idx >= len {
+                        self.operand_stack.pop();
+                        self.operand_stack.pop();
+                        let frame = self.frames.last_mut().unwrap();
+                        frame.ip = target as usize;
+                    } else {
+                        if let Val::Array(map) = array_val {
+                            if let Some((_, val_handle)) = map.get_index(idx) {
+                                self.operand_stack.push(*val_handle);
+                            }
+                        }
+                        self.arena.get_mut(idx_handle).value = Val::Int((idx + 1) as i64);
+                    }
+                }
+                OpCode::FeResetRw(_) => {}
+                OpCode::FeFetchRw(_) => {}
+                OpCode::FeFree => {
+                    self.operand_stack.pop();
+                    self.operand_stack.pop();
                 }
 
                 OpCode::DefClass(name, parent) => {
@@ -1255,6 +1714,112 @@ impl VM {
                         return Err(VmError::RuntimeError("Method not found".into()));
                     }
                 }
+                OpCode::UnsetObj => {
+                    let prop_name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let prop_name = match &self.arena.get(prop_name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Property name must be string".into())),
+                    };
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let payload_handle = if let Val::Object(h) = self.arena.get(obj_handle).value {
+                        h
+                    } else {
+                        return Err(VmError::RuntimeError("Attempt to unset property on non-object".into()));
+                    };
+                    
+                    let payload_zval = self.arena.get_mut(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                        obj_data.properties.remove(&prop_name);
+                    }
+                }
+                OpCode::UnsetStaticProp => {
+                    // TODO: Implement static prop unset
+                }
+                OpCode::InstanceOf => {
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let class_name = match &self.arena.get(class_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    let is_instance = if let Val::Object(h) = self.arena.get(obj_handle).value {
+                        if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                            self.is_subclass_of(data.class, class_name)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(is_instance));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::GetClass => {
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_name = if let Val::Object(h) = self.arena.get(obj_handle).value {
+                        if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                            Some(data.class)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    
+                    if let Some(sym) = class_name {
+                        let name_bytes = self.context.interner.lookup(sym).unwrap_or(b"");
+                        let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
+                        self.operand_stack.push(res_handle);
+                    } else {
+                        return Err(VmError::RuntimeError("get_class() called on non-object".into()));
+                    }
+                }
+                OpCode::GetCalledClass => {
+                    let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                    if let Some(scope) = frame.called_scope {
+                        let name_bytes = self.context.interner.lookup(scope).unwrap_or(b"");
+                        let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
+                        self.operand_stack.push(res_handle);
+                    } else {
+                        return Err(VmError::RuntimeError("get_called_class() called from outside a class".into()));
+                    }
+                }
+                OpCode::GetType => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = &self.arena.get(handle).value;
+                    let type_str = match val {
+                        Val::Null => "NULL",
+                        Val::Bool(_) => "boolean",
+                        Val::Int(_) => "integer",
+                        Val::Float(_) => "double",
+                        Val::String(_) => "string",
+                        Val::Array(_) => "array",
+                        Val::Object(_) => "object",
+                        Val::Resource(_) => "resource",
+                        _ => "unknown",
+                    };
+                    let res_handle = self.arena.alloc(Val::String(type_str.as_bytes().to_vec()));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::Clone => {
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
+                        let payload_val = self.arena.get(payload_handle).value.clone();
+                        if let Val::ObjPayload(obj_data) = payload_val {
+                            let new_payload_handle = self.arena.alloc(Val::ObjPayload(obj_data.clone()));
+                            let new_obj_handle = self.arena.alloc(Val::Object(new_payload_handle));
+                            self.operand_stack.push(new_obj_handle);
+                        } else {
+                             return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("__clone method called on non-object".into()));
+                    }
+                }
                 OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
                     let resolved_class = self.resolve_class_name(class_name)?;
                     
@@ -1332,6 +1897,36 @@ impl VM {
                     self.operand_stack.push(res_handle);
                 }
                 
+                OpCode::FastConcat => {
+                    let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let b_val = &self.arena.get(b_handle).value;
+                    let a_val = &self.arena.get(a_handle).value;
+                    
+                    let b_str = match b_val {
+                        Val::String(s) => s.clone(),
+                        Val::Int(i) => i.to_string().into_bytes(),
+                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
+                        Val::Null => vec![],
+                        _ => format!("{:?}", b_val).into_bytes(),
+                    };
+                    
+                    let a_str = match a_val {
+                        Val::String(s) => s.clone(),
+                        Val::Int(i) => i.to_string().into_bytes(),
+                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
+                        Val::Null => vec![],
+                        _ => format!("{:?}", a_val).into_bytes(),
+                    };
+                    
+                    let mut res = a_str;
+                    res.extend(b_str);
+                    
+                    let res_handle = self.arena.alloc(Val::String(res));
+                    self.operand_stack.push(res_handle);
+                }
+                
                 OpCode::IsEqual => self.binary_cmp(|a, b| a == b)?,
                 OpCode::IsNotEqual => self.binary_cmp(|a, b| a != b)?,
                 OpCode::IsIdentical => self.binary_cmp(|a, b| a == b)?,
@@ -1352,6 +1947,35 @@ impl VM {
                     (Val::Int(i1), Val::Int(i2)) => i1 <= i2,
                     _ => false 
                 })?,
+                OpCode::Spaceship => {
+                    let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let b_val = &self.arena.get(b_handle).value;
+                    let a_val = &self.arena.get(a_handle).value;
+                    let res = match (a_val, b_val) {
+                        (Val::Int(a), Val::Int(b)) => if a < b { -1 } else if a > b { 1 } else { 0 },
+                        _ => 0, // TODO
+                    };
+                    let res_handle = self.arena.alloc(Val::Int(res));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::BoolXor => {
+                    let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let b_val = &self.arena.get(b_handle).value;
+                    let a_val = &self.arena.get(a_handle).value;
+                    
+                    let to_bool = |v: &Val| match v {
+                        Val::Bool(b) => *b,
+                        Val::Int(i) => *i != 0,
+                        Val::Null => false,
+                        _ => true,
+                    };
+                    
+                    let res = to_bool(a_val) ^ to_bool(b_val);
+                    let res_handle = self.arena.alloc(Val::Bool(res));
+                    self.operand_stack.push(res_handle);
+                }
             }
             Ok(()) })();
 
@@ -1632,7 +2256,7 @@ mod tests {
         // array will be created dynamically
         
         // Create array [0]
-        chunk.code.push(OpCode::InitArray);
+        chunk.code.push(OpCode::InitArray(0));
         chunk.code.push(OpCode::Const(1)); // key 0
         chunk.code.push(OpCode::Const(1)); // val 0 (dummy)
         chunk.code.push(OpCode::AssignDim); // Stack: [array]
