@@ -41,6 +41,7 @@ impl EngineContext {
         functions.insert(b"explode".to_vec(), stdlib::php_explode as NativeHandler);
         functions.insert(b"define".to_vec(), stdlib::php_define as NativeHandler);
         functions.insert(b"defined".to_vec(), stdlib::php_defined as NativeHandler);
+        functions.insert(b"constant".to_vec(), stdlib::php_constant as NativeHandler);
 
         Self {
             functions,

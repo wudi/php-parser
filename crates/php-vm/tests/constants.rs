@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::rc::Rc;
 
 fn run_code(source: &str) {
-    let mut engine_context = EngineContext::new();
+    let engine_context = EngineContext::new();
     let engine = Arc::new(engine_context);
     let mut vm = VM::new(engine);
     
@@ -50,5 +50,13 @@ fn test_undefined_const() {
     // Should print "BAZ" (string) and maybe warn (warning not implemented yet)
     run_code(r#"
         var_dump(BAZ);
+    "#);
+}
+
+#[test]
+fn test_constant_func() {
+    run_code(r#"
+        define("MY_CONST", 42);
+        var_dump(constant("MY_CONST"));
     "#);
 }

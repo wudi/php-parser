@@ -306,3 +306,28 @@ pub fn php_defined(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     
     Ok(vm.arena.alloc(Val::Bool(exists)))
 }
+
+pub fn php_constant(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("constant() expects exactly 1 parameter".into());
+    }
+    
+    let name_val = vm.arena.get(args[0]);
+    let name = match &name_val.value {
+        Val::String(s) => s.clone(),
+        _ => return Err("constant(): Parameter 1 must be string".into()),
+    };
+    
+    let sym = vm.context.interner.intern(&name);
+    
+    if let Some(val) = vm.context.constants.get(&sym) {
+        return Ok(vm.arena.alloc(val.clone()));
+    }
+    
+    if let Some(val) = vm.context.engine.constants.get(&sym) {
+        return Ok(vm.arena.alloc(val.clone()));
+    }
+    
+    // TODO: Warning
+    Ok(vm.arena.alloc(Val::Null))
+}
