@@ -11,6 +11,7 @@ pub struct CallFrame {
     pub this: Option<Handle>,
     pub is_constructor: bool,
     pub class_scope: Option<Symbol>,
+    pub called_scope: Option<Symbol>,
 }
 
 impl CallFrame {
@@ -22,6 +23,7 @@ impl CallFrame {
             this: None,
             is_constructor: false,
             class_scope: None,
+            called_scope: None,
         }
     }
 }

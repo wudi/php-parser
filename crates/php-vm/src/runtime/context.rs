@@ -13,8 +13,10 @@ pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 pub struct ClassDef {
     pub name: Symbol,
     pub parent: Option<Symbol>,
-    pub methods: HashMap<Symbol, (Rc<UserFunc>, Visibility)>,
+    pub methods: HashMap<Symbol, (Rc<UserFunc>, Visibility, bool)>, // (func, visibility, is_static)
     pub properties: IndexMap<Symbol, (Val, Visibility)>, // Default values
+    pub constants: HashMap<Symbol, (Val, Visibility)>,
+    pub static_properties: HashMap<Symbol, (Val, Visibility)>,
 }
 
 pub struct EngineContext {

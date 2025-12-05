@@ -44,12 +44,12 @@ impl VM {
         }
     }
 
-    fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, Symbol)> {
+    fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         let mut current_class = Some(class_name);
         while let Some(name) = current_class {
             if let Some(def) = self.context.classes.get(&name) {
-                if let Some((func, vis)) = def.methods.get(&method_name) {
-                    return Some((func.clone(), *vis, name));
+                if let Some((func, vis, is_static)) = def.methods.get(&method_name) {
+                    return Some((func.clone(), *vis, *is_static, name));
                 }
                 current_class = def.parent;
             } else {
@@ -95,6 +95,99 @@ impl VM {
             }
         }
         false
+    }
+
+    fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
+        let name_bytes = self.context.interner.lookup(class_name).ok_or(VmError::RuntimeError("Invalid class symbol".into()))?;
+        if name_bytes.eq_ignore_ascii_case(b"self") {
+             let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+             return frame.class_scope.ok_or(VmError::RuntimeError("Cannot access self:: when no class scope is active".into()));
+        }
+        if name_bytes.eq_ignore_ascii_case(b"parent") {
+             let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+             let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access parent:: when no class scope is active".into()))?;
+             let class_def = self.context.classes.get(&scope).ok_or(VmError::RuntimeError("Class not found".into()))?;
+             return class_def.parent.ok_or(VmError::RuntimeError("Parent not found".into()));
+        }
+        if name_bytes.eq_ignore_ascii_case(b"static") {
+             let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+             return frame.called_scope.ok_or(VmError::RuntimeError("Cannot access static:: when no called scope is active".into()));
+        }
+        Ok(class_name)
+    }
+
+    fn find_class_constant(&self, start_class: Symbol, const_name: Symbol) -> Result<(Val, Visibility, Symbol), VmError> {
+        let mut current_class = start_class;
+        loop {
+            if let Some(class_def) = self.context.classes.get(&current_class) {
+                if let Some((val, vis)) = class_def.constants.get(&const_name) {
+                    if *vis == Visibility::Private && current_class != start_class {
+                         let const_str = String::from_utf8_lossy(self.context.interner.lookup(const_name).unwrap_or(b"???"));
+                         return Err(VmError::RuntimeError(format!("Undefined class constant {}", const_str)));
+                    }
+                    return Ok((val.clone(), *vis, current_class));
+                }
+                if let Some(parent) = class_def.parent {
+                    current_class = parent;
+                } else {
+                    break;
+                }
+            } else {
+                let class_str = String::from_utf8_lossy(self.context.interner.lookup(start_class).unwrap_or(b"???"));
+                return Err(VmError::RuntimeError(format!("Class {} not found", class_str)));
+            }
+        }
+        let const_str = String::from_utf8_lossy(self.context.interner.lookup(const_name).unwrap_or(b"???"));
+        Err(VmError::RuntimeError(format!("Undefined class constant {}", const_str)))
+    }
+
+    fn find_static_prop(&self, start_class: Symbol, prop_name: Symbol) -> Result<(Val, Visibility, Symbol), VmError> {
+        let mut current_class = start_class;
+        loop {
+            if let Some(class_def) = self.context.classes.get(&current_class) {
+                if let Some((val, vis)) = class_def.static_properties.get(&prop_name) {
+                    if *vis == Visibility::Private && current_class != start_class {
+                         let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+                         return Err(VmError::RuntimeError(format!("Undefined static property ${}", prop_str)));
+                    }
+                    return Ok((val.clone(), *vis, current_class));
+                }
+                if let Some(parent) = class_def.parent {
+                    current_class = parent;
+                } else {
+                    break;
+                }
+            } else {
+                let class_str = String::from_utf8_lossy(self.context.interner.lookup(start_class).unwrap_or(b"???"));
+                return Err(VmError::RuntimeError(format!("Class {} not found", class_str)));
+            }
+        }
+        let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+        Err(VmError::RuntimeError(format!("Undefined static property ${}", prop_str)))
+    }
+
+    fn check_const_visibility(&self, defining_class: Symbol, visibility: Visibility) -> Result<(), VmError> {
+        match visibility {
+            Visibility::Public => Ok(()),
+            Visibility::Private => {
+                let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access private constant".into()))?;
+                if scope == defining_class {
+                    Ok(())
+                } else {
+                    Err(VmError::RuntimeError("Cannot access private constant".into()))
+                }
+            }
+            Visibility::Protected => {
+                let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access protected constant".into()))?;
+                if self.is_subclass_of(scope, defining_class) || self.is_subclass_of(defining_class, scope) {
+                    Ok(())
+                } else {
+                    Err(VmError::RuntimeError("Cannot access protected constant".into()))
+                }
+            }
+        }
     }
 
     fn get_current_class(&self) -> Option<Symbol> {
@@ -514,16 +607,18 @@ impl VM {
                         parent,
                         methods: HashMap::new(),
                         properties: IndexMap::new(),
+                        constants: HashMap::new(),
+                        static_properties: HashMap::new(),
                     };
                     self.context.classes.insert(name, class_def);
                 }
-                OpCode::DefMethod(class_name, method_name, const_idx, visibility) => {
+                OpCode::DefMethod(class_name, method_name, func_idx, visibility, is_static) => {
                     let frame = self.frames.last().unwrap();
-                    let val = &frame.chunk.constants[const_idx as usize];
+                    let val = frame.chunk.constants[func_idx as usize].clone();
                     if let Val::Resource(rc) = val {
-                        if let Some(user_func) = rc.downcast_ref::<UserFunc>() {
+                        if let Ok(func) = rc.downcast::<UserFunc>() {
                             if let Some(class_def) = self.context.classes.get_mut(&class_name) {
-                                class_def.methods.insert(method_name, (Rc::new(user_func.clone()), visibility));
+                                class_def.methods.insert(method_name, (func, visibility, is_static));
                             }
                         }
                     }
@@ -534,6 +629,51 @@ impl VM {
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.properties.insert(prop_name, (val, visibility));
                     }
+                }
+                OpCode::DefClassConst(class_name, const_name, val_idx, visibility) => {
+                    let frame = self.frames.last().unwrap();
+                    let val = frame.chunk.constants[val_idx as usize].clone();
+                    if let Some(class_def) = self.context.classes.get_mut(&class_name) {
+                        class_def.constants.insert(const_name, (val, visibility));
+                    }
+                }
+                OpCode::DefStaticProp(class_name, prop_name, default_idx, visibility) => {
+                    let frame = self.frames.last().unwrap();
+                    let val = frame.chunk.constants[default_idx as usize].clone();
+                    if let Some(class_def) = self.context.classes.get_mut(&class_name) {
+                        class_def.static_properties.insert(prop_name, (val, visibility));
+                    }
+                }
+                OpCode::FetchClassConst(class_name, const_name) => {
+                    let resolved_class = self.resolve_class_name(class_name)?;
+                    let (val, visibility, defining_class) = self.find_class_constant(resolved_class, const_name)?;
+                    self.check_const_visibility(defining_class, visibility)?;
+                    let handle = self.arena.alloc(val);
+                    self.operand_stack.push(handle);
+                }
+                OpCode::FetchStaticProp(class_name, prop_name) => {
+                    let resolved_class = self.resolve_class_name(class_name)?;
+                    let (val, visibility, defining_class) = self.find_static_prop(resolved_class, prop_name)?;
+                    self.check_const_visibility(defining_class, visibility)?;
+                    let handle = self.arena.alloc(val);
+                    self.operand_stack.push(handle);
+                }
+                OpCode::AssignStaticProp(class_name, prop_name) => {
+                    let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(val_handle).value.clone();
+                    
+                    let resolved_class = self.resolve_class_name(class_name)?;
+                    let (_, visibility, defining_class) = self.find_static_prop(resolved_class, prop_name)?;
+                    self.check_const_visibility(defining_class, visibility)?;
+                    
+                    if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
+                        if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
+                            entry.0 = val.clone();
+                        }
+                    }
+                    
+                    let res_handle = self.arena.alloc(val);
+                    self.operand_stack.push(res_handle);
                 }
                 OpCode::New(class_name, arg_count) => {
                     if self.context.classes.contains_key(&class_name) {
@@ -550,7 +690,7 @@ impl VM {
                         
                         // Check for constructor
                         let constructor_name = self.context.interner.intern(b"__construct");
-                        if let Some((constructor, _, defined_class)) = self.find_method(class_name, constructor_name) {
+                        if let Some((constructor, _, _, defined_class)) = self.find_method(class_name, constructor_name) {
                              // Collect args
                             let mut args = Vec::new();
                             for _ in 0..arg_count {
@@ -646,7 +786,7 @@ impl VM {
                         return Err(VmError::RuntimeError("Call to member function on non-object".into()));
                     };
                     
-                    if let Some((user_func, visibility, defined_class)) = self.find_method(class_name, method_name) {
+                    if let Some((user_func, visibility, is_static, defined_class)) = self.find_method(class_name, method_name) {
                         // Check visibility
                         match visibility {
                             Visibility::Public => {},
@@ -677,8 +817,43 @@ impl VM {
                         let obj_handle = self.operand_stack.pop().unwrap();
                         
                         let mut frame = CallFrame::new(user_func.chunk.clone());
-                        frame.this = Some(obj_handle);
+                        if !is_static {
+                            frame.this = Some(obj_handle);
+                        }
                         frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+                        
+                        for (i, param) in user_func.params.iter().enumerate() {
+                            if i < args.len() {
+                                frame.locals.insert(*param, args[i]);
+                            }
+                        }
+                        
+                        self.frames.push(frame);
+                    } else {
+                        return Err(VmError::RuntimeError("Method not found".into()));
+                    }
+                }
+                OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
+                    let resolved_class = self.resolve_class_name(class_name)?;
+                    
+                    if let Some((user_func, visibility, is_static, defined_class)) = self.find_method(resolved_class, method_name) {
+                        if !is_static {
+                             return Err(VmError::RuntimeError("Non-static method called statically".into()));
+                        }
+                        
+                        self.check_const_visibility(defined_class, visibility)?;
+                        
+                        let mut args = Vec::new();
+                        for _ in 0..arg_count {
+                            args.push(self.operand_stack.pop().unwrap());
+                        }
+                        args.reverse();
+                        
+                        let mut frame = CallFrame::new(user_func.chunk.clone());
+                        frame.this = None;
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(resolved_class);
                         
                         for (i, param) in user_func.params.iter().enumerate() {
                             if i < args.len() {

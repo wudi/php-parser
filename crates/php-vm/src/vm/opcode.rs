@@ -47,8 +47,14 @@ pub enum OpCode {
 
     // Objects
     DefClass(Symbol, Option<Symbol>),       // Define class (name, parent)
-    DefMethod(Symbol, Symbol, u32, Visibility), // (class_name, method_name, func_idx, visibility)
+    DefMethod(Symbol, Symbol, u32, Visibility, bool), // (class_name, method_name, func_idx, visibility, is_static)
     DefProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
+    DefClassConst(Symbol, Symbol, u16, Visibility), // (class_name, const_name, val_idx, visibility)
+    DefStaticProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
+    FetchClassConst(Symbol, Symbol), // (class_name, const_name) -> [Val]
+    FetchStaticProp(Symbol, Symbol), // (class_name, prop_name) -> [Val]
+    AssignStaticProp(Symbol, Symbol), // (class_name, prop_name) [Val] -> [Val]
+    CallStaticMethod(Symbol, Symbol, u8), // (class_name, method_name, arg_count) -> [RetVal]
     New(Symbol, u8),        // Create instance, call constructor with N args
     FetchProp(Symbol),      // [Obj] -> [Val]
     AssignProp(Symbol),     // [Obj, Val] -> [Val]

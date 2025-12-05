@@ -131,6 +131,7 @@ impl<'src> Emitter<'src> {
                             let method_name_str = self.get_text(name.span);
                             let method_sym = self.interner.intern(method_name_str);
                             let visibility = self.get_visibility(modifiers);
+                            let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
                             
                             // Compile method body
                             let mut method_emitter = Emitter::new(self.source, self.interner);
@@ -154,10 +155,12 @@ impl<'src> Emitter<'src> {
                             let func_res = Val::Resource(Rc::new(user_func));
                             let const_idx = self.add_constant(func_res);
                             
-                            self.chunk.code.push(OpCode::DefMethod(class_sym, method_sym, const_idx as u32, visibility));
+                            self.chunk.code.push(OpCode::DefMethod(class_sym, method_sym, const_idx as u32, visibility, is_static));
                         }
                         ClassMember::Property { entries, modifiers, .. } => {
                             let visibility = self.get_visibility(modifiers);
+                            let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
+                            
                             for entry in *entries {
                                 let prop_name_str = self.get_text(entry.name.span);
                                 let prop_name = if prop_name_str.starts_with(b"$") {
@@ -179,7 +182,26 @@ impl<'src> Emitter<'src> {
                                     self.add_constant(Val::Null)
                                 };
                                 
-                                self.chunk.code.push(OpCode::DefProp(class_sym, prop_sym, default_idx as u16, visibility));
+                                if is_static {
+                                    self.chunk.code.push(OpCode::DefStaticProp(class_sym, prop_sym, default_idx as u16, visibility));
+                                } else {
+                                    self.chunk.code.push(OpCode::DefProp(class_sym, prop_sym, default_idx as u16, visibility));
+                                }
+                            }
+                        }
+                        ClassMember::Const { consts, modifiers, .. } => {
+                            let visibility = self.get_visibility(modifiers);
+                            for entry in *consts {
+                                let const_name_str = self.get_text(entry.name.span);
+                                let const_sym = self.interner.intern(const_name_str);
+                                
+                                let val = match self.get_literal_value(entry.value) {
+                                    Some(v) => v,
+                                    None => Val::Null,
+                                };
+                                let val_idx = self.add_constant(val);
+                                
+                                self.chunk.code.push(OpCode::DefClassConst(class_sym, const_sym, val_idx as u16, visibility));
                             }
                         }
                         _ => {}
@@ -409,6 +431,46 @@ impl<'src> Emitter<'src> {
                     }
                 }
             }
+            Expr::StaticCall { class, method, args, .. } => {
+                if let Expr::Variable { span, .. } = class {
+                    let class_name = self.get_text(*span);
+                    if !class_name.starts_with(b"$") {
+                        let class_sym = self.interner.intern(class_name);
+                        
+                        for arg in *args {
+                            self.emit_expr(arg.value);
+                        }
+                        
+                        if let Expr::Variable { span: method_span, .. } = method {
+                            let method_name = self.get_text(*method_span);
+                            if !method_name.starts_with(b"$") {
+                                let method_sym = self.interner.intern(method_name);
+                                self.chunk.code.push(OpCode::CallStaticMethod(class_sym, method_sym, args.len() as u8));
+                            }
+                        }
+                    }
+                }
+            }
+            Expr::ClassConstFetch { class, constant, .. } => {
+                if let Expr::Variable { span, .. } = class {
+                    let class_name = self.get_text(*span);
+                    if !class_name.starts_with(b"$") {
+                        let class_sym = self.interner.intern(class_name);
+                        
+                        if let Expr::Variable { span: const_span, .. } = constant {
+                             let const_name = self.get_text(*const_span);
+                             if const_name.starts_with(b"$") {
+                                 let prop_name = &const_name[1..];
+                                 let prop_sym = self.interner.intern(prop_name);
+                                 self.chunk.code.push(OpCode::FetchStaticProp(class_sym, prop_sym));
+                             } else {
+                                 let const_sym = self.interner.intern(const_name);
+                                 self.chunk.code.push(OpCode::FetchClassConst(class_sym, const_sym));
+                             }
+                        }
+                    }
+                }
+            }
             Expr::Assign { var, expr, .. } => {
                 match var {
                     Expr::Variable { span, .. } => {
@@ -429,6 +491,24 @@ impl<'src> Emitter<'src> {
                             if !name.starts_with(b"$") {
                                 let sym = self.interner.intern(name);
                                 self.chunk.code.push(OpCode::AssignProp(sym));
+                            }
+                        }
+                    }
+                    Expr::ClassConstFetch { class, constant, .. } => {
+                        self.emit_expr(expr);
+                        if let Expr::Variable { span, .. } = class {
+                            let class_name = self.get_text(*span);
+                            if !class_name.starts_with(b"$") {
+                                let class_sym = self.interner.intern(class_name);
+                                
+                                if let Expr::Variable { span: const_span, .. } = constant {
+                                     let const_name = self.get_text(*const_span);
+                                     if const_name.starts_with(b"$") {
+                                         let prop_name = &const_name[1..];
+                                         let prop_sym = self.interner.intern(prop_name);
+                                         self.chunk.code.push(OpCode::AssignStaticProp(class_sym, prop_sym));
+                                     }
+                                }
                             }
                         }
                     }
