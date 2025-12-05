@@ -9,6 +9,7 @@ pub struct UserFunc {
     pub uses: Vec<Symbol>,
     pub chunk: Rc<CodeChunk>,
     pub is_static: bool,
+    pub is_generator: bool,
 }
 
 #[derive(Debug, Clone)]

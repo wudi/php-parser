@@ -119,8 +119,9 @@ pub enum OpCode {
     Catch,
     
     // Generators
-    Yield,
+    Yield(bool), // bool: has_key
     YieldFrom,
+    GetSentValue, // Push sent value from GeneratorData
     
     // Assignment Ops
     AssignOp(u8), // 0=Add, 1=Sub, 2=Mul, 3=Div, 4=Mod, 5=Sl, 6=Sr, 7=Concat, 8=BwOr, 9=BwAnd, 10=BwXor, 11=Pow

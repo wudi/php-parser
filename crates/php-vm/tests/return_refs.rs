@@ -18,7 +18,7 @@ fn run_code(source: &str) -> Result<(Val, VM), VmError> {
     }
     
     let mut emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let chunk = emitter.compile(program.statements);
+    let (chunk, _) = emitter.compile(program.statements);
     
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk))?;

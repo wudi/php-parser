@@ -16,6 +16,7 @@ pub struct Emitter<'src> {
     source: &'src [u8],
     interner: &'src mut Interner,
     loop_stack: Vec<LoopInfo>,
+    is_generator: bool,
 }
 
 impl<'src> Emitter<'src> {
@@ -25,6 +26,7 @@ impl<'src> Emitter<'src> {
             source,
             interner,
             loop_stack: Vec::new(),
+            is_generator: false,
         }
     }
 
@@ -40,7 +42,7 @@ impl<'src> Emitter<'src> {
         Visibility::Public // Default
     }
 
-    pub fn compile(mut self, stmts: &[StmtId]) -> CodeChunk {
+    pub fn compile(mut self, stmts: &[StmtId]) -> (CodeChunk, bool) {
         for stmt in stmts {
             self.emit_stmt(stmt);
         }
@@ -49,7 +51,7 @@ impl<'src> Emitter<'src> {
         self.chunk.code.push(OpCode::Const(null_idx as u16));
         self.chunk.code.push(OpCode::Return);
         
-        self.chunk
+        (self.chunk, self.is_generator)
     }
 
     fn emit_members(&mut self, class_sym: crate::core::value::Symbol, members: &[ClassMember]) {
@@ -63,7 +65,7 @@ impl<'src> Emitter<'src> {
                     
                     // Compile method body
                     let method_emitter = Emitter::new(self.source, self.interner);
-                    let method_chunk = method_emitter.compile(body);
+                    let (method_chunk, is_generator) = method_emitter.compile(body);
                     
                     // Extract params
                     let mut param_syms = Vec::new();
@@ -83,6 +85,7 @@ impl<'src> Emitter<'src> {
                         uses: Vec::new(),
                         chunk: Rc::new(method_chunk),
                         is_static,
+                        is_generator,
                     };
                     
                     // Store in constants
@@ -235,7 +238,7 @@ impl<'src> Emitter<'src> {
                 
                 // Compile body
                 let func_emitter = Emitter::new(self.source, self.interner);
-                let mut func_chunk = func_emitter.compile(body);
+                let (mut func_chunk, is_generator) = func_emitter.compile(body);
                 func_chunk.returns_ref = *by_ref;
                 
                 // Extract params
@@ -256,6 +259,7 @@ impl<'src> Emitter<'src> {
                     uses: Vec::new(),
                     chunk: Rc::new(func_chunk),
                     is_static: false,
+                    is_generator,
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -940,6 +944,7 @@ impl<'src> Emitter<'src> {
                 self.chunk.code.push(OpCode::Clone);
             }
             Expr::Yield { key, value, from, .. } => {
+                self.is_generator = true;
                 if *from {
                     if let Some(v) = value {
                         self.emit_expr(v);
@@ -949,25 +954,25 @@ impl<'src> Emitter<'src> {
                     }
                     self.chunk.code.push(OpCode::YieldFrom);
                 } else {
+                    let has_key = key.is_some();
                     if let Some(k) = key {
                         self.emit_expr(k);
-                    } else {
-                        let idx = self.add_constant(Val::Int(0)); 
-                        self.chunk.code.push(OpCode::Const(idx as u16)); 
                     }
+                    
                     if let Some(v) = value {
                         self.emit_expr(v);
                     } else {
                         let idx = self.add_constant(Val::Null);
                         self.chunk.code.push(OpCode::Const(idx as u16));
                     }
-                    self.chunk.code.push(OpCode::Yield);
+                    self.chunk.code.push(OpCode::Yield(has_key));
+                    self.chunk.code.push(OpCode::GetSentValue);
                 }
             }
             Expr::Closure { params, uses, body, by_ref, is_static, .. } => {
                 // Compile body
                 let func_emitter = Emitter::new(self.source, self.interner);
-                let mut func_chunk = func_emitter.compile(body);
+                let (mut func_chunk, is_generator) = func_emitter.compile(body);
                 func_chunk.returns_ref = *by_ref;
                 
                 // Extract params
@@ -1006,6 +1011,7 @@ impl<'src> Emitter<'src> {
                     uses: use_syms.clone(),
                     chunk: Rc::new(func_chunk),
                     is_static: *is_static,
+                    is_generator,
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -1209,6 +1215,7 @@ impl<'src> Emitter<'src> {
                                 let var_name = &name[1..];
                                 let sym = self.interner.intern(var_name);
                                 self.chunk.code.push(OpCode::StoreVar(sym));
+                                self.chunk.code.push(OpCode::LoadVar(sym));
                             }
                         }
                     }

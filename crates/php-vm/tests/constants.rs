@@ -20,7 +20,7 @@ fn run_code(source: &str) {
     }
     
     let emitter = php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
-    let chunk = emitter.compile(program.statements);
+    let (chunk, _) = emitter.compile(program.statements);
     
     if let Err(e) = vm.run(Rc::new(chunk)) {
         panic!("VM Error: {:?}", e);

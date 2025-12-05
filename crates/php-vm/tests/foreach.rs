@@ -19,7 +19,7 @@ fn run_code(source: &str) -> Val {
     let mut vm = VM::new(Arc::new(context));
     
     let emitter = php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
-    let chunk = emitter.compile(program.statements);
+    let (chunk, _) = emitter.compile(program.statements);
     
     vm.run(Rc::new(chunk)).unwrap();
     

@@ -25,7 +25,7 @@ fn run_code(source: &str) -> Val {
     }
     
     let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let chunk = emitter.compile(&program.statements);
+    let (chunk, _) = emitter.compile(&program.statements);
     
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap_or_else(|e| panic!("Runtime error: {:?}", e));
