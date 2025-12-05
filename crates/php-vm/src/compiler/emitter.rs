@@ -82,6 +82,7 @@ impl<'src> Emitter<'src> {
                         params: param_syms,
                         uses: Vec::new(),
                         chunk: Rc::new(method_chunk),
+                        is_static,
                     };
                     
                     // Store in constants
@@ -254,6 +255,7 @@ impl<'src> Emitter<'src> {
                     params: param_syms,
                     uses: Vec::new(),
                     chunk: Rc::new(func_chunk),
+                    is_static: false,
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -962,7 +964,7 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::Yield);
                 }
             }
-            Expr::Closure { params, uses, body, by_ref, .. } => {
+            Expr::Closure { params, uses, body, by_ref, is_static, .. } => {
                 // Compile body
                 let func_emitter = Emitter::new(self.source, self.interner);
                 let mut func_chunk = func_emitter.compile(body);
@@ -989,8 +991,13 @@ impl<'src> Emitter<'src> {
                         let sym = self.interner.intern(&u_name[1..]);
                         use_syms.push(sym);
                         
-                        // Emit code to push the captured variable onto the stack
-                        self.chunk.code.push(OpCode::LoadVar(sym));
+                        if use_var.by_ref {
+                            self.chunk.code.push(OpCode::LoadRef(sym));
+                        } else {
+                            // Emit code to push the captured variable onto the stack
+                            self.chunk.code.push(OpCode::LoadVar(sym));
+                            self.chunk.code.push(OpCode::Copy);
+                        }
                     }
                 }
                 
@@ -998,6 +1005,7 @@ impl<'src> Emitter<'src> {
                     params: param_syms,
                     uses: use_syms.clone(),
                     chunk: Rc::new(func_chunk),
+                    is_static: *is_static,
                 };
                 
                 let func_res = Val::Resource(Rc::new(user_func));

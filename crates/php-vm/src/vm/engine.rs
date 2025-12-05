@@ -6,7 +6,7 @@ use crate::core::heap::Arena;
 use crate::core::value::{Val, ArrayKey, Handle, ObjectData, Symbol, Visibility};
 use crate::vm::stack::Stack;
 use crate::vm::opcode::OpCode;
-use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData, FuncParam};
+use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData};
 use crate::vm::frame::CallFrame;
 use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 
@@ -380,6 +380,27 @@ impl VM {
                         } else {
                             return Err(VmError::RuntimeError(format!("Undefined variable: {:?}", sym)));
                         }
+                    }
+                }
+                OpCode::LoadRef(sym) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    if let Some(&handle) = frame.locals.get(&sym) {
+                        if self.arena.get(handle).is_ref {
+                            self.operand_stack.push(handle);
+                        } else {
+                            // Convert to ref. Clone to ensure uniqueness/safety.
+                            let val = self.arena.get(handle).value.clone();
+                            let new_handle = self.arena.alloc(val);
+                            self.arena.get_mut(new_handle).is_ref = true;
+                            frame.locals.insert(sym, new_handle);
+                            self.operand_stack.push(new_handle);
+                        }
+                    } else {
+                        // Undefined variable, create as Null ref
+                        let handle = self.arena.alloc(Val::Null);
+                        self.arena.get_mut(handle).is_ref = true;
+                        frame.locals.insert(sym, handle);
+                        self.operand_stack.push(handle);
                     }
                 }
                 OpCode::StoreVar(sym) => {
@@ -826,9 +847,17 @@ impl VM {
                         }
                     }
                     
+                    let this_handle = if user_func.is_static {
+                        None
+                    } else {
+                        let frame = self.frames.last().unwrap();
+                        frame.this
+                    };
+                    
                     let closure_data = ClosureData {
                         func: user_func,
                         captures,
+                        this: this_handle,
                     };
                     
                     let closure_class_sym = self.context.interner.intern(b"Closure");
@@ -939,6 +968,8 @@ impl VM {
                                         for (sym, handle) in &closure.captures {
                                             frame.locals.insert(*sym, *handle);
                                         }
+                                        
+                                        frame.this = closure.this;
                                         
                                         self.frames.push(frame);
                                     } else {
@@ -1885,6 +1916,12 @@ impl VM {
                     } else {
                         return Err(VmError::RuntimeError("__clone method called on non-object".into()));
                     }
+                }
+                OpCode::Copy => {
+                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let val = self.arena.get(handle).value.clone();
+                    let new_handle = self.arena.alloc(val);
+                    self.operand_stack.push(new_handle);
                 }
                 OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
                     let resolved_class = self.resolve_class_name(class_name)?;

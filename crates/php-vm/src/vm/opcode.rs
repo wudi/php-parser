@@ -47,6 +47,7 @@ pub enum OpCode {
     DefFunc(Symbol, u32), // (name, func_idx) -> Define global function
     Recv(u32), RecvInit(u32, u16), // Arg index, default val index
     SendVal, SendVar, SendRef,
+    LoadRef(Symbol), // Load variable as reference (converting if necessary)
     
     // System
     Include,         // Runtime compilation
@@ -108,6 +109,7 @@ pub enum OpCode {
     GetCalledClass,
     GetType,
     Clone,
+    Copy, // Copy value (for closure capture by value)
     
     // Closures
     Closure(u32, u32), // (func_idx, num_captures) -> [Closure]

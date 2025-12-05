@@ -8,6 +8,7 @@ pub struct UserFunc {
     pub params: Vec<FuncParam>,
     pub uses: Vec<Symbol>,
     pub chunk: Rc<CodeChunk>,
+    pub is_static: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +21,7 @@ pub struct FuncParam {
 pub struct ClosureData {
     pub func: Rc<UserFunc>,
     pub captures: IndexMap<Symbol, Handle>,
+    pub this: Option<Handle>,
 }
 
 #[derive(Debug, Clone)]

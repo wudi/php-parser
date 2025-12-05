@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::core::value::{Symbol, Val, Handle, Visibility};
 use crate::core::interner::Interner;
 use crate::vm::engine::VM;
-use crate::compiler::chunk::{CodeChunk, UserFunc, FuncParam};
+use crate::compiler::chunk::UserFunc;
 use crate::builtins::stdlib;
 
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
