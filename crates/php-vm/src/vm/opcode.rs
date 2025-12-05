@@ -48,8 +48,12 @@ pub enum OpCode {
     IterValid(u32),  // [Array, Index]. If invalid (end), pop both and jump.
     IterNext,        // [Array, Index] -> [Array, Index+1]
     IterGetVal(Symbol), // [Array, Index] -> Assigns val to local
-    IterGetValRef(Symbol), // [Array, Index] -> Assigns val ref to local
+    IterGetValRef(Symbol), // [Array, Index] -> Assigns ref to local
     IterGetKey(Symbol), // [Array, Index] -> Assigns key to local
+
+    // Constants
+    FetchGlobalConst(Symbol),
+    DefGlobalConst(Symbol, u16), // (name, val_idx)
 
     // Objects
     DefClass(Symbol, Option<Symbol>),       // Define class (name, parent)

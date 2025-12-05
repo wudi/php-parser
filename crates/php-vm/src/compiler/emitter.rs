@@ -1,4 +1,4 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst};
 use php_parser::lexer::token::{Token, TokenKind};
 use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry, FuncParam};
 use crate::vm::opcode::OpCode;
@@ -72,6 +72,28 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::Const(idx as u16));
                 }
                 self.chunk.code.push(OpCode::Return);
+            }
+            Stmt::Const { consts, .. } => {
+                for c in *consts {
+                    let name_str = self.get_text(c.name.span);
+                    let sym = self.interner.intern(name_str);
+                    
+                    // Value must be constant expression.
+                    // For now, we only support literals or simple expressions we can evaluate at compile time?
+                    // Or we can emit code to evaluate it and then define it?
+                    // PHP `const` requires constant expression.
+                    // If we emit code, we can use `DefGlobalConst` which takes a value index?
+                    // No, `DefGlobalConst` takes `val_idx` which implies it's in the constant table.
+                    // So we must evaluate it at compile time.
+                    
+                    let val = match self.get_literal_value(c.value) {
+                        Some(v) => v,
+                        None => Val::Null, // TODO: Error or support more complex constant expressions
+                    };
+                    
+                    let val_idx = self.add_constant(val);
+                    self.chunk.code.push(OpCode::DefGlobalConst(sym, val_idx as u16));
+                }
             }
             Stmt::Break { .. } => {
                 if let Some(loop_info) = self.loop_stack.last_mut() {
@@ -591,6 +613,10 @@ impl<'src> Emitter<'src> {
                     let var_name = &name[1..];
                     let sym = self.interner.intern(var_name);
                     self.chunk.code.push(OpCode::LoadVar(sym));
+                } else {
+                    // Constant fetch
+                    let sym = self.interner.intern(name);
+                    self.chunk.code.push(OpCode::FetchGlobalConst(sym));
                 }
             }
             Expr::Array { items, .. } => {

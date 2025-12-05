@@ -39,6 +39,8 @@ impl EngineContext {
         functions.insert(b"is_null".to_vec(), stdlib::php_is_null as NativeHandler);
         functions.insert(b"implode".to_vec(), stdlib::php_implode as NativeHandler);
         functions.insert(b"explode".to_vec(), stdlib::php_explode as NativeHandler);
+        functions.insert(b"define".to_vec(), stdlib::php_define as NativeHandler);
+        functions.insert(b"defined".to_vec(), stdlib::php_defined as NativeHandler);
 
         Self {
             functions,
@@ -50,6 +52,7 @@ impl EngineContext {
 pub struct RequestContext {
     pub engine: Arc<EngineContext>,
     pub globals: HashMap<Symbol, Handle>,
+    pub constants: HashMap<Symbol, Val>,
     pub user_functions: HashMap<Symbol, Rc<UserFunc>>,
     pub classes: HashMap<Symbol, ClassDef>,
     pub included_files: HashSet<String>,
@@ -61,6 +64,7 @@ impl RequestContext {
         Self {
             engine,
             globals: HashMap::new(),
+            constants: HashMap::new(),
             user_functions: HashMap::new(),
             classes: HashMap::new(),
             included_files: HashSet::new(),

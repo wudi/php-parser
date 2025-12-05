@@ -200,7 +200,7 @@ pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             _ => return Err("implode(): Array elements must be stringable".into()),
         }
     }
-
+    
     Ok(vm.arena.alloc(Val::String(result)))
 }
 
@@ -208,26 +208,23 @@ pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 2 {
         return Err("explode() expects exactly 2 parameters".into());
     }
-
-    let sep_val = vm.arena.get(args[0]);
-    let sep = match &sep_val.value {
+    
+    let sep = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Err("explode(): Parameter 1 must be string".into()),
     };
-
+    
     if sep.is_empty() {
         return Err("explode(): Empty delimiter".into());
     }
-
-    let str_val = vm.arena.get(args[1]);
-    let s = match &str_val.value {
+    
+    let s = match &vm.arena.get(args[1]).value {
         Val::String(s) => s.clone(),
         _ => return Err("explode(): Parameter 2 must be string".into()),
     };
-
+    
     // Naive implementation for Vec<u8>
     let mut result_arr = indexmap::IndexMap::new();
-    let mut start = 0;
     let mut idx = 0;
     
     // Helper to find sub-slice
@@ -253,4 +250,59 @@ pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
 
     Ok(vm.arena.alloc(Val::Array(result_arr)))
+}
+
+pub fn php_define(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("define() expects at least 2 parameters".into());
+    }
+    
+    let name_val = vm.arena.get(args[0]);
+    let name = match &name_val.value {
+        Val::String(s) => s.clone(),
+        _ => return Err("define(): Parameter 1 must be string".into()),
+    };
+    
+    let value_handle = args[1];
+    let value = vm.arena.get(value_handle).value.clone();
+    
+    // Case insensitive? Third arg.
+    let _case_insensitive = if args.len() > 2 {
+        let ci_val = vm.arena.get(args[2]);
+        match &ci_val.value {
+            Val::Bool(b) => *b,
+            _ => false,
+        }
+    } else {
+        false
+    };
+    
+    let sym = vm.context.interner.intern(&name);
+    
+    if vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym) {
+        // Notice: Constant already defined
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+    
+    vm.context.constants.insert(sym, value);
+    
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+pub fn php_defined(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("defined() expects exactly 1 parameter".into());
+    }
+    
+    let name_val = vm.arena.get(args[0]);
+    let name = match &name_val.value {
+        Val::String(s) => s.clone(),
+        _ => return Err("defined(): Parameter 1 must be string".into()),
+    };
+    
+    let sym = vm.context.interner.intern(&name);
+    
+    let exists = vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym);
+    
+    Ok(vm.arena.alloc(Val::Bool(exists)))
 }

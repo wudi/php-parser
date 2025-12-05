@@ -1004,6 +1004,29 @@ impl VM {
                         class_def.constants.insert(const_name, (val, visibility));
                     }
                 }
+                OpCode::DefGlobalConst(name, val_idx) => {
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[val_idx as usize].clone()
+                    };
+                    self.context.constants.insert(name, val);
+                }
+                OpCode::FetchGlobalConst(name) => {
+                    if let Some(val) = self.context.constants.get(&name) {
+                        let handle = self.arena.alloc(val.clone());
+                        self.operand_stack.push(handle);
+                    } else if let Some(val) = self.context.engine.constants.get(&name) {
+                        let handle = self.arena.alloc(val.clone());
+                        self.operand_stack.push(handle);
+                    } else {
+                        // If not found, PHP treats it as a string "NAME" and issues a warning.
+                        let name_bytes = self.context.interner.lookup(name).unwrap_or(b"???");
+                        let val = Val::String(name_bytes.to_vec());
+                        let handle = self.arena.alloc(val);
+                        self.operand_stack.push(handle);
+                        // TODO: Issue warning
+                    }
+                }
                 OpCode::DefStaticProp(class_name, prop_name, default_idx, visibility) => {
                     let val = {
                         let frame = self.frames.last().unwrap();
