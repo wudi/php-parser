@@ -1,13 +1,22 @@
 use php_vm::vm::engine::VM;
-use php_vm::runtime::context::EngineContext;
+use php_vm::compiler::emitter::Emitter;
+use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::core::value::Val;
-use std::sync::Arc;
 use std::rc::Rc;
-use bumpalo::Bump;
+use std::sync::Arc;
 
 fn run_code(source: &str) -> Val {
-    let arena = Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
+    let full_source = if source.trim().starts_with("<?php") {
+        source.to_string()
+    } else {
+        format!("<?php {}", source)
+    };
+    
+    let engine_context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(engine_context);
+    
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
     
@@ -15,15 +24,13 @@ fn run_code(source: &str) -> Val {
         panic!("Parse errors: {:?}", program.errors);
     }
     
-    let context = EngineContext::new();
-    let mut vm = VM::new(Arc::new(context));
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let chunk = emitter.compile(&program.statements);
     
-    let emitter = php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
-    let chunk = emitter.compile(program.statements);
+    let mut vm = VM::new_with_context(request_context);
+    vm.run(Rc::new(chunk)).expect("Execution failed");
     
-    vm.run(Rc::new(chunk)).unwrap();
-    
-    let handle = vm.last_return_value.expect("VM should return a value");
+    let handle = vm.last_return_value.expect("No return value");
     vm.arena.get(handle).value.clone()
 }
 

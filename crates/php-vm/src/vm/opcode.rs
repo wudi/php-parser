@@ -6,6 +6,7 @@ pub enum OpCode {
     Nop,
     Const(u16),      // Push constant from table
     Pop,
+    Dup,
     
     // Arithmetic
     Add, Sub, Mul, Div, Mod, Pow,

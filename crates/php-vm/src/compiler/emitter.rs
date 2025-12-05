@@ -1,4 +1,4 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst, CastKind};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst, CastKind, Case, MatchArm};
 use php_parser::lexer::token::{Token, TokenKind};
 use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry, FuncParam};
 use crate::vm::opcode::OpCode;
@@ -456,6 +456,68 @@ impl<'src> Emitter<'src> {
                 self.emit_expr(expr);
                 self.chunk.code.push(OpCode::Throw);
             }
+            Stmt::Switch { condition, cases, .. } => {
+                self.emit_expr(condition);
+                
+                let dispatch_jump = self.chunk.code.len();
+                self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                
+                let mut case_labels = Vec::new();
+                let mut default_label = None;
+                
+                self.loop_stack.push(LoopInfo { break_jumps: Vec::new(), continue_jumps: Vec::new() });
+                
+                for case in *cases {
+                    let label = self.chunk.code.len();
+                    case_labels.push(label);
+                    
+                    if case.condition.is_none() {
+                        default_label = Some(label);
+                    }
+                    
+                    for stmt in case.body {
+                        self.emit_stmt(stmt);
+                    }
+                }
+                
+                let jump_over_dispatch = self.chunk.code.len();
+                self.chunk.code.push(OpCode::Jmp(0)); // Patch to end_label
+                
+                let dispatch_start = self.chunk.code.len();
+                self.patch_jump(dispatch_jump, dispatch_start);
+                
+                // Dispatch logic
+                for (i, case) in cases.iter().enumerate() {
+                    if let Some(cond) = case.condition {
+                        self.chunk.code.push(OpCode::Dup); // Dup switch cond
+                        self.emit_expr(cond);
+                        self.chunk.code.push(OpCode::IsEqual); // Loose comparison
+                        self.chunk.code.push(OpCode::JmpIfTrue(case_labels[i] as u32));
+                    }
+                }
+                
+                // Pop switch cond
+                self.chunk.code.push(OpCode::Pop);
+                
+                if let Some(def_lbl) = default_label {
+                    self.chunk.code.push(OpCode::Jmp(def_lbl as u32));
+                } else {
+                    // No default, jump to end
+                    self.chunk.code.push(OpCode::Jmp(jump_over_dispatch as u32)); // Will be patched to end_label
+                }
+                
+                let end_label = self.chunk.code.len();
+                self.patch_jump(jump_over_dispatch, end_label);
+                
+                let loop_info = self.loop_stack.pop().unwrap();
+                for idx in loop_info.break_jumps {
+                    self.patch_jump(idx, end_label);
+                }
+                // Continue in switch acts like break
+                for idx in loop_info.continue_jumps {
+                    self.patch_jump(idx, end_label);
+                }
+            }
             Stmt::Try { body, catches, finally, .. } => {
                 let try_start = self.chunk.code.len() as u32;
                 for stmt in *body {
@@ -523,6 +585,10 @@ impl<'src> Emitter<'src> {
         let new_op = match op {
             OpCode::Jmp(_) => OpCode::Jmp(target as u32),
             OpCode::JmpIfFalse(_) => OpCode::JmpIfFalse(target as u32),
+            OpCode::JmpIfTrue(_) => OpCode::JmpIfTrue(target as u32),
+            OpCode::JmpZEx(_) => OpCode::JmpZEx(target as u32),
+            OpCode::JmpNzEx(_) => OpCode::JmpNzEx(target as u32),
+            OpCode::Coalesce(_) => OpCode::Coalesce(target as u32),
             OpCode::IterInit(_) => OpCode::IterInit(target as u32),
             OpCode::IterValid(_) => OpCode::IterValid(target as u32),
             _ => panic!("Cannot patch non-jump opcode: {:?}", op),
@@ -640,6 +706,63 @@ impl<'src> Emitter<'src> {
                             _ => {} 
                         }
                     }
+                }
+            }
+            Expr::Match { condition, arms, .. } => {
+                self.emit_expr(condition);
+                
+                let mut end_jumps = Vec::new();
+                
+                for arm in *arms {
+                    if let Some(conds) = arm.conditions {
+                        let mut body_jump_indices = Vec::new();
+                        
+                        for cond in conds {
+                            self.chunk.code.push(OpCode::Dup);
+                            self.emit_expr(cond);
+                            self.chunk.code.push(OpCode::IsIdentical); // Strict
+                            
+                            let jump_idx = self.chunk.code.len();
+                            self.chunk.code.push(OpCode::JmpIfTrue(0)); // Jump to body
+                            body_jump_indices.push(jump_idx);
+                        }
+                        
+                        // If we are here, none matched. Jump to next arm.
+                        let skip_body_idx = self.chunk.code.len();
+                        self.chunk.code.push(OpCode::Jmp(0)); 
+                        
+                        // Body start
+                        let body_start = self.chunk.code.len();
+                        for idx in body_jump_indices {
+                            self.patch_jump(idx, body_start);
+                        }
+                        
+                        // Pop condition before body
+                        self.chunk.code.push(OpCode::Pop); 
+                        self.emit_expr(arm.body);
+                        
+                        // Jump to end
+                        end_jumps.push(self.chunk.code.len());
+                        self.chunk.code.push(OpCode::Jmp(0));
+                        
+                        // Patch skip_body_idx to here (next arm)
+                        self.patch_jump(skip_body_idx, self.chunk.code.len());
+                        
+                    } else {
+                        // Default arm
+                        self.chunk.code.push(OpCode::Pop); // Pop condition
+                        self.emit_expr(arm.body);
+                        end_jumps.push(self.chunk.code.len());
+                        self.chunk.code.push(OpCode::Jmp(0));
+                    }
+                }
+                
+                // No match found
+                self.chunk.code.push(OpCode::MatchError);
+                
+                let end_label = self.chunk.code.len();
+                for idx in end_jumps {
+                    self.patch_jump(idx, end_label);
                 }
             }
             Expr::Print { expr, .. } => {

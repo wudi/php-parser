@@ -320,6 +320,10 @@ impl VM {
                 OpCode::Pop => {
                     self.operand_stack.pop();
                 }
+                OpCode::Dup => {
+                    let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    self.operand_stack.push(handle);
+                }
                 OpCode::BitwiseNot => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let val = self.arena.get(handle).value.clone();
