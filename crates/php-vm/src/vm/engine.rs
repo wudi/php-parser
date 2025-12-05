@@ -13,6 +13,7 @@ use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 #[derive(Debug)]
 pub enum VmError {
     RuntimeError(String),
+    Exception(Handle),
 }
 
 pub struct VM {
@@ -240,24 +241,77 @@ impl VM {
         }
     }
 
+    fn is_instance_of(&self, obj_handle: Handle, class_sym: Symbol) -> bool {
+        let obj_val = self.arena.get(obj_handle);
+        if let Val::Object(payload_handle) = obj_val.value {
+            if let Val::ObjPayload(data) = &self.arena.get(payload_handle).value {
+                let obj_class = data.class;
+                if obj_class == class_sym {
+                    return true;
+                }
+                return self.is_subclass_of(obj_class, class_sym);
+            }
+        }
+        false
+    }
+
+    fn handle_exception(&mut self, ex_handle: Handle) -> bool {
+        let mut frame_idx = self.frames.len();
+        while frame_idx > 0 {
+            frame_idx -= 1;
+            
+            let (ip, chunk) = {
+                let frame = &self.frames[frame_idx];
+                let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 } as u32;
+                (ip, frame.chunk.clone())
+            };
+            
+            for entry in &chunk.catch_table {
+                if ip >= entry.start && ip < entry.end {
+                    let matches = if let Some(type_sym) = entry.catch_type {
+                        self.is_instance_of(ex_handle, type_sym)
+                    } else {
+                        true
+                    };
+                    
+                    if matches {
+                        self.frames.truncate(frame_idx + 1);
+                        let frame = &mut self.frames[frame_idx];
+                        frame.ip = entry.target as usize;
+                        self.operand_stack.push(ex_handle);
+                        return true;
+                    }
+                }
+            }
+        }
+        self.frames.clear();
+        false
+    }
+
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
         let initial_frame = CallFrame::new(chunk);
         self.frames.push(initial_frame);
 
         while !self.frames.is_empty() {
-            let frame = self.frames.last_mut().unwrap();
-            
-            if frame.ip >= frame.chunk.code.len() {
-                self.frames.pop();
-                continue;
-            }
+            let op = {
+                let frame = self.frames.last_mut().unwrap();
+                if frame.ip >= frame.chunk.code.len() {
+                    self.frames.pop();
+                    continue;
+                }
+                let op = frame.chunk.code[frame.ip].clone();
+                println!("IP: {}, Op: {:?}, Stack: {}", frame.ip, op, self.operand_stack.len());
+                frame.ip += 1;
+                op
+            };
 
-            let op = frame.chunk.code[frame.ip].clone();
-            println!("IP: {}, Op: {:?}, Stack: {}", frame.ip, op, self.operand_stack.len());
-            frame.ip += 1;
-
-            match op {
+            let res = (|| -> Result<(), VmError> { match op {
+                OpCode::Throw => {
+                    let ex_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    return Err(VmError::Exception(ex_handle));
+                }
                 OpCode::Const(idx) => {
+                    let frame = self.frames.last().unwrap();
                     let val = frame.chunk.constants[idx as usize].clone();
                     let handle = self.arena.alloc(val);
                     self.operand_stack.push(handle);
@@ -271,6 +325,7 @@ impl VM {
                 OpCode::Div => self.binary_op(|a, b| a / b)?,
                 
                 OpCode::LoadVar(sym) => {
+                    let frame = self.frames.last().unwrap();
                     if let Some(&handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(handle);
                     } else {
@@ -289,10 +344,12 @@ impl VM {
                 }
                 OpCode::StoreVar(sym) => {
                     let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let frame = self.frames.last_mut().unwrap();
                     frame.locals.insert(sym, val_handle);
                 }
                 
                 OpCode::Jmp(target) => {
+                    let frame = self.frames.last_mut().unwrap();
                     frame.ip = target as usize;
                 }
                 OpCode::JmpIfFalse(target) => {
@@ -307,6 +364,7 @@ impl VM {
                     };
                     
                     if is_false {
+                        let frame = self.frames.last_mut().unwrap();
                         frame.ip = target as usize;
                     }
                 }
@@ -503,6 +561,7 @@ impl VM {
                     if len == 0 {
                         // Empty array, jump to end
                         self.operand_stack.pop(); // Pop array
+                        let frame = self.frames.last_mut().unwrap();
                         frame.ip = target as usize;
                     } else {
                         // Push index 0
@@ -516,7 +575,7 @@ impl VM {
                     let idx_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let array_handle = self.operand_stack.peek_at(1).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
-                    println!("IterValid: Stack len={}, Array={:?}, Index={:?}", self.operand_stack.len(), self.arena.get(array_handle).value, self.arena.get(idx_handle).value);
+                    // println!("IterValid: Stack len={}, Array={:?}, Index={:?}", self.operand_stack.len(), self.arena.get(array_handle).value, self.arena.get(idx_handle).value);
 
                     let idx = match self.arena.get(idx_handle).value {
                         Val::Int(i) => i as usize,
@@ -533,6 +592,7 @@ impl VM {
                         // Finished
                         self.operand_stack.pop(); // Pop Index
                         self.operand_stack.pop(); // Pop Array
+                        let frame = self.frames.last_mut().unwrap();
                         frame.ip = target as usize;
                     }
                 }
@@ -563,9 +623,8 @@ impl VM {
                     if let Val::Array(map) = array_val {
                         if let Some((_, val_handle)) = map.get_index(idx) {
                             // Store in local
-                            if let Some(frame) = self.frames.last_mut() {
-                                frame.locals.insert(sym, *val_handle);
-                            }
+                            let frame = self.frames.last_mut().unwrap();
+                            frame.locals.insert(sym, *val_handle);
                         } else {
                             return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
                         }
@@ -592,9 +651,8 @@ impl VM {
                             let key_handle = self.arena.alloc(key_val);
                             
                             // Store in local
-                            if let Some(frame) = self.frames.last_mut() {
-                                frame.locals.insert(sym, key_handle);
-                            }
+                            let frame = self.frames.last_mut().unwrap();
+                            frame.locals.insert(sym, key_handle);
                         } else {
                             return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
                         }
@@ -613,8 +671,10 @@ impl VM {
                     self.context.classes.insert(name, class_def);
                 }
                 OpCode::DefMethod(class_name, method_name, func_idx, visibility, is_static) => {
-                    let frame = self.frames.last().unwrap();
-                    let val = frame.chunk.constants[func_idx as usize].clone();
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[func_idx as usize].clone()
+                    };
                     if let Val::Resource(rc) = val {
                         if let Ok(func) = rc.downcast::<UserFunc>() {
                             if let Some(class_def) = self.context.classes.get_mut(&class_name) {
@@ -624,22 +684,28 @@ impl VM {
                     }
                 }
                 OpCode::DefProp(class_name, prop_name, default_idx, visibility) => {
-                    let frame = self.frames.last().unwrap();
-                    let val = frame.chunk.constants[default_idx as usize].clone();
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[default_idx as usize].clone()
+                    };
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.properties.insert(prop_name, (val, visibility));
                     }
                 }
                 OpCode::DefClassConst(class_name, const_name, val_idx, visibility) => {
-                    let frame = self.frames.last().unwrap();
-                    let val = frame.chunk.constants[val_idx as usize].clone();
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[val_idx as usize].clone()
+                    };
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.constants.insert(const_name, (val, visibility));
                     }
                 }
                 OpCode::DefStaticProp(class_name, prop_name, default_idx, visibility) => {
-                    let frame = self.frames.last().unwrap();
-                    let val = frame.chunk.constants[default_idx as usize].clone();
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[default_idx as usize].clone()
+                    };
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.static_properties.insert(prop_name, (val, visibility));
                     }
@@ -867,6 +933,36 @@ impl VM {
                     }
                 }
                 
+                OpCode::Concat => {
+                    let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let b_val = &self.arena.get(b_handle).value;
+                    let a_val = &self.arena.get(a_handle).value;
+                    
+                    let b_str = match b_val {
+                        Val::String(s) => s.clone(),
+                        Val::Int(i) => i.to_string().into_bytes(),
+                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
+                        Val::Null => vec![],
+                        _ => format!("{:?}", b_val).into_bytes(),
+                    };
+                    
+                    let a_str = match a_val {
+                        Val::String(s) => s.clone(),
+                        Val::Int(i) => i.to_string().into_bytes(),
+                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
+                        Val::Null => vec![],
+                        _ => format!("{:?}", a_val).into_bytes(),
+                    };
+                    
+                    let mut res = a_str;
+                    res.extend(b_str);
+                    
+                    let res_handle = self.arena.alloc(Val::String(res));
+                    self.operand_stack.push(res_handle);
+                }
+                
                 OpCode::IsEqual => self.binary_cmp(|a, b| a == b)?,
                 OpCode::IsNotEqual => self.binary_cmp(|a, b| a != b)?,
                 OpCode::IsIdentical => self.binary_cmp(|a, b| a == b)?,
@@ -887,8 +983,18 @@ impl VM {
                     (Val::Int(i1), Val::Int(i2)) => i1 <= i2,
                     _ => false 
                 })?,
-                
-                _ => return Err(VmError::RuntimeError(format!("Unimplemented opcode: {:?}", op))),
+            }
+            Ok(()) })();
+
+            if let Err(e) = res {
+                match e {
+                    VmError::Exception(h) => {
+                        if !self.handle_exception(h) {
+                            return Err(VmError::Exception(h));
+                        }
+                    }
+                    _ => return Err(e),
+                }
             }
         }
         Ok(())

@@ -59,4 +59,7 @@ pub enum OpCode {
     FetchProp(Symbol),      // [Obj] -> [Val]
     AssignProp(Symbol),     // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
+    
+    // Exceptions
+    Throw, // [Obj] -> !
 }

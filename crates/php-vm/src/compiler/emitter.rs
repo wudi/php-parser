@@ -1,6 +1,6 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, StmtId, ClassMember};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, StmtId, ClassMember};
 use php_parser::lexer::token::{Token, TokenKind};
-use crate::compiler::chunk::{CodeChunk, UserFunc};
+use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry};
 use crate::vm::opcode::OpCode;
 use crate::core::value::{Val, Visibility};
 use crate::core::interner::Interner;
@@ -267,6 +267,68 @@ impl<'src> Emitter<'src> {
                 }
                 for idx in loop_info.continue_jumps {
                     self.patch_jump(idx, continue_label);
+                }
+            }
+            Stmt::Throw { expr, .. } => {
+                self.emit_expr(expr);
+                self.chunk.code.push(OpCode::Throw);
+            }
+            Stmt::Try { body, catches, finally, .. } => {
+                let try_start = self.chunk.code.len() as u32;
+                for stmt in *body {
+                    self.emit_stmt(stmt);
+                }
+                let try_end = self.chunk.code.len() as u32;
+                
+                let jump_over_catches_idx = self.chunk.code.len();
+                self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                
+                let mut catch_jumps = Vec::new();
+                
+                for catch in *catches {
+                    let catch_target = self.chunk.code.len() as u32;
+                    
+                    for ty in catch.types {
+                        let type_name = self.get_text(ty.span);
+                        let type_sym = self.interner.intern(type_name);
+                        
+                        self.chunk.catch_table.push(CatchEntry {
+                            start: try_start,
+                            end: try_end,
+                            target: catch_target,
+                            catch_type: Some(type_sym),
+                        });
+                    }
+                    
+                    if let Some(var) = catch.var {
+                        let name = self.get_text(var.span);
+                        if name.starts_with(b"$") {
+                            let sym = self.interner.intern(&name[1..]);
+                            self.chunk.code.push(OpCode::StoreVar(sym));
+                        }
+                    } else {
+                        self.chunk.code.push(OpCode::Pop);
+                    }
+                    
+                    for stmt in catch.body {
+                        self.emit_stmt(stmt);
+                    }
+                    
+                    catch_jumps.push(self.chunk.code.len());
+                    self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                }
+                
+                let end_label = self.chunk.code.len() as u32;
+                self.patch_jump(jump_over_catches_idx, end_label as usize);
+                
+                for idx in catch_jumps {
+                    self.patch_jump(idx, end_label as usize);
+                }
+                
+                if let Some(finally_body) = finally {
+                    for stmt in *finally_body {
+                        self.emit_stmt(stmt);
+                    }
                 }
             }
             _ => {} 
@@ -539,6 +601,37 @@ impl<'src> Emitter<'src> {
                         }
                     }
                     _ => {}
+                }
+            }
+            Expr::AssignOp { var, op, expr, .. } => {
+                match var {
+                    Expr::Variable { span, .. } => {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            let var_name = &name[1..];
+                            let sym = self.interner.intern(var_name);
+                            
+                            // Load var
+                            self.chunk.code.push(OpCode::LoadVar(sym));
+                            
+                            // Evaluate expr
+                            self.emit_expr(expr);
+                            
+                            // Op
+                            match op {
+                                AssignOp::Plus => self.chunk.code.push(OpCode::Add),
+                                AssignOp::Minus => self.chunk.code.push(OpCode::Sub),
+                                AssignOp::Mul => self.chunk.code.push(OpCode::Mul),
+                                AssignOp::Div => self.chunk.code.push(OpCode::Div),
+                                AssignOp::Concat => self.chunk.code.push(OpCode::Concat),
+                                _ => {} // TODO: Implement other ops
+                            }
+                            
+                            // Store
+                            self.chunk.code.push(OpCode::StoreVar(sym));
+                        }
+                    }
+                    _ => {} // TODO: Property/Array fetch
                 }
             }
             _ => {}
