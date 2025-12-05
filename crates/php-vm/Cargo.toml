@@ -1,0 +1,9 @@
+[package]
+name = "php-vm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+indexmap = "2.0"
+php-parser = { path = "../php-parser" }
+bumpalo = "3.12"

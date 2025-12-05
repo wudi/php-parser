@@ -791,6 +791,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "php-vm"
+version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "indexmap",
+ "php-parser",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

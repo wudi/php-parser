@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "crates/php-parser",
+    "crates/php-vm",
 ]
 resolver = "2"

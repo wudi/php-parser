@@ -1,0 +1,56 @@
+use crate::core::value::{Symbol, Visibility};
+
+#[derive(Debug, Clone, Copy)]
+pub enum OpCode {
+    // Stack Ops
+    Const(u16),      // Push constant from table
+    Pop,
+    
+    // Arithmetic
+    Add, Sub, Mul, Div, Concat,
+    
+    // Comparison
+    IsEqual, IsNotEqual, IsIdentical, IsNotIdentical,
+    IsGreater, IsLess, IsGreaterOrEqual, IsLessOrEqual,
+
+    // Variables
+    LoadVar(Symbol),  // Push local variable value
+    StoreVar(Symbol), // Pop value, store in local
+    
+    // Control Flow
+    Jmp(u32),
+    JmpIfFalse(u32),
+    
+    // Functions
+    Call(u8),        // Call function with N args
+    Return,
+    
+    // System
+    Include,         // Runtime compilation
+    Echo,
+
+    // Arrays
+    InitArray,
+    FetchDim,
+    AssignDim,
+    StoreDim, // AssignDim but with [val, key, array] stack order (popped as array, key, val)
+    StoreNestedDim(u8), // Store into nested array. Arg is depth (number of keys). Stack: [val, key_n, ..., key_1, array]
+    AppendArray,
+    StoreAppend, // AppendArray but with [val, array] stack order (popped as array, val)
+
+    // Iteration
+    IterInit(u32),   // [Array] -> [Array, Index]. If empty, pop and jump.
+    IterValid(u32),  // [Array, Index]. If invalid (end), pop both and jump.
+    IterNext,        // [Array, Index] -> [Array, Index+1]
+    IterGetVal(Symbol), // [Array, Index] -> Assigns val to local
+    IterGetKey(Symbol), // [Array, Index] -> Assigns key to local
+
+    // Objects
+    DefClass(Symbol, Option<Symbol>),       // Define class (name, parent)
+    DefMethod(Symbol, Symbol, u32, Visibility), // (class_name, method_name, func_idx, visibility)
+    DefProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
+    New(Symbol, u8),        // Create instance, call constructor with N args
+    FetchProp(Symbol),      // [Obj] -> [Val]
+    AssignProp(Symbol),     // [Obj, Val] -> [Val]
+    CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
+}
