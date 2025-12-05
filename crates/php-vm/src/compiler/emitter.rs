@@ -269,6 +269,103 @@ impl<'src> Emitter<'src> {
                     }
                 }
             }
+            Stmt::While { condition, body, .. } => {
+                let start_label = self.chunk.code.len();
+                
+                self.emit_expr(condition);
+                
+                let end_jump = self.chunk.code.len();
+                self.chunk.code.push(OpCode::JmpIfFalse(0)); // Patch later
+                
+                self.loop_stack.push(LoopInfo { break_jumps: Vec::new(), continue_jumps: Vec::new() });
+                
+                for stmt in *body {
+                    self.emit_stmt(stmt);
+                }
+                
+                self.chunk.code.push(OpCode::Jmp(start_label as u32));
+                
+                let end_label = self.chunk.code.len();
+                self.chunk.code[end_jump] = OpCode::JmpIfFalse(end_label as u32);
+                
+                let loop_info = self.loop_stack.pop().unwrap();
+                for idx in loop_info.break_jumps {
+                    self.patch_jump(idx, end_label);
+                }
+                for idx in loop_info.continue_jumps {
+                    self.patch_jump(idx, start_label);
+                }
+            }
+            Stmt::DoWhile { body, condition, .. } => {
+                let start_label = self.chunk.code.len();
+                
+                self.loop_stack.push(LoopInfo { break_jumps: Vec::new(), continue_jumps: Vec::new() });
+                
+                for stmt in *body {
+                    self.emit_stmt(stmt);
+                }
+                
+                let continue_label = self.chunk.code.len();
+                self.emit_expr(condition);
+                self.chunk.code.push(OpCode::JmpIfTrue(start_label as u32));
+                
+                let end_label = self.chunk.code.len();
+                
+                let loop_info = self.loop_stack.pop().unwrap();
+                for idx in loop_info.break_jumps {
+                    self.patch_jump(idx, end_label);
+                }
+                for idx in loop_info.continue_jumps {
+                    self.patch_jump(idx, continue_label);
+                }
+            }
+            Stmt::For { init, condition, loop_expr, body, .. } => {
+                for expr in *init {
+                    self.emit_expr(expr);
+                    self.chunk.code.push(OpCode::Pop); // Discard result
+                }
+                
+                let start_label = self.chunk.code.len();
+                
+                let mut end_jump = None;
+                if !condition.is_empty() {
+                    for (i, expr) in condition.iter().enumerate() {
+                        self.emit_expr(expr);
+                        if i < condition.len() - 1 {
+                            self.chunk.code.push(OpCode::Pop);
+                        }
+                    }
+                    end_jump = Some(self.chunk.code.len());
+                    self.chunk.code.push(OpCode::JmpIfFalse(0)); // Patch later
+                }
+                
+                self.loop_stack.push(LoopInfo { break_jumps: Vec::new(), continue_jumps: Vec::new() });
+                
+                for stmt in *body {
+                    self.emit_stmt(stmt);
+                }
+                
+                let continue_label = self.chunk.code.len();
+                for expr in *loop_expr {
+                    self.emit_expr(expr);
+                    self.chunk.code.push(OpCode::Pop);
+                }
+                
+                self.chunk.code.push(OpCode::Jmp(start_label as u32));
+                
+                let end_label = self.chunk.code.len();
+                if let Some(idx) = end_jump {
+                    self.chunk.code[idx] = OpCode::JmpIfFalse(end_label as u32);
+                }
+                
+                let loop_info = self.loop_stack.pop().unwrap();
+                for idx in loop_info.break_jumps {
+                    self.patch_jump(idx, end_label);
+                }
+                for idx in loop_info.continue_jumps {
+                    self.patch_jump(idx, continue_label);
+                }
+            }
             Stmt::Foreach { expr, key_var, value_var, body, .. } => {
                 // Check if by-ref
                 let is_by_ref = matches!(value_var, Expr::Unary { op: UnaryOp::Reference, .. });
@@ -486,33 +583,63 @@ impl<'src> Emitter<'src> {
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
             Expr::Binary { left, op, right, .. } => {
-                self.emit_expr(left);
-                self.emit_expr(right);
                 match op {
-                    BinaryOp::Plus => self.chunk.code.push(OpCode::Add),
-                    BinaryOp::Minus => self.chunk.code.push(OpCode::Sub),
-                    BinaryOp::Mul => self.chunk.code.push(OpCode::Mul),
-                    BinaryOp::Div => self.chunk.code.push(OpCode::Div),
-                    BinaryOp::Mod => self.chunk.code.push(OpCode::Mod),
-                    BinaryOp::Concat => self.chunk.code.push(OpCode::Concat),
-                    BinaryOp::Pow => self.chunk.code.push(OpCode::Pow),
-                    BinaryOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
-                    BinaryOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
-                    BinaryOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
-                    BinaryOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
-                    BinaryOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
-                    BinaryOp::EqEq => self.chunk.code.push(OpCode::IsEqual),
-                    BinaryOp::EqEqEq => self.chunk.code.push(OpCode::IsIdentical),
-                    BinaryOp::NotEq => self.chunk.code.push(OpCode::IsNotEqual),
-                    BinaryOp::NotEqEq => self.chunk.code.push(OpCode::IsNotIdentical),
-                    BinaryOp::Gt => self.chunk.code.push(OpCode::IsGreater),
-                    BinaryOp::Lt => self.chunk.code.push(OpCode::IsLess),
-                    BinaryOp::GtEq => self.chunk.code.push(OpCode::IsGreaterOrEqual),
-                    BinaryOp::LtEq => self.chunk.code.push(OpCode::IsLessOrEqual),
-                    BinaryOp::Spaceship => self.chunk.code.push(OpCode::Spaceship),
-                    BinaryOp::Instanceof => self.chunk.code.push(OpCode::InstanceOf),
-                    // TODO: Coalesce, LogicalAnd, LogicalOr (Short-circuiting)
-                    _ => {} 
+                    BinaryOp::And | BinaryOp::LogicalAnd => {
+                        self.emit_expr(left);
+                        let end_jump = self.chunk.code.len();
+                        self.chunk.code.push(OpCode::JmpZEx(0));
+                        self.emit_expr(right);
+                        let end_label = self.chunk.code.len();
+                        self.chunk.code[end_jump] = OpCode::JmpZEx(end_label as u32);
+                        self.chunk.code.push(OpCode::Cast(1)); // Bool
+                    }
+                    BinaryOp::Or | BinaryOp::LogicalOr => {
+                        self.emit_expr(left);
+                        let end_jump = self.chunk.code.len();
+                        self.chunk.code.push(OpCode::JmpNzEx(0));
+                        self.emit_expr(right);
+                        let end_label = self.chunk.code.len();
+                        self.chunk.code[end_jump] = OpCode::JmpNzEx(end_label as u32);
+                        self.chunk.code.push(OpCode::Cast(1)); // Bool
+                    }
+                    BinaryOp::Coalesce => {
+                        self.emit_expr(left);
+                        let end_jump = self.chunk.code.len();
+                        self.chunk.code.push(OpCode::Coalesce(0));
+                        self.emit_expr(right);
+                        let end_label = self.chunk.code.len();
+                        self.chunk.code[end_jump] = OpCode::Coalesce(end_label as u32);
+                    }
+                    _ => {
+                        self.emit_expr(left);
+                        self.emit_expr(right);
+                        match op {
+                            BinaryOp::Plus => self.chunk.code.push(OpCode::Add),
+                            BinaryOp::Minus => self.chunk.code.push(OpCode::Sub),
+                            BinaryOp::Mul => self.chunk.code.push(OpCode::Mul),
+                            BinaryOp::Div => self.chunk.code.push(OpCode::Div),
+                            BinaryOp::Mod => self.chunk.code.push(OpCode::Mod),
+                            BinaryOp::Concat => self.chunk.code.push(OpCode::Concat),
+                            BinaryOp::Pow => self.chunk.code.push(OpCode::Pow),
+                            BinaryOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                            BinaryOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                            BinaryOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                            BinaryOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                            BinaryOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
+                            BinaryOp::EqEq => self.chunk.code.push(OpCode::IsEqual),
+                            BinaryOp::EqEqEq => self.chunk.code.push(OpCode::IsIdentical),
+                            BinaryOp::NotEq => self.chunk.code.push(OpCode::IsNotEqual),
+                            BinaryOp::NotEqEq => self.chunk.code.push(OpCode::IsNotIdentical),
+                            BinaryOp::Gt => self.chunk.code.push(OpCode::IsGreater),
+                            BinaryOp::Lt => self.chunk.code.push(OpCode::IsLess),
+                            BinaryOp::GtEq => self.chunk.code.push(OpCode::IsGreaterOrEqual),
+                            BinaryOp::LtEq => self.chunk.code.push(OpCode::IsLessOrEqual),
+                            BinaryOp::Spaceship => self.chunk.code.push(OpCode::Spaceship),
+                            BinaryOp::Instanceof => self.chunk.code.push(OpCode::InstanceOf),
+                            BinaryOp::LogicalXor => self.chunk.code.push(OpCode::BoolXor),
+                            _ => {} 
+                        }
+                    }
                 }
             }
             Expr::Print { expr, .. } => {
