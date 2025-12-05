@@ -1,4 +1,4 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, ClassConst, CastKind, Case, MatchArm};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, CastKind};
 use php_parser::lexer::token::{Token, TokenKind};
 use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry, FuncParam};
 use crate::vm::opcode::OpCode;
@@ -50,6 +50,100 @@ impl<'src> Emitter<'src> {
         self.chunk.code.push(OpCode::Return);
         
         self.chunk
+    }
+
+    fn emit_members(&mut self, class_sym: crate::core::value::Symbol, members: &[ClassMember]) {
+        for member in members {
+            match member {
+                ClassMember::Method { name, body, params, modifiers, .. } => {
+                    let method_name_str = self.get_text(name.span);
+                    let method_sym = self.interner.intern(method_name_str);
+                    let visibility = self.get_visibility(modifiers);
+                    let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
+                    
+                    // Compile method body
+                    let method_emitter = Emitter::new(self.source, self.interner);
+                    let method_chunk = method_emitter.compile(body);
+                    
+                    // Extract params
+                    let mut param_syms = Vec::new();
+                    for param in *params {
+                        let p_name = self.get_text(param.name.span);
+                        if p_name.starts_with(b"$") {
+                            let sym = self.interner.intern(&p_name[1..]);
+                            param_syms.push(FuncParam {
+                                name: sym,
+                                by_ref: param.by_ref,
+                            });
+                        }
+                    }
+                    
+                    let user_func = UserFunc {
+                        params: param_syms,
+                        uses: Vec::new(),
+                        chunk: Rc::new(method_chunk),
+                    };
+                    
+                    // Store in constants
+                    let func_res = Val::Resource(Rc::new(user_func));
+                    let const_idx = self.add_constant(func_res);
+                    
+                    self.chunk.code.push(OpCode::DefMethod(class_sym, method_sym, const_idx as u32, visibility, is_static));
+                }
+                ClassMember::Property { entries, modifiers, .. } => {
+                    let visibility = self.get_visibility(modifiers);
+                    let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
+                    
+                    for entry in *entries {
+                        let prop_name_str = self.get_text(entry.name.span);
+                        let prop_name = if prop_name_str.starts_with(b"$") {
+                            &prop_name_str[1..]
+                        } else {
+                            prop_name_str
+                        };
+                        let prop_sym = self.interner.intern(prop_name);
+                        
+                        let default_idx = if let Some(default_expr) = entry.default {
+                            let val = match self.get_literal_value(default_expr) {
+                                Some(v) => v,
+                                None => Val::Null,
+                            };
+                            self.add_constant(val)
+                        } else {
+                            self.add_constant(Val::Null)
+                        };
+                        
+                        if is_static {
+                            self.chunk.code.push(OpCode::DefStaticProp(class_sym, prop_sym, default_idx as u16, visibility));
+                        } else {
+                            self.chunk.code.push(OpCode::DefProp(class_sym, prop_sym, default_idx as u16, visibility));
+                        }
+                    }
+                }
+                ClassMember::Const { consts, modifiers, .. } => {
+                    let visibility = self.get_visibility(modifiers);
+                    for entry in *consts {
+                        let const_name_str = self.get_text(entry.name.span);
+                        let const_sym = self.interner.intern(const_name_str);
+                        
+                        let val = match self.get_literal_value(entry.value) {
+                            Some(v) => v,
+                            None => Val::Null,
+                        };
+                        let val_idx = self.add_constant(val);
+                        self.chunk.code.push(OpCode::DefClassConst(class_sym, const_sym, val_idx as u16, visibility));
+                    }
+                }
+                ClassMember::TraitUse { traits, .. } => {
+                    for trait_name in *traits {
+                        let trait_str = self.get_text(trait_name.span);
+                        let trait_sym = self.interner.intern(trait_str);
+                        self.chunk.code.push(OpCode::UseTrait(class_sym, trait_sym));
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn emit_stmt(&mut self, stmt: &Stmt) {
@@ -139,7 +233,7 @@ impl<'src> Emitter<'src> {
                 let func_sym = self.interner.intern(func_name_str);
                 
                 // Compile body
-                let mut func_emitter = Emitter::new(self.source, self.interner);
+                let func_emitter = Emitter::new(self.source, self.interner);
                 let mut func_chunk = func_emitter.compile(body);
                 func_chunk.returns_ref = *by_ref;
                 
@@ -167,7 +261,7 @@ impl<'src> Emitter<'src> {
                 
                 self.chunk.code.push(OpCode::DefFunc(func_sym, const_idx as u32));
             }
-            Stmt::Class { name, members, extends, .. } => {
+            Stmt::Class { name, members, extends, implements, .. } => {
                 let class_name_str = self.get_text(name.span);
                 let class_sym = self.interner.intern(class_name_str);
                 
@@ -180,95 +274,37 @@ impl<'src> Emitter<'src> {
 
                 self.chunk.code.push(OpCode::DefClass(class_sym, parent_sym));
                 
-                for member in *members {
-                    match member {
-                        ClassMember::Method { name, body, params, modifiers, .. } => {
-                            let method_name_str = self.get_text(name.span);
-                            let method_sym = self.interner.intern(method_name_str);
-                            let visibility = self.get_visibility(modifiers);
-                            let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
-                            
-                            // Compile method body
-                            let mut method_emitter = Emitter::new(self.source, self.interner);
-                            let mut method_chunk = method_emitter.compile(body);
-                            // method_chunk.returns_ref = *by_ref; // TODO: Add by_ref to ClassMember::Method in parser
-                            
-                            // Extract params
-                            let mut param_syms = Vec::new();
-                            for param in *params {
-                                let p_name = self.get_text(param.name.span);
-                                if p_name.starts_with(b"$") {
-                                    let sym = self.interner.intern(&p_name[1..]);
-                                    param_syms.push(FuncParam {
-                                        name: sym,
-                                        by_ref: param.by_ref,
-                                    });
-                                }
-                            }
-                            
-                            let user_func = UserFunc {
-                                params: param_syms,
-                                uses: Vec::new(),
-                                chunk: Rc::new(method_chunk),
-                            };
-                            
-                            // Store in constants
-                            let func_res = Val::Resource(Rc::new(user_func));
-                            let const_idx = self.add_constant(func_res);
-                            
-                            self.chunk.code.push(OpCode::DefMethod(class_sym, method_sym, const_idx as u32, visibility, is_static));
-                        }
-                        ClassMember::Property { entries, modifiers, .. } => {
-                            let visibility = self.get_visibility(modifiers);
-                            let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
-                            
-                            for entry in *entries {
-                                let prop_name_str = self.get_text(entry.name.span);
-                                let prop_name = if prop_name_str.starts_with(b"$") {
-                                    &prop_name_str[1..]
-                                } else {
-                                    prop_name_str
-                                };
-                                let prop_sym = self.interner.intern(prop_name);
-                                
-                                let default_idx = if let Some(default_expr) = entry.default {
-                                    // TODO: Handle constant expressions properly
-                                    // For now, default to Null if not simple literal
-                                    let val = match self.get_literal_value(default_expr) {
-                                        Some(v) => v,
-                                        None => Val::Null,
-                                    };
-                                    self.add_constant(val)
-                                } else {
-                                    self.add_constant(Val::Null)
-                                };
-                                
-                                if is_static {
-                                    self.chunk.code.push(OpCode::DefStaticProp(class_sym, prop_sym, default_idx as u16, visibility));
-                                } else {
-                                    self.chunk.code.push(OpCode::DefProp(class_sym, prop_sym, default_idx as u16, visibility));
-                                }
-                            }
-                        }
-                        ClassMember::Const { consts, modifiers, .. } => {
-                            let visibility = self.get_visibility(modifiers);
-                            for entry in *consts {
-                                let const_name_str = self.get_text(entry.name.span);
-                                let const_sym = self.interner.intern(const_name_str);
-                                
-                                let val = match self.get_literal_value(entry.value) {
-                                    Some(v) => v,
-                                    None => Val::Null,
-                                };
-                                let val_idx = self.add_constant(val);
-                                
-                                self.chunk.code.push(OpCode::DefClassConst(class_sym, const_sym, val_idx as u16, visibility));
-                            }
-                        }
-                        _ => {}
-                    }
+                for interface in *implements {
+                    let interface_str = self.get_text(interface.span);
+                    let interface_sym = self.interner.intern(interface_str);
+                    self.chunk.code.push(OpCode::AddInterface(class_sym, interface_sym));
                 }
+                
+                self.emit_members(class_sym, members);
             }
+            Stmt::Interface { name, members, extends, .. } => {
+                let name_str = self.get_text(name.span);
+                let sym = self.interner.intern(name_str);
+                
+                self.chunk.code.push(OpCode::DefInterface(sym));
+                
+                for interface in *extends {
+                    let interface_str = self.get_text(interface.span);
+                    let interface_sym = self.interner.intern(interface_str);
+                    self.chunk.code.push(OpCode::AddInterface(sym, interface_sym));
+                }
+                
+                self.emit_members(sym, members);
+            }
+            Stmt::Trait { name, members, .. } => {
+                let name_str = self.get_text(name.span);
+                let sym = self.interner.intern(name_str);
+                
+                self.chunk.code.push(OpCode::DefTrait(sym));
+                
+                self.emit_members(sym, members);
+            }
+
             Stmt::While { condition, body, .. } => {
                 let start_label = self.chunk.code.len();
                 
@@ -928,7 +964,7 @@ impl<'src> Emitter<'src> {
             }
             Expr::Closure { params, uses, body, by_ref, .. } => {
                 // Compile body
-                let mut func_emitter = Emitter::new(self.source, self.interner);
+                let func_emitter = Emitter::new(self.source, self.interner);
                 let mut func_chunk = func_emitter.compile(body);
                 func_chunk.returns_ref = *by_ref;
                 

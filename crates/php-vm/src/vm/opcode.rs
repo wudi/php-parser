@@ -85,6 +85,10 @@ pub enum OpCode {
 
     // Objects
     DefClass(Symbol, Option<Symbol>),       // Define class (name, parent)
+    DefInterface(Symbol),                   // Define interface (name)
+    DefTrait(Symbol),                       // Define trait (name)
+    AddInterface(Symbol, Symbol),           // (class_name, interface_name)
+    UseTrait(Symbol, Symbol),               // (class_name, trait_name)
     DefMethod(Symbol, Symbol, u32, Visibility, bool), // (class_name, method_name, func_idx, visibility, is_static)
     DefProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
     DefClassConst(Symbol, Symbol, u16, Visibility), // (class_name, const_name, val_idx, visibility)

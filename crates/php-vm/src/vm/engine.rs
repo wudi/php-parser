@@ -86,13 +86,19 @@ impl VM {
 
     fn is_subclass_of(&self, child: Symbol, parent: Symbol) -> bool {
         if child == parent { return true; }
-        let mut current = Some(child);
-        while let Some(name) = current {
-            if name == parent { return true; }
-            if let Some(def) = self.context.classes.get(&name) {
-                current = def.parent;
-            } else {
-                break;
+        
+        if let Some(def) = self.context.classes.get(&child) {
+            // Check parent class
+            if let Some(p) = def.parent {
+                if self.is_subclass_of(p, parent) {
+                    return true;
+                }
+            }
+            // Check interfaces
+            for &interface in &def.interfaces {
+                if self.is_subclass_of(interface, parent) {
+                    return true;
+                }
             }
         }
         false
@@ -1429,12 +1435,68 @@ impl VM {
                     let class_def = ClassDef {
                         name,
                         parent,
+                        is_interface: false,
+                        is_trait: false,
+                        interfaces: Vec::new(),
+                        traits: Vec::new(),
                         methods: HashMap::new(),
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
                     };
                     self.context.classes.insert(name, class_def);
+                }
+                OpCode::DefInterface(name) => {
+                    let class_def = ClassDef {
+                        name,
+                        parent: None,
+                        is_interface: true,
+                        is_trait: false,
+                        interfaces: Vec::new(),
+                        traits: Vec::new(),
+                        methods: HashMap::new(),
+                        properties: IndexMap::new(),
+                        constants: HashMap::new(),
+                        static_properties: HashMap::new(),
+                    };
+                    self.context.classes.insert(name, class_def);
+                }
+                OpCode::DefTrait(name) => {
+                    let class_def = ClassDef {
+                        name,
+                        parent: None,
+                        is_interface: false,
+                        is_trait: true,
+                        interfaces: Vec::new(),
+                        traits: Vec::new(),
+                        methods: HashMap::new(),
+                        properties: IndexMap::new(),
+                        constants: HashMap::new(),
+                        static_properties: HashMap::new(),
+                    };
+                    self.context.classes.insert(name, class_def);
+                }
+                OpCode::AddInterface(class_name, interface_name) => {
+                    if let Some(class_def) = self.context.classes.get_mut(&class_name) {
+                        class_def.interfaces.push(interface_name);
+                    }
+                }
+                OpCode::UseTrait(class_name, trait_name) => {
+                    let trait_methods = if let Some(trait_def) = self.context.classes.get(&trait_name) {
+                        if !trait_def.is_trait {
+                            return Err(VmError::RuntimeError("Not a trait".into()));
+                        }
+                        trait_def.methods.clone()
+                    } else {
+                        return Err(VmError::RuntimeError("Trait not found".into()));
+                    };
+                    
+                    if let Some(class_def) = self.context.classes.get_mut(&class_name) {
+                        class_def.traits.push(trait_name);
+                        for (name, (func, vis, is_static)) in trait_methods {
+                            class_def.methods.entry(name).or_insert((func, vis, is_static));
+                        }
+                    }
                 }
                 OpCode::DefMethod(class_name, method_name, func_idx, visibility, is_static) => {
                     let val = {
