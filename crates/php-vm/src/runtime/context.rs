@@ -88,6 +88,7 @@ pub struct RequestContext {
     pub classes: HashMap<Symbol, ClassDef>,
     pub included_files: HashSet<String>,
     pub interner: Interner,
+    pub error_reporting: u32,
 }
 
 impl RequestContext {
@@ -100,6 +101,7 @@ impl RequestContext {
             classes: HashMap::new(),
             included_files: HashSet::new(),
             interner: Interner::new(),
+            error_reporting: 32767, // E_ALL
         }
     }
 }
