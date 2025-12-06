@@ -1776,6 +1776,31 @@ impl<'src> Emitter<'src> {
                             let var_name = &name[1..];
                             let sym = self.interner.intern(var_name);
                             
+                            if let AssignOp::Coalesce = op {
+                                // Check if set
+                                self.chunk.code.push(OpCode::IssetVar(sym));
+                                let jump_idx = self.chunk.code.len();
+                                self.chunk.code.push(OpCode::JmpIfTrue(0));
+                                
+                                // Not set: Evaluate expr, assign, load
+                                self.emit_expr(expr);
+                                self.chunk.code.push(OpCode::StoreVar(sym));
+                                self.chunk.code.push(OpCode::LoadVar(sym));
+                                
+                                let end_jump_idx = self.chunk.code.len();
+                                self.chunk.code.push(OpCode::Jmp(0));
+                                
+                                // Set: Load var
+                                let label_set = self.chunk.code.len();
+                                self.chunk.code[jump_idx] = OpCode::JmpIfTrue(label_set as u32);
+                                self.chunk.code.push(OpCode::LoadVar(sym));
+                                
+                                // End
+                                let label_end = self.chunk.code.len();
+                                self.chunk.code[end_jump_idx] = OpCode::Jmp(label_end as u32);
+                                return;
+                            }
+
                             // Load var
                             self.chunk.code.push(OpCode::LoadVar(sym));
                             
@@ -1796,7 +1821,6 @@ impl<'src> Emitter<'src> {
                                 AssignOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
                                 AssignOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
                                 AssignOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
-                                // TODO: Coalesce (??=)
                                 _ => {} // TODO: Implement other ops
                             }
                             
@@ -1812,6 +1836,27 @@ impl<'src> Emitter<'src> {
                             let name = self.get_text(*span);
                             if !name.starts_with(b"$") {
                                 let sym = self.interner.intern(name);
+                                
+                                if let AssignOp::Coalesce = op {
+                                    self.chunk.code.push(OpCode::Dup);
+                                    self.chunk.code.push(OpCode::IssetProp(sym));
+                                    let jump_idx = self.chunk.code.len();
+                                    self.chunk.code.push(OpCode::JmpIfTrue(0));
+                                    
+                                    self.emit_expr(expr);
+                                    self.chunk.code.push(OpCode::AssignProp(sym));
+                                    
+                                    let end_jump_idx = self.chunk.code.len();
+                                    self.chunk.code.push(OpCode::Jmp(0));
+                                    
+                                    let label_set = self.chunk.code.len();
+                                    self.chunk.code[jump_idx] = OpCode::JmpIfTrue(label_set as u32);
+                                    self.chunk.code.push(OpCode::FetchProp(sym));
+                                    
+                                    let label_end = self.chunk.code.len();
+                                    self.chunk.code[end_jump_idx] = OpCode::Jmp(label_end as u32);
+                                    return;
+                                }
                                 
                                 self.chunk.code.push(OpCode::FetchProp(sym));
                                 
