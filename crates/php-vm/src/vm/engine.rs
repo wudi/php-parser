@@ -308,6 +308,50 @@ impl VM {
         self.last_return_value.ok_or(VmError::RuntimeError("No return value".into()))
     }
 
+    fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
+        let val = self.arena.get(handle).value.clone();
+        match val {
+            Val::String(s) => Ok(s),
+            Val::Int(i) => Ok(i.to_string().into_bytes()),
+            Val::Float(f) => Ok(f.to_string().into_bytes()),
+            Val::Bool(b) => Ok(if b { b"1".to_vec() } else { vec![] }),
+            Val::Null => Ok(vec![]),
+            Val::Object(h) => {
+                let obj_zval = self.arena.get(h);
+                if let Val::ObjPayload(obj_data) = &obj_zval.value {
+                    let to_string_magic = self.context.interner.intern(b"__toString");
+                    if let Some((magic_func, _, _, magic_class)) = self.find_method(obj_data.class, to_string_magic) {
+                        let mut frame = CallFrame::new(magic_func.chunk.clone());
+                        frame.func = Some(magic_func.clone());
+                        frame.this = Some(h);
+                        frame.class_scope = Some(magic_class);
+                        frame.called_scope = Some(obj_data.class);
+                        
+                        let depth = self.frames.len();
+                        self.frames.push(frame);
+                        self.run_loop(depth)?;
+                        
+                        let ret_handle = self.last_return_value.ok_or(VmError::RuntimeError("__toString must return a value".into()))?;
+                        let ret_val = self.arena.get(ret_handle).value.clone();
+                        
+                        match ret_val {
+                            Val::String(s) => Ok(s),
+                            _ => Err(VmError::RuntimeError("__toString must return a string".into())),
+                        }
+                    } else {
+                        let class_name = String::from_utf8_lossy(self.context.interner.lookup(obj_data.class).unwrap_or(b"Unknown"));
+                        Err(VmError::RuntimeError(format!("Object of class {} could not be converted to string", class_name)))
+                    }
+                } else {
+                    Err(VmError::RuntimeError("Invalid object payload".into()))
+                }
+            }
+            _ => {
+                Ok(format!("{:?}", val).into_bytes())
+            }
+        }
+    }
+
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
         while self.frames.len() > target_depth {
             let op = {
@@ -808,30 +852,15 @@ impl VM {
 
                 OpCode::Echo => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle);
-                    match &val.value {
-                        Val::String(s) => {
-                            let s = String::from_utf8_lossy(s);
-                            print!("{}", s);
-                        }
-                        Val::Int(i) => print!("{}", i),
-                        Val::Float(f) => print!("{}", f),
-                        Val::Bool(b) => print!("{}", if *b { "1" } else { "" }),
-                        Val::Null => {},
-                        _ => print!("{:?}", val.value),
-                    }
+                    let s = self.convert_to_string(handle)?;
+                    let s_str = String::from_utf8_lossy(&s);
+                    print!("{}", s_str);
                 }
                 OpCode::Exit => {
                     if let Some(handle) = self.operand_stack.pop() {
-                        let val = self.arena.get(handle);
-                        match &val.value {
-                            Val::String(s) => {
-                                let s = String::from_utf8_lossy(s);
-                                print!("{}", s);
-                            }
-                            Val::Int(_) => {}
-                            _ => {}
-                        }
+                        let s = self.convert_to_string(handle)?;
+                        let s_str = String::from_utf8_lossy(&s);
+                        print!("{}", s_str);
                     }
                     self.frames.clear();
                     return Ok(());
@@ -840,31 +869,15 @@ impl VM {
                 OpCode::Ticks(_) => {}
                 OpCode::Cast(kind) => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle).value.clone();
                     
-                    // Special handling for Object -> String (3)
                     if kind == 3 {
-                        if let Val::Object(h) = val {
-                             let obj_zval = self.arena.get(h);
-                             if let Val::ObjPayload(obj_data) = &obj_zval.value {
-                                let to_string_magic = self.context.interner.intern(b"__toString");
-                                if let Some((magic_func, _, _, magic_class)) = self.find_method(obj_data.class, to_string_magic) {
-                                    // Found __toString
-                                    let mut frame = CallFrame::new(magic_func.chunk.clone());
-                                    frame.func = Some(magic_func.clone());
-                                    frame.this = Some(h);
-                                    frame.class_scope = Some(magic_class);
-                                    frame.called_scope = Some(obj_data.class);
-                                    self.frames.push(frame);
-                                    return Ok(());
-                                } else {
-                                    return Err(VmError::RuntimeError("Object could not be converted to string".into()));
-                                }
-                             } else {
-                                return Err(VmError::RuntimeError("Invalid object payload".into()));
-                             }
-                        }
+                        let s = self.convert_to_string(handle)?;
+                        let res_handle = self.arena.alloc(Val::String(s));
+                        self.operand_stack.push(res_handle);
+                        return Ok(());
                     }
+
+                    let val = self.arena.get(handle).value.clone();
 
                     let new_val = match kind {
                         0 => match val { // Int
@@ -3140,24 +3153,8 @@ impl VM {
                     let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
-                    let b_val = &self.arena.get(b_handle).value;
-                    let a_val = &self.arena.get(a_handle).value;
-                    
-                    let b_str = match b_val {
-                        Val::String(s) => s.clone(),
-                        Val::Int(i) => i.to_string().into_bytes(),
-                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
-                        Val::Null => vec![],
-                        _ => format!("{:?}", b_val).into_bytes(),
-                    };
-                    
-                    let a_str = match a_val {
-                        Val::String(s) => s.clone(),
-                        Val::Int(i) => i.to_string().into_bytes(),
-                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
-                        Val::Null => vec![],
-                        _ => format!("{:?}", a_val).into_bytes(),
-                    };
+                    let b_str = self.convert_to_string(b_handle)?;
+                    let a_str = self.convert_to_string(a_handle)?;
                     
                     let mut res = a_str;
                     res.extend(b_str);
@@ -3170,24 +3167,8 @@ impl VM {
                     let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
-                    let b_val = &self.arena.get(b_handle).value;
-                    let a_val = &self.arena.get(a_handle).value;
-                    
-                    let b_str = match b_val {
-                        Val::String(s) => s.clone(),
-                        Val::Int(i) => i.to_string().into_bytes(),
-                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
-                        Val::Null => vec![],
-                        _ => format!("{:?}", b_val).into_bytes(),
-                    };
-                    
-                    let a_str = match a_val {
-                        Val::String(s) => s.clone(),
-                        Val::Int(i) => i.to_string().into_bytes(),
-                        Val::Bool(b) => if *b { b"1".to_vec() } else { vec![] },
-                        Val::Null => vec![],
-                        _ => format!("{:?}", a_val).into_bytes(),
-                    };
+                    let b_str = self.convert_to_string(b_handle)?;
+                    let a_str = self.convert_to_string(a_handle)?;
                     
                     let mut res = a_str;
                     res.extend(b_str);
