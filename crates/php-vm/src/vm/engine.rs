@@ -3503,7 +3503,7 @@ mod tests {
     use std::sync::Arc;
     use crate::runtime::context::EngineContext;
     use crate::compiler::chunk::UserFunc;
-    use crate::builtins::stdlib::{php_strlen, php_str_repeat};
+    use crate::builtins::string::{php_strlen, php_str_repeat};
 
     fn create_vm() -> VM {
         let mut functions = std::collections::HashMap::new();
