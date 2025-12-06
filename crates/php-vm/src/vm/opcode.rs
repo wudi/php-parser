@@ -64,6 +64,7 @@ pub enum OpCode {
     AssignDim,
     StoreDim, // AssignDim but with [val, key, array] stack order (popped as array, key, val)
     StoreNestedDim(u8), // Store into nested array. Arg is depth (number of keys). Stack: [val, key_n, ..., key_1, array]
+    FetchNestedDim(u8), // Fetch from nested array. Arg is depth. Stack: [array, key_n, ..., key_1] -> [array, key_n, ..., key_1, val]
     AppendArray,
     StoreAppend, // AppendArray but with [val, array] stack order (popped as array, val)
     UnsetDim,

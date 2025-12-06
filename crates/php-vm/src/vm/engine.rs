@@ -2030,6 +2030,45 @@ impl VM {
                     self.assign_nested_dim(array_handle, &keys, val_handle)?;
                 }
 
+                OpCode::FetchNestedDim(depth) => {
+                    // Stack: [array, key_n, ..., key_1] (top is key_1)
+                    // We need to peek at them without popping.
+                    
+                    // Array is at depth + 1 from top (0-indexed)
+                    // key_1 is at 0
+                    // key_n is at depth - 1
+                    
+                    let array_handle = self.operand_stack.peek_at(depth as usize).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let mut keys = Vec::with_capacity(depth as usize);
+                    for i in 0..depth {
+                        // key_n is at depth - 1 - i
+                        // key_1 is at 0
+                        // We want keys in order [key_n, ..., key_1]
+                        // Wait, StoreNestedDim pops key_1 first (top), then key_2...
+                        // So stack top is key_1 (last dimension).
+                        // keys vector should be [key_n, ..., key_1].
+                        
+                        // Stack:
+                        // Top: key_1
+                        // ...
+                        // Bottom: key_n
+                        // Bottom-1: array
+                        
+                        // So key_1 is at index 0.
+                        // key_n is at index depth-1.
+                        
+                        // We want keys to be [key_n, ..., key_1].
+                        // So we iterate from depth-1 down to 0.
+                        
+                        let key_handle = self.operand_stack.peek_at((depth - 1 - i) as usize).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                        keys.push(key_handle);
+                    }
+                    
+                    let val_handle = self.fetch_nested_dim(array_handle, &keys)?;
+                    self.operand_stack.push(val_handle);
+                }
+
                 OpCode::IterInit(target) => {
                     // Stack: [Array/Object]
                     let iterable_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -5138,6 +5177,39 @@ impl VM {
         let new_handle = self.assign_nested_recursive(array_handle, keys, val_handle)?;
         self.operand_stack.push(new_handle);
         Ok(())
+    }
+
+    fn fetch_nested_dim(&mut self, array_handle: Handle, keys: &[Handle]) -> Result<Handle, VmError> {
+        let mut current_handle = array_handle;
+        
+        for key_handle in keys {
+            let current_val = &self.arena.get(current_handle).value;
+            
+            match current_val {
+                Val::Array(map) => {
+                    let key_val = &self.arena.get(*key_handle).value;
+                    let key = match key_val {
+                        Val::Int(i) => ArrayKey::Int(*i),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
+                    };
+                    
+                    if let Some(val) = map.get(&key) {
+                        current_handle = *val;
+                    } else {
+                        // Undefined index: return NULL (and maybe warn)
+                        // For now, just return NULL
+                        return Ok(self.arena.alloc(Val::Null));
+                    }
+                }
+                _ => {
+                    // Trying to access dim on non-array
+                    return Ok(self.arena.alloc(Val::Null));
+                }
+            }
+        }
+        
+        Ok(current_handle)
     }
     
     fn assign_nested_recursive(&mut self, current_handle: Handle, keys: &[Handle], val_handle: Handle) -> Result<Handle, VmError> {

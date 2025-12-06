@@ -1882,7 +1882,96 @@ impl<'src> Emitter<'src> {
                             }
                         }
                     }
-                    _ => {} // TODO: Array fetch
+                    Expr::ArrayDimFetch { .. } => {
+                        let (base, keys) = Self::flatten_dim_fetch(var);
+                        
+                        // 1. Emit base array
+                        self.emit_expr(base);
+                        
+                        // 2. Emit keys
+                        for key in &keys {
+                            if let Some(k) = key {
+                                self.emit_expr(k);
+                            } else {
+                                // Append not supported in AssignOp (e.g. $a[] += 1 is invalid)
+                                // But maybe $a[] ??= 1 is valid? No, ??= is assign op.
+                                // PHP Fatal error:  Cannot use [] for reading
+                                // So we can assume keys are present for AssignOp (read-modify-write)
+                                // But wait, $a[] = 1 is valid. $a[] += 1 is NOT valid.
+                                // So we can panic or emit error if key is None.
+                                // For now, push 0 or null?
+                                // Actually, let's just push 0 as placeholder, but it will fail at runtime if used for reading.
+                                self.chunk.code.push(OpCode::Const(0));
+                            }
+                        }
+                        
+                        // 3. Fetch value (peek array & keys, push val)
+                        // Stack: [array, keys...]
+                        self.chunk.code.push(OpCode::FetchNestedDim(keys.len() as u8));
+                        // Stack: [array, keys..., val]
+                        
+                        if let AssignOp::Coalesce = op {
+                            let jump_idx = self.chunk.code.len();
+                            self.chunk.code.push(OpCode::Coalesce(0));
+                            
+                            // If null, evaluate rhs
+                            self.emit_expr(expr);
+                            
+                            let label_store = self.chunk.code.len();
+                            self.chunk.code[jump_idx] = OpCode::Coalesce(label_store as u32);
+                        } else {
+                            // 4. Emit expr (rhs)
+                            self.emit_expr(expr);
+                            // Stack: [array, keys..., val, rhs]
+                            
+                            // 5. Op
+                            match op {
+                                AssignOp::Plus => self.chunk.code.push(OpCode::Add),
+                                AssignOp::Minus => self.chunk.code.push(OpCode::Sub),
+                                AssignOp::Mul => self.chunk.code.push(OpCode::Mul),
+                                AssignOp::Div => self.chunk.code.push(OpCode::Div),
+                                AssignOp::Mod => self.chunk.code.push(OpCode::Mod),
+                                AssignOp::Concat => self.chunk.code.push(OpCode::Concat),
+                                AssignOp::Pow => self.chunk.code.push(OpCode::Pow),
+                                AssignOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                                AssignOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                                AssignOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                                AssignOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                                AssignOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
+                                _ => {}
+                            }
+                        }
+                        
+                        // 6. Store result back
+                        // Stack: [array, keys..., result]
+                        self.chunk.code.push(OpCode::StoreNestedDim(keys.len() as u8));
+                        // Stack: [new_array] (StoreNestedDim pushes the modified array back? No, wait.)
+                        
+                        // Wait, I checked StoreNestedDim implementation.
+                        // It does NOT push anything back.
+                        // But assign_nested_dim pushes new_handle back!
+                        // And StoreNestedDim calls assign_nested_dim.
+                        // So StoreNestedDim DOES push new_array back.
+                        
+                        // So Stack: [new_array]
+                        
+                        // 7. Update variable if base was a variable
+                        if let Expr::Variable { span, .. } = base {
+                            let name = self.get_text(*span);
+                            if name.starts_with(b"$") {
+                                let var_name = &name[1..];
+                                let sym = self.interner.intern(var_name);
+                                self.chunk.code.push(OpCode::StoreVar(sym));
+                                // StoreVar leaves value on stack?
+                                // OpCode::StoreVar implementation:
+                                // let val_handle = self.operand_stack.pop()...;
+                                // ...
+                                // self.operand_stack.push(val_handle);
+                                // Yes, it leaves value on stack.
+                            }
+                        }
+                    }
+                    _ => {} // TODO: Other targets
                 }
             }
             _ => {}
