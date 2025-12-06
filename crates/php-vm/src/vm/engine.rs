@@ -1167,7 +1167,9 @@ impl VM {
                         return Ok(());
                     }
 
-                    if popped_frame.is_constructor {
+                    if popped_frame.discard_return {
+                        // Return value is discarded
+                    } else if popped_frame.is_constructor {
                         if let Some(this_handle) = popped_frame.this {
                             self.operand_stack.push(this_handle);
                         } else {
@@ -2360,25 +2362,62 @@ impl VM {
                 }
                 OpCode::FetchProp(prop_name) => {
                     let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let obj_zval = self.arena.get(obj_handle);
-                    if let Val::Object(payload_handle) = obj_zval.value {
-                        let payload_zval = self.arena.get(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                            // Check visibility
-                            let current_scope = self.get_current_class();
-                            self.check_prop_visibility(obj_data.class, prop_name, current_scope)?;
-
-                            if let Some(prop_handle) = obj_data.properties.get(&prop_name) {
-                                self.operand_stack.push(*prop_handle);
+                    
+                    // Extract needed data to avoid holding borrow
+                    let (class_name, prop_handle_opt) = {
+                        let obj_zval = self.arena.get(obj_handle);
+                        if let Val::Object(payload_handle) = obj_zval.value {
+                            let payload_zval = self.arena.get(payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                                (obj_data.class, obj_data.properties.get(&prop_name).copied())
                             } else {
-                                let null = self.arena.alloc(Val::Null);
-                                self.operand_stack.push(null);
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
                             }
                         } else {
-                             return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            return Err(VmError::RuntimeError("Attempt to fetch property on non-object".into()));
+                        }
+                    };
+
+                    // Check visibility
+                    let current_scope = self.get_current_class();
+                    let visibility_check = self.check_prop_visibility(class_name, prop_name, current_scope);
+
+                    let mut use_magic = false;
+                    
+                    if let Some(prop_handle) = prop_handle_opt {
+                        if visibility_check.is_ok() {
+                            self.operand_stack.push(prop_handle);
+                        } else {
+                            use_magic = true;
                         }
                     } else {
-                        return Err(VmError::RuntimeError("Attempt to fetch property on non-object".into()));
+                        use_magic = true;
+                    }
+                    
+                    if use_magic {
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_get) {
+                            let prop_name_bytes = self.context.interner.lookup(prop_name).unwrap_or(b"").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes));
+                            
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(class_name);
+                            
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                        } else {
+                            if let Err(e) = visibility_check {
+                                return Err(e);
+                            }
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
+                        }
                     }
                 }
                 OpCode::AssignProp(prop_name) => {
@@ -2391,25 +2430,71 @@ impl VM {
                         return Err(VmError::RuntimeError("Attempt to assign property on non-object".into()));
                     };
                     
-                    // Check visibility before modification
-                    // Need to get class name from payload first
-                    let class_name = if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
-                        obj_data.class
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    // Extract data
+                    let (class_name, prop_exists) = {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (obj_data.class, obj_data.properties.contains_key(&prop_name))
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
                     };
                     
                     let current_scope = self.get_current_class();
-                    self.check_prop_visibility(class_name, prop_name, current_scope)?;
+                    let visibility_check = self.check_prop_visibility(class_name, prop_name, current_scope);
 
-                    let payload_zval = self.arena.get_mut(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                        obj_data.properties.insert(prop_name, val_handle);
+                    let mut use_magic = false;
+                    
+                    if prop_exists {
+                        if visibility_check.is_err() {
+                            use_magic = true;
+                        }
                     } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        use_magic = true;
                     }
                     
-                    self.operand_stack.push(val_handle);
+                    if use_magic {
+                        let magic_set = self.context.interner.intern(b"__set");
+                        if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_set) {
+                            let prop_name_bytes = self.context.interner.lookup(prop_name).unwrap_or(b"").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes));
+                            
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(class_name);
+                            frame.discard_return = true;
+                            
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            if let Some(param) = method.params.get(1) {
+                                frame.locals.insert(param.name, val_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                            self.operand_stack.push(val_handle);
+                        } else {
+                            if let Err(e) = visibility_check {
+                                return Err(e);
+                            }
+                            
+                            let payload_zval = self.arena.get_mut(payload_handle);
+                            if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                                obj_data.properties.insert(prop_name, val_handle);
+                            }
+                            self.operand_stack.push(val_handle);
+                        }
+                    } else {
+                         let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.insert(prop_name, val_handle);
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                        self.operand_stack.push(val_handle);
+                    }
                 }
                 OpCode::CallMethod(method_name, arg_count) => {
                     let obj_handle = self.operand_stack.peek_at(arg_count as usize).ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -2423,7 +2508,9 @@ impl VM {
                         return Err(VmError::RuntimeError("Call to member function on non-object".into()));
                     };
                     
-                    if let Some((user_func, visibility, is_static, defined_class)) = self.find_method(class_name, method_name) {
+                    let method_lookup = self.find_method(class_name, method_name);
+
+                    if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
                         // Check visibility
                         match visibility {
                             Visibility::Public => {},
@@ -2483,7 +2570,53 @@ impl VM {
                         
                         self.frames.push(frame);
                     } else {
-                        return Err(VmError::RuntimeError("Method not found".into()));
+                        // Method not found. Check for __call.
+                        let call_magic = self.context.interner.intern(b"__call");
+                        if let Some((magic_func, _, _, magic_class)) = self.find_method(class_name, call_magic) {
+                            // Found __call.
+                            
+                            // Pop args
+                            let mut args = Vec::new();
+                            for _ in 0..arg_count {
+                                args.push(self.operand_stack.pop().unwrap());
+                            }
+                            args.reverse();
+                            
+                            let obj_handle = self.operand_stack.pop().unwrap();
+                            
+                            // Create array from args
+                            let mut array_map = IndexMap::new();
+                            for (i, arg) in args.into_iter().enumerate() {
+                                array_map.insert(ArrayKey::Int(i as i64), arg);
+                            }
+                            let args_array_handle = self.arena.alloc(Val::Array(array_map));
+                            
+                            // Create method name string
+                            let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(method_name_str));
+                            
+                            // Prepare frame for __call
+                            let mut frame = CallFrame::new(magic_func.chunk.clone());
+                            frame.func = Some(magic_func.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(magic_class);
+                            frame.called_scope = Some(class_name);
+                            
+                            // Pass args: $name, $arguments
+                            // Param 0: name
+                            if let Some(param) = magic_func.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            // Param 1: arguments
+                            if let Some(param) = magic_func.params.get(1) {
+                                frame.locals.insert(param.name, args_array_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                        } else {
+                            let method_str = String::from_utf8_lossy(self.context.interner.lookup(method_name).unwrap_or(b"<unknown>"));
+                            return Err(VmError::RuntimeError(format!("Call to undefined method {}", method_str)));
+                        }
                     }
                 }
                 OpCode::UnsetObj => {

@@ -14,6 +14,7 @@ pub struct CallFrame {
     pub class_scope: Option<Symbol>,
     pub called_scope: Option<Symbol>,
     pub generator: Option<Handle>,
+    pub discard_return: bool,
 }
 
 impl CallFrame {
@@ -28,6 +29,7 @@ impl CallFrame {
             class_scope: None,
             called_scope: None,
             generator: None,
+            discard_return: false,
         }
     }
 }
