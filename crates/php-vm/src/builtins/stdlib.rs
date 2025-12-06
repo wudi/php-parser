@@ -203,6 +203,42 @@ pub fn php_is_null(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
+pub fn php_is_object(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_object() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Object(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_float(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_float() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Float(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_numeric(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_numeric() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = match &val.value {
+        Val::Int(_) | Val::Float(_) => true,
+        Val::String(s) => {
+            // Simple check for numeric string
+            let s = String::from_utf8_lossy(s);
+            s.trim().parse::<f64>().is_ok()
+        },
+        _ => false,
+    };
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_is_scalar(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 { return Err("is_scalar() expects exactly 1 parameter".into()); }
+    let val = vm.arena.get(args[0]);
+    let is = matches!(val.value, Val::Int(_) | Val::Float(_) | Val::String(_) | Val::Bool(_));
+    Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
 pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // implode(separator, array) or implode(array)
     let (sep, arr_handle) = if args.len() == 1 {
@@ -800,6 +836,39 @@ pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         print!("{}", output);
         Ok(vm.arena.alloc(Val::Null))
     }
+}
+
+pub fn php_get_called_class(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let frame = vm.frames.last().ok_or("get_called_class() called from outside a function".to_string())?;
+    
+    if let Some(scope) = frame.called_scope {
+        let name = vm.context.interner.lookup(scope).unwrap_or(b"").to_vec();
+        Ok(vm.arena.alloc(Val::String(name)))
+    } else {
+        Err("get_called_class() called from outside a class".into())
+    }
+}
+
+pub fn php_gettype(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("gettype() expects exactly 1 parameter".into());
+    }
+    
+    let val = vm.arena.get(args[0]);
+    let type_str = match &val.value {
+        Val::Null => "NULL",
+        Val::Bool(_) => "boolean",
+        Val::Int(_) => "integer",
+        Val::Float(_) => "double",
+        Val::String(_) => "string",
+        Val::Array(_) => "array",
+        Val::Object(_) => "object",
+        Val::ObjPayload(_) => "object",
+        Val::Resource(_) => "resource",
+        _ => "unknown type",
+    };
+    
+    Ok(vm.arena.alloc(Val::String(type_str.as_bytes().to_vec())))
 }
 
 fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {

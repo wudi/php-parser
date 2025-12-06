@@ -41,6 +41,10 @@ impl EngineContext {
         functions.insert(b"is_array".to_vec(), stdlib::php_is_array as NativeHandler);
         functions.insert(b"is_bool".to_vec(), stdlib::php_is_bool as NativeHandler);
         functions.insert(b"is_null".to_vec(), stdlib::php_is_null as NativeHandler);
+        functions.insert(b"is_object".to_vec(), stdlib::php_is_object as NativeHandler);
+        functions.insert(b"is_float".to_vec(), stdlib::php_is_float as NativeHandler);
+        functions.insert(b"is_numeric".to_vec(), stdlib::php_is_numeric as NativeHandler);
+        functions.insert(b"is_scalar".to_vec(), stdlib::php_is_scalar as NativeHandler);
         functions.insert(b"implode".to_vec(), stdlib::php_implode as NativeHandler);
         functions.insert(b"explode".to_vec(), stdlib::php_explode as NativeHandler);
         functions.insert(b"define".to_vec(), stdlib::php_define as NativeHandler);
@@ -58,6 +62,8 @@ impl EngineContext {
         functions.insert(b"property_exists".to_vec(), stdlib::php_property_exists as NativeHandler);
         functions.insert(b"get_class_methods".to_vec(), stdlib::php_get_class_methods as NativeHandler);
         functions.insert(b"get_class_vars".to_vec(), stdlib::php_get_class_vars as NativeHandler);
+        functions.insert(b"get_called_class".to_vec(), stdlib::php_get_called_class as NativeHandler);
+        functions.insert(b"gettype".to_vec(), stdlib::php_gettype as NativeHandler);
         functions.insert(b"var_export".to_vec(), stdlib::php_var_export as NativeHandler);
 
         Self {
