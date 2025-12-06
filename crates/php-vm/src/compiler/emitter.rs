@@ -823,6 +823,13 @@ impl<'src> Emitter<'src> {
             }
             Expr::Boolean { value, .. } => Some(Val::Bool(*value)),
             Expr::Null { .. } => Some(Val::Null),
+            Expr::Array { items, .. } => {
+                if items.is_empty() {
+                    Some(Val::Array(indexmap::IndexMap::new()))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -1635,27 +1642,55 @@ impl<'src> Emitter<'src> {
                     Expr::ArrayDimFetch { .. } => {
                         let (base, keys) = Self::flatten_dim_fetch(var);
                         
-                        self.emit_expr(base);
-                        for key in &keys {
-                            if let Some(k) = key {
-                                self.emit_expr(k);
-                            } else {
-                                let idx = self.add_constant(Val::AppendPlaceholder);
-                                self.chunk.code.push(OpCode::Const(idx as u16));
+                        if let Expr::PropertyFetch { target, property, .. } = base {
+                            self.emit_expr(target);
+                            self.chunk.code.push(OpCode::Dup);
+                            
+                            if let Expr::Variable { span, .. } = property {
+                                let name = self.get_text(*span);
+                                if !name.starts_with(b"$") {
+                                    let sym = self.interner.intern(name);
+                                    self.chunk.code.push(OpCode::FetchProp(sym));
+                                    
+                                    for key in &keys {
+                                        if let Some(k) = key {
+                                            self.emit_expr(k);
+                                        } else {
+                                            let idx = self.add_constant(Val::AppendPlaceholder);
+                                            self.chunk.code.push(OpCode::Const(idx as u16));
+                                        }
+                                    }
+                                    
+                                    self.emit_expr(expr);
+                                    
+                                    self.chunk.code.push(OpCode::StoreNestedDim(keys.len() as u8));
+                                    
+                                    self.chunk.code.push(OpCode::AssignProp(sym));
+                                }
                             }
-                        }
-                        
-                        self.emit_expr(expr);
-                        
-                        self.chunk.code.push(OpCode::StoreNestedDim(keys.len() as u8));
-                        
-                        if let Expr::Variable { span, .. } = base {
-                            let name = self.get_text(*span);
-                            if name.starts_with(b"$") {
-                                let var_name = &name[1..];
-                                let sym = self.interner.intern(var_name);
-                                self.chunk.code.push(OpCode::StoreVar(sym));
-                                self.chunk.code.push(OpCode::LoadVar(sym));
+                        } else {
+                            self.emit_expr(base);
+                            for key in &keys {
+                                if let Some(k) = key {
+                                    self.emit_expr(k);
+                                } else {
+                                    let idx = self.add_constant(Val::AppendPlaceholder);
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+                            }
+                            
+                            self.emit_expr(expr);
+                            
+                            self.chunk.code.push(OpCode::StoreNestedDim(keys.len() as u8));
+                            
+                            if let Expr::Variable { span, .. } = base {
+                                let name = self.get_text(*span);
+                                if name.starts_with(b"$") {
+                                    let var_name = &name[1..];
+                                    let sym = self.interner.intern(var_name);
+                                    self.chunk.code.push(OpCode::StoreVar(sym));
+                                    self.chunk.code.push(OpCode::LoadVar(sym));
+                                }
                             }
                         }
                     }
@@ -1769,7 +1804,40 @@ impl<'src> Emitter<'src> {
                             self.chunk.code.push(OpCode::StoreVar(sym));
                         }
                     }
-                    _ => {} // TODO: Property/Array fetch
+                    Expr::PropertyFetch { target, property, .. } => {
+                        self.emit_expr(target);
+                        self.chunk.code.push(OpCode::Dup);
+                        
+                        if let Expr::Variable { span, .. } = property {
+                            let name = self.get_text(*span);
+                            if !name.starts_with(b"$") {
+                                let sym = self.interner.intern(name);
+                                
+                                self.chunk.code.push(OpCode::FetchProp(sym));
+                                
+                                self.emit_expr(expr);
+                                
+                                match op {
+                                    AssignOp::Plus => self.chunk.code.push(OpCode::Add),
+                                    AssignOp::Minus => self.chunk.code.push(OpCode::Sub),
+                                    AssignOp::Mul => self.chunk.code.push(OpCode::Mul),
+                                    AssignOp::Div => self.chunk.code.push(OpCode::Div),
+                                    AssignOp::Mod => self.chunk.code.push(OpCode::Mod),
+                                    AssignOp::Concat => self.chunk.code.push(OpCode::Concat),
+                                    AssignOp::Pow => self.chunk.code.push(OpCode::Pow),
+                                    AssignOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                                    AssignOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                                    AssignOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                                    AssignOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                                    AssignOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
+                                    _ => {}
+                                }
+                                
+                                self.chunk.code.push(OpCode::AssignProp(sym));
+                            }
+                        }
+                    }
+                    _ => {} // TODO: Array fetch
                 }
             }
             _ => {}
