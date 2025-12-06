@@ -65,22 +65,47 @@ impl<'src> Emitter<'src> {
                     let visibility = self.get_visibility(modifiers);
                     let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
                     
-                    // Compile method body
-                    let method_emitter = Emitter::new(self.source, self.interner);
-                    let (method_chunk, is_generator) = method_emitter.compile(body);
+                    // 1. Collect param info
+                    struct ParamInfo<'a> {
+                        name_span: php_parser::span::Span,
+                        by_ref: bool,
+                        default: Option<&'a Expr<'a>>,
+                    }
                     
-                    // Extract params
-                    let mut param_syms = Vec::new();
+                    let mut param_infos = Vec::new();
                     for param in *params {
-                        let p_name = self.get_text(param.name.span);
+                        param_infos.push(ParamInfo {
+                            name_span: param.name.span,
+                            by_ref: param.by_ref,
+                            default: param.default.as_ref().map(|e| *e),
+                        });
+                    }
+
+                    // 2. Create emitter
+                    let mut method_emitter = Emitter::new(self.source, self.interner);
+                    
+                    // 3. Process params
+                    let mut param_syms = Vec::new();
+                    for (i, info) in param_infos.iter().enumerate() {
+                        let p_name = method_emitter.get_text(info.name_span);
                         if p_name.starts_with(b"$") {
-                            let sym = self.interner.intern(&p_name[1..]);
+                            let sym = method_emitter.interner.intern(&p_name[1..]);
                             param_syms.push(FuncParam {
                                 name: sym,
-                                by_ref: param.by_ref,
+                                by_ref: info.by_ref,
                             });
+                            
+                            if let Some(default_expr) = info.default {
+                                let val = method_emitter.eval_constant_expr(default_expr);
+                                let idx = method_emitter.add_constant(val);
+                                method_emitter.chunk.code.push(OpCode::RecvInit(i as u32, idx as u16));
+                            } else {
+                                method_emitter.chunk.code.push(OpCode::Recv(i as u32));
+                            }
                         }
                     }
+
+                    let (method_chunk, is_generator) = method_emitter.compile(body);
                     
                     let user_func = UserFunc {
                         params: param_syms,
@@ -353,23 +378,48 @@ impl<'src> Emitter<'src> {
                 let func_name_str = self.get_text(name.span);
                 let func_sym = self.interner.intern(func_name_str);
                 
-                // Compile body
-                let func_emitter = Emitter::new(self.source, self.interner);
-                let (mut func_chunk, is_generator) = func_emitter.compile(body);
-                func_chunk.returns_ref = *by_ref;
+                // 1. Collect param info to avoid borrow issues
+                struct ParamInfo<'a> {
+                    name_span: php_parser::span::Span,
+                    by_ref: bool,
+                    default: Option<&'a Expr<'a>>,
+                }
                 
-                // Extract params
-                let mut param_syms = Vec::new();
+                let mut param_infos = Vec::new();
                 for param in *params {
-                    let p_name = self.get_text(param.name.span);
+                    param_infos.push(ParamInfo {
+                        name_span: param.name.span,
+                        by_ref: param.by_ref,
+                        default: param.default.as_ref().map(|e| *e),
+                    });
+                }
+
+                // 2. Create emitter
+                let mut func_emitter = Emitter::new(self.source, self.interner);
+                
+                // 3. Process params using func_emitter
+                let mut param_syms = Vec::new();
+                for (i, info) in param_infos.iter().enumerate() {
+                    let p_name = func_emitter.get_text(info.name_span);
                     if p_name.starts_with(b"$") {
-                        let sym = self.interner.intern(&p_name[1..]);
+                        let sym = func_emitter.interner.intern(&p_name[1..]);
                         param_syms.push(FuncParam {
                             name: sym,
-                            by_ref: param.by_ref,
+                            by_ref: info.by_ref,
                         });
+                        
+                        if let Some(default_expr) = info.default {
+                            let val = func_emitter.eval_constant_expr(default_expr);
+                            let idx = func_emitter.add_constant(val);
+                            func_emitter.chunk.code.push(OpCode::RecvInit(i as u32, idx as u16));
+                        } else {
+                            func_emitter.chunk.code.push(OpCode::Recv(i as u32));
+                        }
                     }
                 }
+
+                let (mut func_chunk, is_generator) = func_emitter.compile(body);
+                func_chunk.returns_ref = *by_ref;
                 
                 let user_func = UserFunc {
                     params: param_syms,
@@ -1289,23 +1339,48 @@ impl<'src> Emitter<'src> {
                 }
             }
             Expr::Closure { params, uses, body, by_ref, is_static, .. } => {
-                // Compile body
-                let func_emitter = Emitter::new(self.source, self.interner);
-                let (mut func_chunk, is_generator) = func_emitter.compile(body);
-                func_chunk.returns_ref = *by_ref;
+                // 1. Collect param info
+                struct ParamInfo<'a> {
+                    name_span: php_parser::span::Span,
+                    by_ref: bool,
+                    default: Option<&'a Expr<'a>>,
+                }
                 
-                // Extract params
-                let mut param_syms = Vec::new();
+                let mut param_infos = Vec::new();
                 for param in *params {
-                    let p_name = self.get_text(param.name.span);
+                    param_infos.push(ParamInfo {
+                        name_span: param.name.span,
+                        by_ref: param.by_ref,
+                        default: param.default.as_ref().map(|e| *e),
+                    });
+                }
+
+                // 2. Create emitter
+                let mut func_emitter = Emitter::new(self.source, self.interner);
+                
+                // 3. Process params
+                let mut param_syms = Vec::new();
+                for (i, info) in param_infos.iter().enumerate() {
+                    let p_name = func_emitter.get_text(info.name_span);
                     if p_name.starts_with(b"$") {
-                        let sym = self.interner.intern(&p_name[1..]);
+                        let sym = func_emitter.interner.intern(&p_name[1..]);
                         param_syms.push(FuncParam {
                             name: sym,
-                            by_ref: param.by_ref,
+                            by_ref: info.by_ref,
                         });
+                        
+                        if let Some(default_expr) = info.default {
+                            let val = func_emitter.eval_constant_expr(default_expr);
+                            let idx = func_emitter.add_constant(val);
+                            func_emitter.chunk.code.push(OpCode::RecvInit(i as u32, idx as u16));
+                        } else {
+                            func_emitter.chunk.code.push(OpCode::Recv(i as u32));
+                        }
                     }
                 }
+
+                let (mut func_chunk, is_generator) = func_emitter.compile(body);
+                func_chunk.returns_ref = *by_ref;
                 
                 // Extract uses
                 let mut use_syms = Vec::new();

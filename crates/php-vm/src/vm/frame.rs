@@ -15,6 +15,7 @@ pub struct CallFrame {
     pub called_scope: Option<Symbol>,
     pub generator: Option<Handle>,
     pub discard_return: bool,
+    pub args: Vec<Handle>,
 }
 
 impl CallFrame {
@@ -30,6 +31,7 @@ impl CallFrame {
             called_scope: None,
             generator: None,
             discard_return: false,
+            args: Vec::new(),
         }
     }
 }

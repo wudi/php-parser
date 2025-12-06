@@ -23,6 +23,7 @@ pub struct PendingCall {
     pub args: Vec<Handle>,
     pub is_static: bool,
     pub class_name: Option<Symbol>,
+    pub this_handle: Option<Handle>,
 }
 
 pub struct VM {
@@ -538,13 +539,10 @@ impl VM {
                     
                     if !is_target_ref {
                         // Not assigning to a reference.
-                        // Check if we need to unref (copy) the value from the stack
-                        let final_handle = if self.arena.get(val_handle).is_ref {
-                            let val = self.arena.get(val_handle).value.clone();
-                            self.arena.alloc(val)
-                        } else {
-                            val_handle
-                        };
+                        // We MUST clone the value to ensure value semantics (no implicit sharing).
+                        // Unless we implement COW with refcounts.
+                        let val = self.arena.get(val_handle).value.clone();
+                        let final_handle = self.arena.alloc(val);
                         
                         frame.locals.insert(sym, final_handle);
                     }
@@ -1041,6 +1039,94 @@ impl VM {
                     let res_handle = self.arena.alloc(Val::Bool(defined));
                     self.operand_stack.push(res_handle);
                 }
+                OpCode::DeclareClass => {
+                    let parent_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let name_sym = match &self.arena.get(name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    let parent_sym = match &self.arena.get(parent_handle).value {
+                        Val::String(s) => Some(self.context.interner.intern(s)),
+                        Val::Null => None,
+                        _ => return Err(VmError::RuntimeError("Parent class name must be string or null".into())),
+                    };
+                    
+                    let class_def = ClassDef {
+                        name: name_sym,
+                        parent: parent_sym,
+                        is_interface: false,
+                        is_trait: false,
+                        interfaces: Vec::new(),
+                        traits: Vec::new(),
+                        methods: HashMap::new(),
+                        properties: IndexMap::new(),
+                        constants: HashMap::new(),
+                        static_properties: HashMap::new(),
+                    };
+                    self.context.classes.insert(name_sym, class_def);
+                }
+                OpCode::DeclareFunction => {
+                    let func_idx_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let name_sym = match &self.arena.get(name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Function name must be string".into())),
+                    };
+                    
+                    let func_idx = match &self.arena.get(func_idx_handle).value {
+                        Val::Int(i) => *i as u32,
+                        _ => return Err(VmError::RuntimeError("Function index must be int".into())),
+                    };
+                    
+                    let val = {
+                        let frame = self.frames.last().unwrap();
+                        frame.chunk.constants[func_idx as usize].clone()
+                    };
+                    if let Val::Resource(rc) = val {
+                        if let Ok(func) = rc.downcast::<UserFunc>() {
+                            self.context.user_functions.insert(name_sym, func);
+                        }
+                    }
+                }
+                OpCode::DeclareConst => {
+                    let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let name_sym = match &self.arena.get(name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Constant name must be string".into())),
+                    };
+                    
+                    let val = self.arena.get(val_handle).value.clone();
+                    self.context.constants.insert(name_sym, val);
+                }
+                OpCode::CaseStrict => {
+                    let case_val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let switch_val_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?; // Peek
+                    
+                    let case_val = &self.arena.get(case_val_handle).value;
+                    let switch_val = &self.arena.get(switch_val_handle).value;
+                    
+                    // Strict comparison
+                    let is_equal = match (switch_val, case_val) {
+                        (Val::Int(a), Val::Int(b)) => a == b,
+                        (Val::String(a), Val::String(b)) => a == b,
+                        (Val::Bool(a), Val::Bool(b)) => a == b,
+                        (Val::Float(a), Val::Float(b)) => a == b,
+                        (Val::Null, Val::Null) => true,
+                        _ => false,
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(is_equal));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::SwitchLong | OpCode::SwitchString => {
+                    // No-op
+                }
                 OpCode::Match => {}
                 OpCode::MatchError => {
                     return Err(VmError::RuntimeError("UnhandledMatchError".into()));
@@ -1128,39 +1214,7 @@ impl VM {
                                     
                                     let mut frame = CallFrame::new(user_func.chunk.clone());
                                     frame.func = Some(user_func.clone());
-                                    for (i, param) in user_func.params.iter().enumerate() {
-                                        if i < args.len() {
-                                            let arg_handle = args[i];
-                                            if param.by_ref {
-                                                // Pass by reference: ensure arg is a ref
-                                                if !self.arena.get(arg_handle).is_ref {
-                                                    // If passed value is not a ref, we must upgrade it?
-                                                    // PHP Error: "Only variables can be passed by reference"
-                                                    // But here we just have a handle.
-                                                    // If it's a literal, we can't make it a ref to a variable.
-                                                    // But for now, let's just mark it as ref if it isn't?
-                                                    // Actually, if the caller passed a variable, they should have used MakeVarRef?
-                                                    // No, the caller doesn't know if the function expects a ref at compile time (unless we check signature).
-                                                    // In PHP, the call site must use `foo(&$a)` if it wants to be explicit, but modern PHP allows `foo($a)` if the function is defined as `function foo(&$a)`.
-                                                    // So the VM must handle the upgrade.
-                                                    
-                                                    // We need to check if we can make it a ref.
-                                                    // For now, we just mark it.
-                                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                                }
-                                                frame.locals.insert(param.name, arg_handle);
-                                            } else {
-                                                // Pass by value: if arg is ref, we must deref (copy value)
-                                                let final_handle = if self.arena.get(arg_handle).is_ref {
-                                                    let val = self.arena.get(arg_handle).value.clone();
-                                                    self.arena.alloc(val)
-                                                } else {
-                                                    arg_handle
-                                                };
-                                                frame.locals.insert(param.name, final_handle);
-                                            }
-                                        }
-                                    }
+                                    frame.args = args;
                                     
                                     if user_func.is_generator {
                                         let gen_data = GeneratorData {
@@ -1208,26 +1262,7 @@ impl VM {
                             if let Some(closure) = closure_data {
                                 let mut frame = CallFrame::new(closure.func.chunk.clone());
                                 frame.func = Some(closure.func.clone());
-                                
-                                for (i, param) in closure.func.params.iter().enumerate() {
-                                    if i < args.len() {
-                                        let arg_handle = args[i];
-                                        if param.by_ref {
-                                            if !self.arena.get(arg_handle).is_ref {
-                                                self.arena.get_mut(arg_handle).is_ref = true;
-                                            }
-                                            frame.locals.insert(param.name, arg_handle);
-                                        } else {
-                                            let final_handle = if self.arena.get(arg_handle).is_ref {
-                                                let val = self.arena.get(arg_handle).value.clone();
-                                                self.arena.alloc(val)
-                                            } else {
-                                                arg_handle
-                                            };
-                                            frame.locals.insert(param.name, final_handle);
-                                        }
-                                    }
-                                }
+                                frame.args = args;
                                 
                                 for (sym, handle) in &closure.captures {
                                     frame.locals.insert(*sym, *handle);
@@ -1246,26 +1281,7 @@ impl VM {
                                     frame.func = Some(method.clone());
                                     frame.this = Some(*payload_handle);
                                     frame.class_scope = Some(class_name);
-                                    
-                                    for (i, param) in method.params.iter().enumerate() {
-                                        if i < args.len() {
-                                            let arg_handle = args[i];
-                                            if param.by_ref {
-                                                if !self.arena.get(arg_handle).is_ref {
-                                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                                }
-                                                frame.locals.insert(param.name, arg_handle);
-                                            } else {
-                                                let final_handle = if self.arena.get(arg_handle).is_ref {
-                                                    let val = self.arena.get(arg_handle).value.clone();
-                                                    self.arena.alloc(val)
-                                                } else {
-                                                    arg_handle
-                                                };
-                                                frame.locals.insert(param.name, final_handle);
-                                            }
-                                        }
-                                    }
+                                    frame.args = args;
                                     
                                     self.frames.push(frame);
                                 } else {
@@ -1345,8 +1361,52 @@ impl VM {
                         self.operand_stack.push(final_ret_val);
                     }
                 }
-                OpCode::Recv(_) => {}
-                OpCode::RecvInit(_, _) => {}
+                OpCode::Recv(arg_idx) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    if let Some(func) = &frame.func {
+                        if (arg_idx as usize) < func.params.len() {
+                            let param = &func.params[arg_idx as usize];
+                            if (arg_idx as usize) < frame.args.len() {
+                                let arg_handle = frame.args[arg_idx as usize];
+                                if param.by_ref {
+                                    if !self.arena.get(arg_handle).is_ref {
+                                        self.arena.get_mut(arg_handle).is_ref = true;
+                                    }
+                                    frame.locals.insert(param.name, arg_handle);
+                                } else {
+                                    let val = self.arena.get(arg_handle).value.clone();
+                                    let final_handle = self.arena.alloc(val);
+                                    frame.locals.insert(param.name, final_handle);
+                                }
+                            }
+                        }
+                    }
+                }
+                OpCode::RecvInit(arg_idx, default_val_idx) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    if let Some(func) = &frame.func {
+                        if (arg_idx as usize) < func.params.len() {
+                            let param = &func.params[arg_idx as usize];
+                            if (arg_idx as usize) < frame.args.len() {
+                                let arg_handle = frame.args[arg_idx as usize];
+                                if param.by_ref {
+                                    if !self.arena.get(arg_handle).is_ref {
+                                        self.arena.get_mut(arg_handle).is_ref = true;
+                                    }
+                                    frame.locals.insert(param.name, arg_handle);
+                                } else {
+                                    let val = self.arena.get(arg_handle).value.clone();
+                                    let final_handle = self.arena.alloc(val);
+                                    frame.locals.insert(param.name, final_handle);
+                                }
+                            } else {
+                                let default_val = frame.chunk.constants[default_val_idx as usize].clone();
+                                let default_handle = self.arena.alloc(default_val);
+                                frame.locals.insert(param.name, default_handle);
+                            }
+                        }
+                    }
+                }
                 OpCode::SendVal => {} 
                 OpCode::SendVar => {}
                 OpCode::SendRef => {}
@@ -3235,6 +3295,7 @@ impl VM {
                         args: Vec::new(),
                         is_static: false,
                         class_name: None,
+                        this_handle: None,
                     });
                 }
                 OpCode::InitFcall => {
@@ -3251,6 +3312,7 @@ impl VM {
                         args: Vec::new(),
                         is_static: false,
                         class_name: None,
+                        this_handle: None,
                     });
                 }
                 OpCode::SendVarEx | OpCode::SendVarNoRefEx | OpCode::SendVarNoRef | OpCode::SendValEx | OpCode::SendFuncArg => {
@@ -3262,37 +3324,84 @@ impl VM {
                     let call = self.pending_calls.pop().ok_or(VmError::RuntimeError("No pending call".into()))?;
                     
                     if let Some(name) = call.func_name {
-                        let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
-                        if let Some(handler) = self.context.engine.functions.get(name_bytes) {
-                            let res = handler(self, &call.args).map_err(|e| VmError::RuntimeError(e))?;
-                            self.operand_stack.push(res);
-                        } else if let Some(func) = self.context.user_functions.get(&name) {
-                            let mut frame = CallFrame::new(func.chunk.clone());
-                            frame.func = Some(func.clone());
-                            
-                            for (i, param) in func.params.iter().enumerate() {
-                                if i < call.args.len() {
-                                    let arg_handle = call.args[i];
-                                    if param.by_ref {
-                                        if !self.arena.get(arg_handle).is_ref {
-                                            self.arena.get_mut(arg_handle).is_ref = true;
-                                        }
-                                        frame.locals.insert(param.name, arg_handle);
+                        if let Some(class_name) = call.class_name {
+                            // Method call
+                            let method_lookup = self.find_method(class_name, name);
+                            if let Some((method, vis, is_static, defining_class)) = method_lookup {
+                                // Check visibility
+                                // TODO: Check visibility against current scope
+                                
+                                if is_static != call.is_static {
+                                    if is_static {
+                                        // Calling static method non-statically
+                                        // PHP allows this but warns? Or deprecated?
+                                        // In PHP 8 it's deprecated or error?
+                                        // For now allow it.
                                     } else {
-                                        let final_handle = if self.arena.get(arg_handle).is_ref {
-                                            let val = self.arena.get(arg_handle).value.clone();
-                                            self.arena.alloc(val)
-                                        } else {
-                                            arg_handle
-                                        };
-                                        frame.locals.insert(param.name, final_handle);
+                                        return Err(VmError::RuntimeError("Non-static method called statically".into()));
                                     }
                                 }
+                                
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = call.this_handle;
+                                frame.class_scope = Some(defining_class);
+                                frame.called_scope = Some(class_name);
+                                frame.args = call.args.clone();
+                                
+                                for (i, param) in method.params.iter().enumerate() {
+                                    if i < call.args.len() {
+                                        let arg_handle = call.args[i];
+                                        if param.by_ref {
+                                            if !self.arena.get(arg_handle).is_ref {
+                                                self.arena.get_mut(arg_handle).is_ref = true;
+                                            }
+                                            frame.locals.insert(param.name, arg_handle);
+                                        } else {
+                                            let val = self.arena.get(arg_handle).value.clone();
+                                            let final_handle = self.arena.alloc(val);
+                                            frame.locals.insert(param.name, final_handle);
+                                        }
+                                    }
+                                }
+                                
+                                self.frames.push(frame);
+                            } else {
+                                let name_str = String::from_utf8_lossy(self.context.interner.lookup(name).unwrap_or(b""));
+                                let class_str = String::from_utf8_lossy(self.context.interner.lookup(class_name).unwrap_or(b""));
+                                return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, name_str)));
                             }
-                            
-                            self.frames.push(frame);
                         } else {
-                            return Err(VmError::RuntimeError(format!("Call to undefined function: {}", String::from_utf8_lossy(name_bytes))));
+                            // Function call
+                            let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
+                            if let Some(handler) = self.context.engine.functions.get(name_bytes) {
+                                let res = handler(self, &call.args).map_err(|e| VmError::RuntimeError(e))?;
+                                self.operand_stack.push(res);
+                            } else if let Some(func) = self.context.user_functions.get(&name) {
+                                let mut frame = CallFrame::new(func.chunk.clone());
+                                frame.func = Some(func.clone());
+                                frame.args = call.args.clone();
+                                
+                                for (i, param) in func.params.iter().enumerate() {
+                                    if i < call.args.len() {
+                                        let arg_handle = call.args[i];
+                                        if param.by_ref {
+                                            if !self.arena.get(arg_handle).is_ref {
+                                                self.arena.get_mut(arg_handle).is_ref = true;
+                                            }
+                                            frame.locals.insert(param.name, arg_handle);
+                                        } else {
+                                            let val = self.arena.get(arg_handle).value.clone();
+                                            let final_handle = self.arena.alloc(val);
+                                            frame.locals.insert(param.name, final_handle);
+                                        }
+                                    }
+                                }
+                                
+                                self.frames.push(frame);
+                            } else {
+                                return Err(VmError::RuntimeError(format!("Call to undefined function: {}", String::from_utf8_lossy(name_bytes))));
+                            }
                         }
                     } else {
                         return Err(VmError::RuntimeError("Dynamic function call not supported yet".into()));
@@ -3300,6 +3409,69 @@ impl VM {
                 }
                 OpCode::ExtStmt | OpCode::ExtFcallBegin | OpCode::ExtFcallEnd | OpCode::ExtNop => {
                     // No-op for now
+                }
+                OpCode::FetchListW => {
+                    let dim = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let container_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?; // Peek container
+                    
+                    // We need mutable access to container if we want to create references?
+                    // But we only peek.
+                    // If we want to return a reference to an element, we need to ensure the element exists and is a reference?
+                    // Or just return the handle.
+                    
+                    // For now, same as FetchListR but maybe we should ensure it's a reference?
+                    // In PHP, list(&$a) = $arr;
+                    // The element in $arr must be referenceable.
+                    
+                    let container = &self.arena.get(container_handle).value;
+                    
+                    match container {
+                        Val::Array(map) => {
+                            let key = match &self.arena.get(dim).value {
+                                Val::Int(i) => ArrayKey::Int(*i),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
+                                _ => ArrayKey::Str(vec![]),
+                            };
+                            
+                            if let Some(val_handle) = map.get(&key) {
+                                self.operand_stack.push(*val_handle);
+                            } else {
+                                let null = self.arena.alloc(Val::Null);
+                                self.operand_stack.push(null);
+                            }
+                        }
+                        _ => {
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
+                        }
+                    }
+                }
+                OpCode::FetchListR => {
+                    let dim = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let container_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?; // Peek container
+                    
+                    let container = &self.arena.get(container_handle).value;
+                    
+                    match container {
+                        Val::Array(map) => {
+                            let key = match &self.arena.get(dim).value {
+                                Val::Int(i) => ArrayKey::Int(*i),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
+                                _ => ArrayKey::Str(vec![]),
+                            };
+                            
+                            if let Some(val_handle) = map.get(&key) {
+                                self.operand_stack.push(*val_handle);
+                            } else {
+                                let null = self.arena.alloc(Val::Null);
+                                self.operand_stack.push(null);
+                            }
+                        }
+                        _ => {
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
+                        }
+                    }
                 }
                 OpCode::FetchDimR | OpCode::FetchDimIs | OpCode::FetchDimUnset => {
                     let dim = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -3464,6 +3636,325 @@ impl VM {
                          // Auto-vivify
                          return Err(VmError::RuntimeError("Creating default object from empty value not fully implemented".into()));
                     }
+                }
+                OpCode::FuncNumArgs => {
+                    let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                    let count = frame.args.len();
+                    let handle = self.arena.alloc(Val::Int(count as i64));
+                    self.operand_stack.push(handle);
+                }
+                OpCode::FuncGetArgs => {
+                    let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                    let mut map = IndexMap::new();
+                    for (i, handle) in frame.args.iter().enumerate() {
+                        map.insert(ArrayKey::Int(i as i64), *handle);
+                    }
+                    let handle = self.arena.alloc(Val::Array(map));
+                    self.operand_stack.push(handle);
+                }
+                OpCode::BeginSilence => {
+                    // Push current error reporting level to silence stack and set to 0
+                    // For now we don't have error reporting level in context, so just push 0
+                    self.silence_stack.push(0);
+                }
+                OpCode::EndSilence => {
+                    // Restore error reporting level
+                    self.silence_stack.pop();
+                }
+                OpCode::InitMethodCall => {
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let name_val = self.arena.get(name_handle);
+                    let name_sym = match &name_val.value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Method name must be string".into())),
+                    };
+                    
+                    self.pending_calls.push(PendingCall {
+                        func_name: Some(name_sym),
+                        func_handle: None,
+                        args: Vec::new(),
+                        is_static: false,
+                        class_name: None, // Will be resolved from object
+                        this_handle: Some(obj_handle),
+                    });
+                    
+                    let obj_val = self.arena.get(obj_handle);
+                    if let Val::Object(payload_handle) = obj_val.value {
+                        let payload = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(data) = &payload.value {
+                            let class_name = data.class;
+                            let call = self.pending_calls.last_mut().unwrap();
+                            call.class_name = Some(class_name);
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("Call to a member function on a non-object".into()));
+                    }
+                }
+                OpCode::InitStaticMethodCall => {
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let name_val = self.arena.get(name_handle);
+                    let name_sym = match &name_val.value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Method name must be string".into())),
+                    };
+                    
+                    let class_val = self.arena.get(class_handle);
+                    let class_sym = match &class_val.value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+                    
+                    let resolved_class = self.resolve_class_name(class_sym)?;
+                    
+                    self.pending_calls.push(PendingCall {
+                        func_name: Some(name_sym),
+                        func_handle: None,
+                        args: Vec::new(),
+                        is_static: true,
+                        class_name: Some(resolved_class),
+                        this_handle: None,
+                    });
+                }
+                OpCode::IssetIsemptyVar => {
+                    let type_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let type_val = match self.arena.get(type_handle).value {
+                        Val::Int(i) => i,
+                        _ => 0, // Default to isset
+                    };
+                    
+                    let name_sym = match &self.arena.get(name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Variable name must be string".into())),
+                    };
+                    
+                    let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
+                    let exists = frame.locals.contains_key(&name_sym);
+                    let val_handle = if exists {
+                        frame.locals.get(&name_sym).cloned()
+                    } else {
+                        None
+                    };
+                    
+                    let result = if type_val == 0 { // Isset
+                        // isset returns true if var exists and is not null
+                        if let Some(h) = val_handle {
+                            !matches!(self.arena.get(h).value, Val::Null)
+                        } else {
+                            false
+                        }
+                    } else { // Empty
+                        // empty returns true if var does not exist or is falsey
+                        if let Some(h) = val_handle {
+                            let val = &self.arena.get(h).value;
+                            match val {
+                                Val::Null => true,
+                                Val::Bool(b) => !b,
+                                Val::Int(i) => *i == 0,
+                                Val::Float(f) => *f == 0.0,
+                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::Array(a) => a.is_empty(),
+                                _ => false,
+                            }
+                        } else {
+                            true
+                        }
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(result));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetIsemptyDimObj => {
+                    let type_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let dim_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let container_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let type_val = match self.arena.get(type_handle).value {
+                        Val::Int(i) => i,
+                        _ => 0,
+                    };
+                    
+                    let container = &self.arena.get(container_handle).value;
+                    let val_handle = match container {
+                        Val::Array(map) => {
+                            let key = match &self.arena.get(dim_handle).value {
+                                Val::Int(i) => ArrayKey::Int(*i),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
+                                _ => ArrayKey::Str(vec![]),
+                            };
+                            map.get(&key).cloned()
+                        }
+                        Val::Object(obj_handle) => {
+                            // Property check
+                            let prop_name = match &self.arena.get(dim_handle).value {
+                                Val::String(s) => s.clone(),
+                                _ => vec![],
+                            };
+                            if prop_name.is_empty() {
+                                None
+                            } else {
+                                let sym = self.context.interner.intern(&prop_name);
+                                let payload = self.arena.get(*obj_handle);
+                                if let Val::ObjPayload(data) = &payload.value {
+                                    data.properties.get(&sym).cloned()
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    
+                    let result = if type_val == 0 { // Isset
+                        if let Some(h) = val_handle {
+                            !matches!(self.arena.get(h).value, Val::Null)
+                        } else {
+                            false
+                        }
+                    } else { // Empty
+                        if let Some(h) = val_handle {
+                            let val = &self.arena.get(h).value;
+                            match val {
+                                Val::Null => true,
+                                Val::Bool(b) => !b,
+                                Val::Int(i) => *i == 0,
+                                Val::Float(f) => *f == 0.0,
+                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::Array(a) => a.is_empty(),
+                                _ => false,
+                            }
+                        } else {
+                            true
+                        }
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(result));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetIsemptyPropObj => {
+                    // Same as DimObj but specifically for properties?
+                    // In Zend, ISSET_ISEMPTY_PROP_OBJ is for properties.
+                    // ISSET_ISEMPTY_DIM_OBJ is for dimensions (arrays/ArrayAccess).
+                    // But here I merged logic in DimObj above.
+                    // Let's just delegate to DimObj logic or copy it.
+                    // For now, I'll copy the logic but enforce Object check.
+                    
+                    let type_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let prop_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let container_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let type_val = match self.arena.get(type_handle).value {
+                        Val::Int(i) => i,
+                        _ => 0,
+                    };
+                    
+                    let container = &self.arena.get(container_handle).value;
+                    let val_handle = match container {
+                        Val::Object(obj_handle) => {
+                            let prop_name = match &self.arena.get(prop_handle).value {
+                                Val::String(s) => s.clone(),
+                                _ => vec![],
+                            };
+                            if prop_name.is_empty() {
+                                None
+                            } else {
+                                let sym = self.context.interner.intern(&prop_name);
+                                let payload = self.arena.get(*obj_handle);
+                                if let Val::ObjPayload(data) = &payload.value {
+                                    data.properties.get(&sym).cloned()
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    
+                    let result = if type_val == 0 { // Isset
+                        if let Some(h) = val_handle {
+                            !matches!(self.arena.get(h).value, Val::Null)
+                        } else {
+                            false
+                        }
+                    } else { // Empty
+                        if let Some(h) = val_handle {
+                            let val = &self.arena.get(h).value;
+                            match val {
+                                Val::Null => true,
+                                Val::Bool(b) => !b,
+                                Val::Int(i) => *i == 0,
+                                Val::Float(f) => *f == 0.0,
+                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::Array(a) => a.is_empty(),
+                                _ => false,
+                            }
+                        } else {
+                            true
+                        }
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(result));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetIsemptyStaticProp => {
+                    let type_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let prop_name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    let type_val = match self.arena.get(type_handle).value {
+                        Val::Int(i) => i,
+                        _ => 0,
+                    };
+                    
+                    let class_name = match &self.arena.get(class_name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+                    };
+
+                    let prop_name = match &self.arena.get(prop_name_handle).value {
+                        Val::String(s) => self.context.interner.intern(s),
+                        _ => return Err(VmError::RuntimeError("Property name must be string".into())),
+                    };
+                    
+                    let val_opt = if let Ok(resolved_class) = self.resolve_class_name(class_name) {
+                        if let Ok((val, _, _)) = self.find_static_prop(resolved_class, prop_name) {
+                            Some(val)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    
+                    let result = if type_val == 0 { // Isset
+                        if let Some(val) = val_opt {
+                            !matches!(val, Val::Null)
+                        } else {
+                            false
+                        }
+                    } else { // Empty
+                        if let Some(val) = val_opt {
+                            match val {
+                                Val::Null => true,
+                                Val::Bool(b) => !b,
+                                Val::Int(i) => i == 0,
+                                Val::Float(f) => f == 0.0,
+                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::Array(a) => a.is_empty(),
+                                _ => false,
+                            }
+                        } else {
+                            true
+                        }
+                    };
+                    
+                    let res_handle = self.arena.alloc(Val::Bool(result));
+                    self.operand_stack.push(res_handle);
                 }
                 OpCode::AssignStaticPropOp(op) => {
                     let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -4906,6 +5397,8 @@ mod tests {
         let sym_a = Symbol(0);
         let sym_b = Symbol(1);
         
+        func_chunk.code.push(OpCode::Recv(0));
+        func_chunk.code.push(OpCode::Recv(1));
         func_chunk.code.push(OpCode::LoadVar(sym_a));
         func_chunk.code.push(OpCode::LoadVar(sym_b));
         func_chunk.code.push(OpCode::Add);
