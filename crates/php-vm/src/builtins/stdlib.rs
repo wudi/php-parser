@@ -331,3 +331,141 @@ pub fn php_constant(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // TODO: Warning
     Ok(vm.arena.alloc(Val::Null))
 }
+
+pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("get_object_vars() expects exactly 1 parameter".into());
+    }
+    
+    let obj_handle = args[0];
+    let obj_val = vm.arena.get(obj_handle);
+    
+    if let Val::Object(payload_handle) = &obj_val.value {
+        let payload = vm.arena.get(*payload_handle);
+        if let Val::ObjPayload(obj_data) = &payload.value {
+            let mut result_map = indexmap::IndexMap::new();
+            let class_sym = obj_data.class;
+            let current_scope = vm.get_current_class();
+            
+            // We need to clone the properties map to iterate because we need immutable access to vm for check_prop_visibility
+            // But check_prop_visibility takes &self.
+            // vm is &mut VM. We can reborrow as immutable.
+            // But we are holding a reference to obj_data which is inside vm.arena.
+            // This is a borrow checker issue.
+            
+            // Solution: Collect properties first.
+            let properties: Vec<(crate::core::value::Symbol, Handle)> = obj_data.properties.iter().map(|(k, v)| (*k, *v)).collect();
+            
+            for (prop_sym, val_handle) in properties {
+                if vm.check_prop_visibility(class_sym, prop_sym, current_scope).is_ok() {
+                    let prop_name_bytes = vm.context.interner.lookup(prop_sym).unwrap_or(b"").to_vec();
+                    let key = crate::core::value::ArrayKey::Str(prop_name_bytes);
+                    result_map.insert(key, val_handle);
+                }
+            }
+            
+            return Ok(vm.arena.alloc(Val::Array(result_map)));
+        }
+    }
+    
+    Err("get_object_vars() expects parameter 1 to be object".into())
+}
+
+pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 1 {
+        return Err("var_export() expects at least 1 parameter".into());
+    }
+    
+    let val_handle = args[0];
+    let return_res = if args.len() > 1 {
+        let ret_val = vm.arena.get(args[1]);
+        match &ret_val.value {
+            Val::Bool(b) => *b,
+            _ => false,
+        }
+    } else {
+        false
+    };
+    
+    let mut output = String::new();
+    export_value(vm, val_handle, 0, &mut output);
+    
+    if return_res {
+        Ok(vm.arena.alloc(Val::String(output.into_bytes())))
+    } else {
+        print!("{}", output);
+        Ok(vm.arena.alloc(Val::Null))
+    }
+}
+
+fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
+    let val = vm.arena.get(handle);
+    let indent = "  ".repeat(depth);
+    
+    match &val.value {
+        Val::String(s) => {
+            output.push('\'');
+            output.push_str(&String::from_utf8_lossy(s).replace("\\", "\\\\").replace("'", "\\'"));
+            output.push('\'');
+        }
+        Val::Int(i) => {
+            output.push_str(&i.to_string());
+        }
+        Val::Float(f) => {
+            output.push_str(&f.to_string());
+        }
+        Val::Bool(b) => {
+            output.push_str(if *b { "true" } else { "false" });
+        }
+        Val::Null => {
+            output.push_str("NULL");
+        }
+        Val::Array(arr) => {
+            output.push_str("array(\n");
+            for (key, val_handle) in arr.iter() {
+                output.push_str(&indent);
+                output.push_str("  ");
+                match key {
+                    crate::core::value::ArrayKey::Int(i) => output.push_str(&i.to_string()),
+                    crate::core::value::ArrayKey::Str(s) => {
+                        output.push('\'');
+                        output.push_str(&String::from_utf8_lossy(s).replace("\\", "\\\\").replace("'", "\\'"));
+                        output.push('\'');
+                    }
+                }
+                output.push_str(" => ");
+                export_value(vm, *val_handle, depth + 1, output);
+                output.push_str(",\n");
+            }
+            output.push_str(&indent);
+            output.push(')');
+        }
+        Val::Object(handle) => {
+            let payload_val = vm.arena.get(*handle);
+            if let Val::ObjPayload(obj) = &payload_val.value {
+                let class_name = vm.context.interner.lookup(obj.class).unwrap_or(b"<unknown>");
+                output.push('\\');
+                output.push_str(&String::from_utf8_lossy(class_name));
+                output.push_str("::__set_state(array(\n");
+                
+                for (prop_sym, val_handle) in &obj.properties {
+                    output.push_str(&indent);
+                    output.push_str("  ");
+                    let prop_name = vm.context.interner.lookup(*prop_sym).unwrap_or(b"");
+                    output.push('\'');
+                    output.push_str(&String::from_utf8_lossy(prop_name).replace("\\", "\\\\").replace("'", "\\'"));
+                    output.push('\'');
+                    output.push_str(" => ");
+                    export_value(vm, *val_handle, depth + 1, output);
+                    output.push_str(",\n");
+                }
+                
+                output.push_str(&indent);
+                output.push_str("))");
+            } else {
+                output.push_str("NULL");
+            }
+        }
+        _ => output.push_str("NULL"),
+    }
+}

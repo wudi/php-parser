@@ -198,11 +198,11 @@ impl VM {
         }
     }
 
-    fn get_current_class(&self) -> Option<Symbol> {
+    pub(crate) fn get_current_class(&self) -> Option<Symbol> {
         self.frames.last().and_then(|f| f.class_scope)
     }
 
-    fn check_prop_visibility(&self, class_name: Symbol, prop_name: Symbol, current_scope: Option<Symbol>) -> Result<(), VmError> {
+    pub(crate) fn check_prop_visibility(&self, class_name: Symbol, prop_name: Symbol, current_scope: Option<Symbol>) -> Result<(), VmError> {
         let mut current = Some(class_name);
         let mut defined_vis = None;
         let mut defined_class = None;
