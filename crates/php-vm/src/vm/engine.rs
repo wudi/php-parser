@@ -2605,6 +2605,30 @@ impl VM {
                     let handle = self.arena.alloc(val);
                     self.operand_stack.push(handle);
                 }
+                OpCode::FetchClassConstDynamic(const_name) => {
+                    let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let class_val = self.arena.get(class_handle).value.clone();
+                    
+                    let class_name_sym = match class_val {
+                        Val::Object(h) => {
+                            if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                                data.class
+                            } else {
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            }
+                        }
+                        Val::String(s) => {
+                            self.context.interner.intern(&s)
+                        }
+                        _ => return Err(VmError::RuntimeError("Class constant fetch on non-class".into())),
+                    };
+                    
+                    let resolved_class = self.resolve_class_name(class_name_sym)?;
+                    let (val, visibility, defining_class) = self.find_class_constant(resolved_class, const_name)?;
+                    self.check_const_visibility(defining_class, visibility)?;
+                    let handle = self.arena.alloc(val);
+                    self.operand_stack.push(handle);
+                }
                 OpCode::FetchStaticProp(class_name, prop_name) => {
                     let resolved_class = self.resolve_class_name(class_name)?;
                     let (val, visibility, defining_class) = self.find_static_prop(resolved_class, prop_name)?;

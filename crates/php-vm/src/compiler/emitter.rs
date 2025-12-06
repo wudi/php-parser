@@ -1604,10 +1604,22 @@ impl<'src> Emitter<'src> {
                 if is_class_keyword {
                     self.chunk.code.push(OpCode::GetClass);
                 } else {
-                    // TODO: Dynamic class constant fetch
-                    self.chunk.code.push(OpCode::Pop);
-                    let idx = self.add_constant(Val::Null);
-                    self.chunk.code.push(OpCode::Const(idx as u16));
+                    if let Expr::Variable { span: const_span, .. } = constant {
+                        let const_name = self.get_text(*const_span);
+                        if const_name.starts_with(b"$") {
+                            // TODO: Dynamic class, static property: $obj::$prop
+                            self.chunk.code.push(OpCode::Pop);
+                            let idx = self.add_constant(Val::Null);
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                        } else {
+                            let const_sym = self.interner.intern(const_name);
+                            self.chunk.code.push(OpCode::FetchClassConstDynamic(const_sym));
+                        }
+                    } else {
+                        self.chunk.code.push(OpCode::Pop);
+                        let idx = self.add_constant(Val::Null);
+                        self.chunk.code.push(OpCode::Const(idx as u16));
+                    }
                 }
             }
             Expr::Assign { var, expr, .. } => {

@@ -101,6 +101,7 @@ pub enum OpCode {
     DefClassConst(Symbol, Symbol, u16, Visibility), // (class_name, const_name, val_idx, visibility)
     DefStaticProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
     FetchClassConst(Symbol, Symbol), // (class_name, const_name) -> [Val]
+    FetchClassConstDynamic(Symbol), // [Class] -> [Val] (const_name is arg)
     FetchStaticProp(Symbol, Symbol), // (class_name, prop_name) -> [Val]
     AssignStaticProp(Symbol, Symbol), // (class_name, prop_name) [Val] -> [Val]
     CallStaticMethod(Symbol, Symbol, u8), // (class_name, method_name, arg_count) -> [RetVal]
