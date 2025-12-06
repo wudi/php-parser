@@ -112,3 +112,136 @@ fn test_magic_construct() {
         panic!("Expected string, got {:?}", res);
     }
 }
+
+#[test]
+fn test_magic_call_static() {
+    let src = b"<?php
+        class MagicCallStatic {
+            public static function __callStatic($name, $args) {
+                return 'static called ' . $name . ' with ' . $args[0];
+            }
+        }
+        
+        return MagicCallStatic::missing('arg1');
+    ";
+    
+    let res = run_php(src);
+    if let Val::String(s) = res {
+        assert_eq!(s, b"static called missing with arg1");
+    } else {
+        panic!("Expected string, got {:?}", res);
+    }
+}
+
+#[test]
+fn test_magic_isset() {
+    let src = b"<?php
+        class MagicIsset {
+            public function __isset($name) {
+                return $name === 'exists';
+            }
+        }
+        
+        $m = new MagicIsset();
+        return isset($m->exists) && !isset($m->missing);
+    ";
+    
+    let res = run_php(src);
+    if let Val::Bool(b) = res {
+        assert!(b);
+    } else {
+        panic!("Expected bool, got {:?}", res);
+    }
+}
+
+#[test]
+fn test_magic_unset() {
+    let src = b"<?php
+        class MagicUnset {
+            public $unsetted = false;
+            
+            public function __unset($name) {
+                if ($name === 'missing') {
+                    $this->unsetted = true;
+                }
+            }
+        }
+        
+        $m = new MagicUnset();
+        unset($m->missing);
+        return $m->unsetted;
+    ";
+    
+    let res = run_php(src);
+    if let Val::Bool(b) = res {
+        assert!(b);
+    } else {
+        panic!("Expected bool, got {:?}", res);
+    }
+}
+
+#[test]
+fn test_magic_tostring() {
+    let src = b"<?php
+        class MagicToString {
+            public function __toString() {
+                return 'I am a string';
+            }
+        }
+        
+        $m = new MagicToString();
+        return (string)$m;
+    ";
+    
+    let res = run_php(src);
+    if let Val::String(s) = res {
+        assert_eq!(s, b"I am a string");
+    } else {
+        panic!("Expected string, got {:?}", res);
+    }
+}
+
+#[test]
+fn test_magic_invoke() {
+    let src = b"<?php
+        class MagicInvoke {
+            public function __invoke($a) {
+                return 'Invoked with ' . $a;
+            }
+        }
+        
+        $m = new MagicInvoke();
+        return $m('foo');
+    ";
+    
+    let res = run_php(src);
+    if let Val::String(s) = res {
+        assert_eq!(s, b"Invoked with foo");
+    } else {
+        panic!("Expected string, got {:?}", res);
+    }
+}
+
+#[test]
+fn test_magic_clone() {
+    let src = b"<?php
+        class MagicClone {
+            public $cloned = false;
+            public function __clone() {
+                $this->cloned = true;
+            }
+        }
+        
+        $m = new MagicClone();
+        $m2 = clone $m;
+        
+        return $m2->cloned;
+    ";
+    
+    let res = run_php(src);
+    if let Val::Bool(b) = res {
+        assert!(b);
+    } else {
+        panic!("Expected bool, got {:?}", res);
+    }
+}

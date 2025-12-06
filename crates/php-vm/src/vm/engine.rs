@@ -814,6 +814,31 @@ impl VM {
                 OpCode::Cast(kind) => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let val = self.arena.get(handle).value.clone();
+                    
+                    // Special handling for Object -> String (3)
+                    if kind == 3 {
+                        if let Val::Object(h) = val {
+                             let obj_zval = self.arena.get(h);
+                             if let Val::ObjPayload(obj_data) = &obj_zval.value {
+                                let to_string_magic = self.context.interner.intern(b"__toString");
+                                if let Some((magic_func, _, _, magic_class)) = self.find_method(obj_data.class, to_string_magic) {
+                                    // Found __toString
+                                    let mut frame = CallFrame::new(magic_func.chunk.clone());
+                                    frame.func = Some(magic_func.clone());
+                                    frame.this = Some(h);
+                                    frame.class_scope = Some(magic_class);
+                                    frame.called_scope = Some(obj_data.class);
+                                    self.frames.push(frame);
+                                    return Ok(());
+                                } else {
+                                    return Err(VmError::RuntimeError("Object could not be converted to string".into()));
+                                }
+                             } else {
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
+                             }
+                        }
+                    }
+
                     let new_val = match kind {
                         0 => match val { // Int
                             Val::Int(i) => Val::Int(i),
@@ -847,6 +872,7 @@ impl VM {
                             Val::Float(f) => Val::String(f.to_string().into_bytes()),
                             Val::Bool(b) => Val::String(if b { b"1".to_vec() } else { b"".to_vec() }),
                             Val::Null => Val::String(Vec::new()),
+                            Val::Object(_) => unreachable!(), // Handled above
                             _ => Val::String(b"Array".to_vec()),
                         },
                         4 => match val { // Array
@@ -1065,45 +1091,88 @@ impl VM {
                             }
                         }
                         Val::Object(payload_handle) => {
-                            let payload_val = self.arena.get(*payload_handle);
-                            if let Val::ObjPayload(obj_data) = &payload_val.value {
-                                if let Some(internal) = &obj_data.internal {
-                                    if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
-                                        let mut frame = CallFrame::new(closure.func.chunk.clone());
-                                        frame.func = Some(closure.func.clone());
-                                        
-                                        for (i, param) in closure.func.params.iter().enumerate() {
-                                            if i < args.len() {
-                                                let arg_handle = args[i];
-                                                if param.by_ref {
-                                                    if !self.arena.get(arg_handle).is_ref {
-                                                        self.arena.get_mut(arg_handle).is_ref = true;
-                                                    }
-                                                    frame.locals.insert(param.name, arg_handle);
-                                                } else {
-                                                    let final_handle = if self.arena.get(arg_handle).is_ref {
-                                                        let val = self.arena.get(arg_handle).value.clone();
-                                                        self.arena.alloc(val)
-                                                    } else {
-                                                        arg_handle
-                                                    };
-                                                    frame.locals.insert(param.name, final_handle);
+                            let mut closure_data = None;
+                            let mut obj_class = None;
+                            
+                            {
+                                let payload_val = self.arena.get(*payload_handle);
+                                if let Val::ObjPayload(obj_data) = &payload_val.value {
+                                    if let Some(internal) = &obj_data.internal {
+                                        if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
+                                            closure_data = Some(closure);
+                                        }
+                                    }
+                                    if closure_data.is_none() {
+                                        obj_class = Some(obj_data.class);
+                                    }
+                                }
+                            }
+                            
+                            if let Some(closure) = closure_data {
+                                let mut frame = CallFrame::new(closure.func.chunk.clone());
+                                frame.func = Some(closure.func.clone());
+                                
+                                for (i, param) in closure.func.params.iter().enumerate() {
+                                    if i < args.len() {
+                                        let arg_handle = args[i];
+                                        if param.by_ref {
+                                            if !self.arena.get(arg_handle).is_ref {
+                                                self.arena.get_mut(arg_handle).is_ref = true;
+                                            }
+                                            frame.locals.insert(param.name, arg_handle);
+                                        } else {
+                                            let final_handle = if self.arena.get(arg_handle).is_ref {
+                                                let val = self.arena.get(arg_handle).value.clone();
+                                                self.arena.alloc(val)
+                                            } else {
+                                                arg_handle
+                                            };
+                                            frame.locals.insert(param.name, final_handle);
+                                        }
+                                    }
+                                }
+                                
+                                for (sym, handle) in &closure.captures {
+                                    frame.locals.insert(*sym, *handle);
+                                }
+                                
+                                frame.this = closure.this;
+                                
+                                self.frames.push(frame);
+                            } else if let Some(class_name) = obj_class {
+                                // Check for __invoke
+                                let invoke_sym = self.context.interner.intern(b"__invoke");
+                                let method_lookup = self.find_method(class_name, invoke_sym);
+                                
+                                if let Some((method, _, _, _)) = method_lookup {
+                                    let mut frame = CallFrame::new(method.chunk.clone());
+                                    frame.func = Some(method.clone());
+                                    frame.this = Some(*payload_handle);
+                                    frame.class_scope = Some(class_name);
+                                    
+                                    for (i, param) in method.params.iter().enumerate() {
+                                        if i < args.len() {
+                                            let arg_handle = args[i];
+                                            if param.by_ref {
+                                                if !self.arena.get(arg_handle).is_ref {
+                                                    self.arena.get_mut(arg_handle).is_ref = true;
                                                 }
+                                                frame.locals.insert(param.name, arg_handle);
+                                            } else {
+                                                let final_handle = if self.arena.get(arg_handle).is_ref {
+                                                    let val = self.arena.get(arg_handle).value.clone();
+                                                    self.arena.alloc(val)
+                                                } else {
+                                                    arg_handle
+                                                };
+                                                frame.locals.insert(param.name, final_handle);
                                             }
                                         }
-                                        
-                                        for (sym, handle) in &closure.captures {
-                                            frame.locals.insert(*sym, *handle);
-                                        }
-                                        
-                                        frame.this = closure.this;
-                                        
-                                        self.frames.push(frame);
-                                    } else {
-                                        return Err(VmError::RuntimeError("Object is not a closure".into()));
                                     }
+                                    
+                                    self.frames.push(frame);
                                 } else {
-                                    return Err(VmError::RuntimeError("Object is not a closure".into()));
+                                    return Err(VmError::RuntimeError("Object is not a closure and does not implement __invoke".into()));
                                 }
                             } else {
                                 return Err(VmError::RuntimeError("Invalid object payload".into()));
@@ -2627,15 +2696,66 @@ impl VM {
                     };
                     let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
-                    let payload_handle = if let Val::Object(h) = self.arena.get(obj_handle).value {
-                        h
-                    } else {
-                        return Err(VmError::RuntimeError("Attempt to unset property on non-object".into()));
+                    // Extract data to avoid borrow issues
+                    let (class_name, should_unset) = {
+                        let obj_zval = self.arena.get(obj_handle);
+                        if let Val::Object(payload_handle) = obj_zval.value {
+                            let payload_zval = self.arena.get(payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                                let current_scope = self.get_current_class();
+                                if self.check_prop_visibility(obj_data.class, prop_name, current_scope).is_ok() {
+                                    if obj_data.properties.contains_key(&prop_name) {
+                                        (obj_data.class, true)
+                                    } else {
+                                        (obj_data.class, false) // Not found
+                                    }
+                                } else {
+                                    (obj_data.class, false) // Not accessible
+                                }
+                            } else {
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            }
+                        } else {
+                            return Err(VmError::RuntimeError("Attempt to unset property on non-object".into()));
+                        }
                     };
-                    
-                    let payload_zval = self.arena.get_mut(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                        obj_data.properties.remove(&prop_name);
+
+                    if should_unset {
+                        let payload_handle = if let Val::Object(h) = self.arena.get(obj_handle).value {
+                            h
+                        } else {
+                            unreachable!()
+                        };
+                        let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.swap_remove(&prop_name);
+                        }
+                    } else {
+                        // Property not found or not accessible. Check for __unset.
+                        let unset_magic = self.context.interner.intern(b"__unset");
+                        if let Some((magic_func, _, _, magic_class)) = self.find_method(class_name, unset_magic) {
+                            // Found __unset
+                            
+                            // Create method name string (prop name)
+                            let prop_name_str = self.context.interner.lookup(prop_name).expect("Prop name should be interned").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_str));
+                            
+                            // Prepare frame for __unset
+                            let mut frame = CallFrame::new(magic_func.chunk.clone());
+                            frame.func = Some(magic_func.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(magic_class);
+                            frame.called_scope = Some(class_name);
+                            frame.discard_return = true; // Discard return value
+                            
+                            // Param 0: name
+                            if let Some(param) = magic_func.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                        }
+                        // If no __unset, do nothing (standard PHP behavior)
                     }
                 }
                 OpCode::UnsetStaticProp => {
@@ -2739,14 +2859,37 @@ impl VM {
                 }
                 OpCode::Clone => {
                     let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
-                        let payload_val = self.arena.get(payload_handle).value.clone();
-                        if let Val::ObjPayload(obj_data) = payload_val {
-                            let new_payload_handle = self.arena.alloc(Val::ObjPayload(obj_data.clone()));
-                            let new_obj_handle = self.arena.alloc(Val::Object(new_payload_handle));
-                            self.operand_stack.push(new_obj_handle);
-                        } else {
-                             return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    
+                    let mut new_obj_data_opt = None;
+                    let mut class_name_opt = None;
+                    
+                    {
+                        let obj_val = self.arena.get(obj_handle);
+                        if let Val::Object(payload_handle) = &obj_val.value {
+                            let payload_val = self.arena.get(*payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload_val.value {
+                                new_obj_data_opt = Some(obj_data.clone());
+                                class_name_opt = Some(obj_data.class);
+                            }
+                        }
+                    }
+                    
+                    if let Some(new_obj_data) = new_obj_data_opt {
+                        let new_payload_handle = self.arena.alloc(Val::ObjPayload(new_obj_data));
+                        let new_obj_handle = self.arena.alloc(Val::Object(new_payload_handle));
+                        self.operand_stack.push(new_obj_handle);
+                        
+                        if let Some(class_name) = class_name_opt {
+                            let clone_sym = self.context.interner.intern(b"__clone");
+                            if let Some((method, _, _, _)) = self.find_method(class_name, clone_sym) {
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(new_obj_handle);
+                                frame.class_scope = Some(class_name);
+                                frame.discard_return = true;
+                                
+                                self.frames.push(frame);
+                            }
                         }
                     } else {
                         return Err(VmError::RuntimeError("__clone method called on non-object".into()));
@@ -2795,34 +2938,63 @@ impl VM {
                 }
                 OpCode::IssetProp(prop_name) => {
                     let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let obj_zval = self.arena.get(obj_handle);
                     
-                    let is_set = if let Val::Object(payload_handle) = obj_zval.value {
-                        let payload_zval = self.arena.get(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                            // Check visibility? Isset checks existence and not null.
-                            // If property exists but is private/protected and we can't access it, isset returns false?
-                            // Yes, isset respects visibility.
-                            
-                            let current_scope = self.get_current_class();
-                            if self.check_prop_visibility(obj_data.class, prop_name, current_scope).is_ok() {
-                                if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                                    !matches!(self.arena.get(*val_handle).value, Val::Null)
+                    // Extract data to avoid borrow issues
+                    let (class_name, is_set_result) = {
+                        let obj_zval = self.arena.get(obj_handle);
+                        if let Val::Object(payload_handle) = obj_zval.value {
+                            let payload_zval = self.arena.get(payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                                let current_scope = self.get_current_class();
+                                if self.check_prop_visibility(obj_data.class, prop_name, current_scope).is_ok() {
+                                    if let Some(val_handle) = obj_data.properties.get(&prop_name) {
+                                        (obj_data.class, Some(!matches!(self.arena.get(*val_handle).value, Val::Null)))
+                                    } else {
+                                        (obj_data.class, None) // Not found
+                                    }
                                 } else {
-                                    false
+                                    (obj_data.class, None) // Not accessible
                                 }
                             } else {
-                                false
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
                             }
                         } else {
-                            false
+                            return Err(VmError::RuntimeError("Isset on non-object".into()));
                         }
-                    } else {
-                        false
                     };
-                    
-                    let res_handle = self.arena.alloc(Val::Bool(is_set));
-                    self.operand_stack.push(res_handle);
+
+                    if let Some(result) = is_set_result {
+                        let res_handle = self.arena.alloc(Val::Bool(result));
+                        self.operand_stack.push(res_handle);
+                    } else {
+                        // Property not found or not accessible. Check for __isset.
+                        let isset_magic = self.context.interner.intern(b"__isset");
+                        if let Some((magic_func, _, _, magic_class)) = self.find_method(class_name, isset_magic) {
+                            // Found __isset
+                            
+                            // Create method name string (prop name)
+                            let prop_name_str = self.context.interner.lookup(prop_name).expect("Prop name should be interned").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_str));
+                            
+                            // Prepare frame for __isset
+                            let mut frame = CallFrame::new(magic_func.chunk.clone());
+                            frame.func = Some(magic_func.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(magic_class);
+                            frame.called_scope = Some(class_name);
+                            
+                            // Param 0: name
+                            if let Some(param) = magic_func.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                        } else {
+                            // No __isset, return false
+                            let res_handle = self.arena.alloc(Val::Bool(false));
+                            self.operand_stack.push(res_handle);
+                        }
+                    }
                 }
                 OpCode::IssetStaticProp(prop_name) => {
                     let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -2844,7 +3016,9 @@ impl VM {
                 OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
                     let resolved_class = self.resolve_class_name(class_name)?;
                     
-                    if let Some((user_func, visibility, is_static, defined_class)) = self.find_method(resolved_class, method_name) {
+                    let method_lookup = self.find_method(resolved_class, method_name);
+
+                    if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
                         if !is_static {
                              return Err(VmError::RuntimeError("Non-static method called statically".into()));
                         }
@@ -2885,7 +3059,53 @@ impl VM {
                         
                         self.frames.push(frame);
                     } else {
-                        return Err(VmError::RuntimeError("Method not found".into()));
+                        // Method not found. Check for __callStatic.
+                        let call_static_magic = self.context.interner.intern(b"__callStatic");
+                        if let Some((magic_func, _, is_static, magic_class)) = self.find_method(resolved_class, call_static_magic) {
+                            if !is_static {
+                                return Err(VmError::RuntimeError("__callStatic must be static".into()));
+                            }
+                            
+                            // Pop args
+                            let mut args = Vec::new();
+                            for _ in 0..arg_count {
+                                args.push(self.operand_stack.pop().unwrap());
+                            }
+                            args.reverse();
+                            
+                            // Create array from args
+                            let mut array_map = IndexMap::new();
+                            for (i, arg) in args.into_iter().enumerate() {
+                                array_map.insert(ArrayKey::Int(i as i64), arg);
+                            }
+                            let args_array_handle = self.arena.alloc(Val::Array(array_map));
+                            
+                            // Create method name string
+                            let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
+                            let name_handle = self.arena.alloc(Val::String(method_name_str));
+                            
+                            // Prepare frame for __callStatic
+                            let mut frame = CallFrame::new(magic_func.chunk.clone());
+                            frame.func = Some(magic_func.clone());
+                            frame.this = None;
+                            frame.class_scope = Some(magic_class);
+                            frame.called_scope = Some(resolved_class);
+                            
+                            // Pass args: $name, $arguments
+                            // Param 0: name
+                            if let Some(param) = magic_func.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+                            // Param 1: arguments
+                            if let Some(param) = magic_func.params.get(1) {
+                                frame.locals.insert(param.name, args_array_handle);
+                            }
+                            
+                            self.frames.push(frame);
+                        } else {
+                            let method_str = String::from_utf8_lossy(self.context.interner.lookup(method_name).unwrap_or(b"<unknown>"));
+                            return Err(VmError::RuntimeError(format!("Call to undefined static method {}", method_str)));
+                        }
                     }
                 }
                 
