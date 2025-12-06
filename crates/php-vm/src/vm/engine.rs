@@ -501,6 +501,18 @@ impl VM {
                         }
                     }
                 }
+                OpCode::LoadVarDynamic => {
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_bytes = self.convert_to_string(name_handle)?;
+                    let sym = self.context.interner.intern(&name_bytes);
+                    
+                    let frame = self.frames.last().unwrap();
+                    if let Some(&handle) = frame.locals.get(&sym) {
+                        self.operand_stack.push(handle);
+                    } else {
+                        return Err(VmError::RuntimeError(format!("Undefined variable: {:?}", sym)));
+                    }
+                }
                 OpCode::LoadRef(sym) => {
                     let frame = self.frames.last_mut().unwrap();
                     if let Some(&handle) = frame.locals.get(&sym) {
@@ -546,6 +558,35 @@ impl VM {
                         
                         frame.locals.insert(sym, final_handle);
                     }
+                }
+                OpCode::StoreVarDynamic => {
+                    let val_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_bytes = self.convert_to_string(name_handle)?;
+                    let sym = self.context.interner.intern(&name_bytes);
+                    
+                    let frame = self.frames.last_mut().unwrap();
+                    
+                    // Check if the target variable is a reference
+                    let result_handle = if let Some(&old_handle) = frame.locals.get(&sym) {
+                        if self.arena.get(old_handle).is_ref {
+                            let new_val = self.arena.get(val_handle).value.clone();
+                            self.arena.get_mut(old_handle).value = new_val;
+                            old_handle
+                        } else {
+                            let val = self.arena.get(val_handle).value.clone();
+                            let final_handle = self.arena.alloc(val);
+                            frame.locals.insert(sym, final_handle);
+                            final_handle
+                        }
+                    } else {
+                        let val = self.arena.get(val_handle).value.clone();
+                        let final_handle = self.arena.alloc(val);
+                        frame.locals.insert(sym, final_handle);
+                        final_handle
+                    };
+                    
+                    self.operand_stack.push(result_handle);
                 }
                 OpCode::AssignRef(sym) => {
                     let ref_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -738,6 +779,13 @@ impl VM {
                     }
                 }
                 OpCode::UnsetVar(sym) => {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.remove(&sym);
+                }
+                OpCode::UnsetVarDynamic => {
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_bytes = self.convert_to_string(name_handle)?;
+                    let sym = self.context.interner.intern(&name_bytes);
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
                 }
@@ -4581,6 +4629,20 @@ impl VM {
                     self.operand_stack.push(new_handle);
                 }
                 OpCode::IssetVar(sym) => {
+                    let frame = self.frames.last().unwrap();
+                    let is_set = if let Some(&handle) = frame.locals.get(&sym) {
+                        !matches!(self.arena.get(handle).value, Val::Null)
+                    } else {
+                        false
+                    };
+                    let res_handle = self.arena.alloc(Val::Bool(is_set));
+                    self.operand_stack.push(res_handle);
+                }
+                OpCode::IssetVarDynamic => {
+                    let name_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    let name_bytes = self.convert_to_string(name_handle)?;
+                    let sym = self.context.interner.intern(&name_bytes);
+                    
                     let frame = self.frames.last().unwrap();
                     let is_set = if let Some(&handle) = frame.locals.get(&sym) {
                         !matches!(self.arena.get(handle).value, Val::Null)

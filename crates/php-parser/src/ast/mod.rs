@@ -333,6 +333,10 @@ pub enum Expr<'ast> {
         name: Span,
         span: Span,
     },
+    IndirectVariable {
+        name: ExprId<'ast>,
+        span: Span,
+    },
     Integer {
         value: &'ast [u8],
         span: Span,
@@ -567,6 +571,7 @@ impl<'ast> Expr<'ast> {
             Expr::NullsafeMethodCall { span, .. } => *span,
             Expr::VariadicPlaceholder { span } => *span,
             Expr::Error { span } => *span,
+            Expr::IndirectVariable { span, .. } => *span,
         }
     }
 }

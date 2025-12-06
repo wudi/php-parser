@@ -26,12 +26,15 @@ pub enum OpCode {
 
     // Variables
     LoadVar(Symbol),  // Push local variable value
+    LoadVarDynamic,   // [Name] -> [Val]
     StoreVar(Symbol), // Pop value, store in local
+    StoreVarDynamic,  // [Val, Name] -> [Val] (Stores Val in Name, pushes Val)
     AssignRef(Symbol), // Pop value (handle), mark as ref, store in local
     AssignDimRef,      // [Array, Index, ValueRef] -> Assigns ref to array index
     MakeVarRef(Symbol), // Convert local var to reference (COW if needed), push handle
     MakeRef,            // Convert top of stack to reference
     UnsetVar(Symbol),
+    UnsetVarDynamic,
     BindGlobal(Symbol), // Bind local variable to global variable (by reference)
     BindStatic(Symbol, u16), // Bind local variable to static variable (name, default_val_idx)
     
@@ -140,6 +143,7 @@ pub enum OpCode {
     
     // Isset/Empty
     IssetVar(Symbol),
+    IssetVarDynamic,
     IssetDim,
     IssetProp(Symbol),
     IssetStaticProp(Symbol),

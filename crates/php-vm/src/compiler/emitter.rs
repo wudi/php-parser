@@ -273,6 +273,10 @@ impl<'src> Emitter<'src> {
                                 self.chunk.code.push(OpCode::UnsetVar(sym));
                             }
                         }
+                        Expr::IndirectVariable { name, .. } => {
+                            self.emit_expr(name);
+                            self.chunk.code.push(OpCode::UnsetVarDynamic);
+                        }
                         Expr::ArrayDimFetch { array, dim, .. } => {
                             if let Expr::Variable { span, .. } = array {
                                 let name = self.get_text(*span);
@@ -1146,6 +1150,10 @@ impl<'src> Emitter<'src> {
                                     self.chunk.code.push(OpCode::Const(idx as u16));
                                 }
                             }
+                            Expr::IndirectVariable { name, .. } => {
+                                self.emit_expr(name);
+                                self.chunk.code.push(OpCode::IssetVarDynamic);
+                            }
                             Expr::ArrayDimFetch { array, dim, .. } => {
                                 self.emit_expr(array);
                                 if let Some(d) = dim {
@@ -1453,6 +1461,10 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::FetchGlobalConst(sym));
                 }
             }
+            Expr::IndirectVariable { name, .. } => {
+                self.emit_expr(name);
+                self.chunk.code.push(OpCode::LoadVarDynamic);
+            }
             Expr::Array { items, .. } => {
                 self.chunk.code.push(OpCode::InitArray(items.len() as u32));
                 for item in *items {
@@ -1609,6 +1621,11 @@ impl<'src> Emitter<'src> {
                             self.chunk.code.push(OpCode::StoreVar(sym));
                             self.chunk.code.push(OpCode::LoadVar(sym));
                         }
+                    }
+                    Expr::IndirectVariable { name, .. } => {
+                        self.emit_expr(name);
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::StoreVarDynamic);
                     }
                     Expr::PropertyFetch { target, property, .. } => {
                         self.emit_expr(target);
@@ -1827,6 +1844,51 @@ impl<'src> Emitter<'src> {
                             // Store
                             self.chunk.code.push(OpCode::StoreVar(sym));
                         }
+                    }
+                    Expr::IndirectVariable { name, .. } => {
+                        self.emit_expr(name);
+                        self.chunk.code.push(OpCode::Dup);
+                        
+                        if let AssignOp::Coalesce = op {
+                            self.chunk.code.push(OpCode::IssetVarDynamic);
+                            let jump_idx = self.chunk.code.len();
+                            self.chunk.code.push(OpCode::JmpIfTrue(0));
+                            
+                            self.emit_expr(expr);
+                            self.chunk.code.push(OpCode::StoreVarDynamic);
+                            
+                            let end_jump_idx = self.chunk.code.len();
+                            self.chunk.code.push(OpCode::Jmp(0));
+                            
+                            let label_set = self.chunk.code.len();
+                            self.chunk.code[jump_idx] = OpCode::JmpIfTrue(label_set as u32);
+                            self.chunk.code.push(OpCode::LoadVarDynamic);
+                            
+                            let label_end = self.chunk.code.len();
+                            self.chunk.code[end_jump_idx] = OpCode::Jmp(label_end as u32);
+                            return;
+                        }
+
+                        self.chunk.code.push(OpCode::LoadVarDynamic);
+                        self.emit_expr(expr);
+                        
+                        match op {
+                            AssignOp::Plus => self.chunk.code.push(OpCode::Add),
+                            AssignOp::Minus => self.chunk.code.push(OpCode::Sub),
+                            AssignOp::Mul => self.chunk.code.push(OpCode::Mul),
+                            AssignOp::Div => self.chunk.code.push(OpCode::Div),
+                            AssignOp::Mod => self.chunk.code.push(OpCode::Mod),
+                            AssignOp::Concat => self.chunk.code.push(OpCode::Concat),
+                            AssignOp::Pow => self.chunk.code.push(OpCode::Pow),
+                            AssignOp::BitAnd => self.chunk.code.push(OpCode::BitwiseAnd),
+                            AssignOp::BitOr => self.chunk.code.push(OpCode::BitwiseOr),
+                            AssignOp::BitXor => self.chunk.code.push(OpCode::BitwiseXor),
+                            AssignOp::ShiftLeft => self.chunk.code.push(OpCode::ShiftLeft),
+                            AssignOp::ShiftRight => self.chunk.code.push(OpCode::ShiftRight),
+                            _ => {}
+                        }
+                        
+                        self.chunk.code.push(OpCode::StoreVarDynamic);
                     }
                     Expr::PropertyFetch { target, property, .. } => {
                         self.emit_expr(target);

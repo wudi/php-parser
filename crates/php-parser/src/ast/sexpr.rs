@@ -651,6 +651,11 @@ impl<'a, 'ast> Visitor<'ast> for SExprFormatter<'a> {
                 self.write(&String::from_utf8_lossy(name.as_str(self.source)));
                 self.write("\")");
             }
+            Expr::IndirectVariable { name, .. } => {
+                self.write("(indirect-variable ");
+                self.visit_expr(name);
+                self.write(")");
+            }
             Expr::Unary { op, expr, .. } => {
                 self.write("(");
                 self.write(match op {
