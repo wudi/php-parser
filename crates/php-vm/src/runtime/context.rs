@@ -50,6 +50,14 @@ impl EngineContext {
         functions.insert(b"get_class".to_vec(), stdlib::php_get_class as NativeHandler);
         functions.insert(b"get_parent_class".to_vec(), stdlib::php_get_parent_class as NativeHandler);
         functions.insert(b"is_subclass_of".to_vec(), stdlib::php_is_subclass_of as NativeHandler);
+        functions.insert(b"is_a".to_vec(), stdlib::php_is_a as NativeHandler);
+        functions.insert(b"class_exists".to_vec(), stdlib::php_class_exists as NativeHandler);
+        functions.insert(b"interface_exists".to_vec(), stdlib::php_interface_exists as NativeHandler);
+        functions.insert(b"trait_exists".to_vec(), stdlib::php_trait_exists as NativeHandler);
+        functions.insert(b"method_exists".to_vec(), stdlib::php_method_exists as NativeHandler);
+        functions.insert(b"property_exists".to_vec(), stdlib::php_property_exists as NativeHandler);
+        functions.insert(b"get_class_methods".to_vec(), stdlib::php_get_class_methods as NativeHandler);
+        functions.insert(b"get_class_vars".to_vec(), stdlib::php_get_class_vars as NativeHandler);
         functions.insert(b"var_export".to_vec(), stdlib::php_var_export as NativeHandler);
 
         Self {

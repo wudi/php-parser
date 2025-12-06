@@ -61,7 +61,40 @@ impl VM {
         None
     }
 
-    fn collect_properties(&mut self, class_name: Symbol) -> IndexMap<Symbol, Handle> {
+    pub fn collect_methods(&self, class_name: Symbol) -> Vec<Symbol> {
+        let mut methods = std::collections::HashSet::new();
+        let mut current_class = Some(class_name);
+        
+        while let Some(name) = current_class {
+            if let Some(def) = self.context.classes.get(&name) {
+                for method_name in def.methods.keys() {
+                    methods.insert(*method_name);
+                }
+                current_class = def.parent;
+            } else {
+                break;
+            }
+        }
+        
+        methods.into_iter().collect()
+    }
+
+    pub fn has_property(&self, class_name: Symbol, prop_name: Symbol) -> bool {
+        let mut current_class = Some(class_name);
+        while let Some(name) = current_class {
+            if let Some(def) = self.context.classes.get(&name) {
+                if def.properties.contains_key(&prop_name) {
+                    return true;
+                }
+                current_class = def.parent;
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    pub fn collect_properties(&mut self, class_name: Symbol) -> IndexMap<Symbol, Handle> {
         let mut properties = IndexMap::new();
         let mut chain = Vec::new();
         let mut current_class = Some(class_name);
