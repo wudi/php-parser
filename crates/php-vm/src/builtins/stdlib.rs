@@ -409,6 +409,118 @@ pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     Err("get_object_vars() expects parameter 1 to be object".into())
 }
 
+pub fn php_get_class(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        if let Some(frame) = vm.frames.last() {
+            if let Some(class_scope) = frame.class_scope {
+                let name = vm.context.interner.lookup(class_scope).unwrap_or(b"").to_vec();
+                return Ok(vm.arena.alloc(Val::String(name)));
+            }
+        }
+        return Err("get_class() called without object from outside a class".into());
+    }
+    
+    let val = vm.arena.get(args[0]);
+    if let Val::Object(h) = val.value {
+        let obj_zval = vm.arena.get(h);
+        if let Val::ObjPayload(obj_data) = &obj_zval.value {
+            let class_name = vm.context.interner.lookup(obj_data.class).unwrap_or(b"").to_vec();
+            return Ok(vm.arena.alloc(Val::String(class_name)));
+        }
+    }
+    
+    Err("get_class() called on non-object".into())
+}
+
+pub fn php_get_parent_class(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let class_name_sym = if args.is_empty() {
+        if let Some(frame) = vm.frames.last() {
+            if let Some(class_scope) = frame.class_scope {
+                class_scope
+            } else {
+                return Ok(vm.arena.alloc(Val::Bool(false)));
+            }
+        } else {
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+    } else {
+        let val = vm.arena.get(args[0]);
+        match &val.value {
+            Val::Object(h) => {
+                let obj_zval = vm.arena.get(*h);
+                if let Val::ObjPayload(obj_data) = &obj_zval.value {
+                    obj_data.class
+                } else {
+                    return Ok(vm.arena.alloc(Val::Bool(false)));
+                }
+            }
+            Val::String(s) => {
+                if let Some(sym) = vm.context.interner.find(s) {
+                    sym
+                } else {
+                    return Ok(vm.arena.alloc(Val::Bool(false)));
+                }
+            }
+            _ => return Ok(vm.arena.alloc(Val::Bool(false))),
+        }
+    };
+
+    if let Some(def) = vm.context.classes.get(&class_name_sym) {
+        if let Some(parent_sym) = def.parent {
+            let parent_name = vm.context.interner.lookup(parent_sym).unwrap_or(b"").to_vec();
+            return Ok(vm.arena.alloc(Val::String(parent_name)));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_is_subclass_of(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("is_subclass_of() expects at least 2 parameters".into());
+    }
+    
+    let object_or_class = vm.arena.get(args[0]);
+    let class_name_val = vm.arena.get(args[1]);
+    
+    let child_sym = match &object_or_class.value {
+        Val::Object(h) => {
+            let obj_zval = vm.arena.get(*h);
+            if let Val::ObjPayload(obj_data) = &obj_zval.value {
+                obj_data.class
+            } else {
+                return Ok(vm.arena.alloc(Val::Bool(false)));
+            }
+        }
+        Val::String(s) => {
+            if let Some(sym) = vm.context.interner.find(s) {
+                sym
+            } else {
+                return Ok(vm.arena.alloc(Val::Bool(false)));
+            }
+        }
+        _ => return Ok(vm.arena.alloc(Val::Bool(false))),
+    };
+    
+    let parent_sym = match &class_name_val.value {
+        Val::String(s) => {
+            if let Some(sym) = vm.context.interner.find(s) {
+                sym
+            } else {
+                return Ok(vm.arena.alloc(Val::Bool(false)));
+            }
+        }
+        _ => return Ok(vm.arena.alloc(Val::Bool(false))),
+    };
+    
+    if child_sym == parent_sym {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+    
+    let result = vm.is_subclass_of(child_sym, parent_sym);
+    Ok(vm.arena.alloc(Val::Bool(result)))
+}
+
 pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 1 {
         return Err("var_export() expects at least 1 parameter".into());

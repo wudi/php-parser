@@ -1471,9 +1471,23 @@ impl<'src> Emitter<'src> {
                 }
             }
             Expr::ClassConstFetch { class, constant, .. } => {
+                let mut is_class_keyword = false;
+                if let Expr::Variable { span: const_span, .. } = constant {
+                     let const_name = self.get_text(*const_span);
+                     if const_name.eq_ignore_ascii_case(b"class") {
+                         is_class_keyword = true;
+                     }
+                }
+
                 if let Expr::Variable { span, .. } = class {
                     let class_name = self.get_text(*span);
                     if !class_name.starts_with(b"$") {
+                        if is_class_keyword {
+                            let idx = self.add_constant(Val::String(class_name.to_vec()));
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                            return;
+                        }
+
                         let class_sym = self.interner.intern(class_name);
                         
                         if let Expr::Variable { span: const_span, .. } = constant {
@@ -1487,7 +1501,19 @@ impl<'src> Emitter<'src> {
                                  self.chunk.code.push(OpCode::FetchClassConst(class_sym, const_sym));
                              }
                         }
+                        return;
                     }
+                }
+
+                // Dynamic class/object access
+                self.emit_expr(class);
+                if is_class_keyword {
+                    self.chunk.code.push(OpCode::GetClass);
+                } else {
+                    // TODO: Dynamic class constant fetch
+                    self.chunk.code.push(OpCode::Pop);
+                    let idx = self.add_constant(Val::Null);
+                    self.chunk.code.push(OpCode::Const(idx as u16));
                 }
             }
             Expr::Assign { var, expr, .. } => {

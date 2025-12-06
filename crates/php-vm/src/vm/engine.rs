@@ -85,7 +85,7 @@ impl VM {
         properties
     }
 
-    fn is_subclass_of(&self, child: Symbol, parent: Symbol) -> bool {
+    pub fn is_subclass_of(&self, child: Symbol, parent: Symbol) -> bool {
         if child == parent { return true; }
         
         if let Some(def) = self.context.classes.get(&child) {
@@ -2852,22 +2852,25 @@ impl VM {
                 }
                 OpCode::GetClass => {
                     let obj_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let class_name = if let Val::Object(h) = self.arena.get(obj_handle).value {
-                        if let Val::ObjPayload(data) = &self.arena.get(h).value {
-                            Some(data.class)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
+                    let val = self.arena.get(obj_handle).value.clone();
                     
-                    if let Some(sym) = class_name {
-                        let name_bytes = self.context.interner.lookup(sym).unwrap_or(b"");
-                        let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
-                        self.operand_stack.push(res_handle);
-                    } else {
-                        return Err(VmError::RuntimeError("get_class() called on non-object".into()));
+                    match val {
+                        Val::Object(h) => {
+                            if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                                let name_bytes = self.context.interner.lookup(data.class).unwrap_or(b"");
+                                let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
+                                self.operand_stack.push(res_handle);
+                            } else {
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            }
+                        }
+                        Val::String(s) => {
+                            let res_handle = self.arena.alloc(Val::String(s));
+                            self.operand_stack.push(res_handle);
+                        }
+                        _ => {
+                            return Err(VmError::RuntimeError("::class lookup on non-object/non-string".into()));
+                        }
                     }
                 }
                 OpCode::GetCalledClass => {
