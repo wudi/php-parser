@@ -942,3 +942,219 @@ fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
         _ => output.push_str("NULL"),
     }
 }
+
+pub fn php_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("substr() expects 2 or 3 parameters".into());
+    }
+    
+    let str_val = vm.arena.get(args[0]);
+    let s = match &str_val.value {
+        Val::String(s) => s,
+        _ => return Err("substr() expects parameter 1 to be string".into()),
+    };
+    
+    let start_val = vm.arena.get(args[1]);
+    let start = match &start_val.value {
+        Val::Int(i) => *i,
+        _ => return Err("substr() expects parameter 2 to be int".into()),
+    };
+    
+    let len = if args.len() == 3 {
+        let len_val = vm.arena.get(args[2]);
+        match &len_val.value {
+            Val::Int(i) => Some(*i),
+            Val::Null => None,
+            _ => return Err("substr() expects parameter 3 to be int or null".into()),
+        }
+    } else {
+        None
+    };
+    
+    let str_len = s.len() as i64;
+    let mut actual_start = if start < 0 {
+        str_len + start
+    } else {
+        start
+    };
+    
+    if actual_start < 0 {
+        actual_start = 0;
+    }
+    
+    if actual_start >= str_len {
+        return Ok(vm.arena.alloc(Val::String(vec![])));
+    }
+    
+    let mut actual_len = if let Some(l) = len {
+        if l < 0 {
+            str_len + l - actual_start
+        } else {
+            l
+        }
+    } else {
+        str_len - actual_start
+    };
+    
+    if actual_len < 0 {
+        actual_len = 0;
+    }
+    
+    let end = actual_start + actual_len;
+    let end = if end > str_len { str_len } else { end };
+    
+    let sub = s[actual_start as usize..end as usize].to_vec();
+    Ok(vm.arena.alloc(Val::String(sub)))
+}
+
+pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("strpos() expects 2 or 3 parameters".into());
+    }
+    
+    let haystack_val = vm.arena.get(args[0]);
+    let haystack = match &haystack_val.value {
+        Val::String(s) => s,
+        _ => return Err("strpos() expects parameter 1 to be string".into()),
+    };
+    
+    let needle_val = vm.arena.get(args[1]);
+    let needle = match &needle_val.value {
+        Val::String(s) => s,
+        _ => return Err("strpos() expects parameter 2 to be string".into()),
+    };
+    
+    let offset = if args.len() == 3 {
+        let offset_val = vm.arena.get(args[2]);
+        match &offset_val.value {
+            Val::Int(i) => *i,
+            _ => return Err("strpos() expects parameter 3 to be int".into()),
+        }
+    } else {
+        0
+    };
+    
+    let haystack_len = haystack.len() as i64;
+    
+    if offset < 0 || offset >= haystack_len {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+    
+    let search_area = &haystack[offset as usize..];
+    
+    // Simple byte search
+    if let Some(pos) = search_area.windows(needle.len()).position(|window| window == needle.as_slice()) {
+        Ok(vm.arena.alloc(Val::Int(offset + pos as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("strtolower() expects exactly 1 parameter".into());
+    }
+    
+    let str_val = vm.arena.get(args[0]);
+    let s = match &str_val.value {
+        Val::String(s) => s,
+        _ => return Err("strtolower() expects parameter 1 to be string".into()),
+    };
+    
+    let lower = s.iter().map(|b| b.to_ascii_lowercase()).collect();
+    Ok(vm.arena.alloc(Val::String(lower)))
+}
+
+pub fn php_strtoupper(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("strtoupper() expects exactly 1 parameter".into());
+    }
+    
+    let str_val = vm.arena.get(args[0]);
+    let s = match &str_val.value {
+        Val::String(s) => s,
+        _ => return Err("strtoupper() expects parameter 1 to be string".into()),
+    };
+    
+    let upper = s.iter().map(|b| b.to_ascii_uppercase()).collect();
+    Ok(vm.arena.alloc(Val::String(upper)))
+}
+
+pub fn php_array_merge(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let mut new_array = IndexMap::new();
+    let mut next_int_key = 0;
+    
+    for (i, arg_handle) in args.iter().enumerate() {
+        let val = vm.arena.get(*arg_handle);
+        match &val.value {
+            Val::Array(arr) => {
+                for (key, value_handle) in arr {
+                    match key {
+                        ArrayKey::Int(_) => {
+                            new_array.insert(ArrayKey::Int(next_int_key), *value_handle);
+                            next_int_key += 1;
+                        },
+                        ArrayKey::Str(s) => {
+                            new_array.insert(ArrayKey::Str(s.clone()), *value_handle);
+                        }
+                    }
+                }
+            },
+            _ => return Err(format!("array_merge(): Argument #{} is not an array", i + 1)),
+        }
+    }
+    
+    Ok(vm.arena.alloc(Val::Array(new_array)))
+}
+
+pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 1 {
+        return Err("array_keys() expects at least 1 parameter".into());
+    }
+    
+    let keys: Vec<ArrayKey> = {
+        let val = vm.arena.get(args[0]);
+        let arr = match &val.value {
+            Val::Array(arr) => arr,
+            _ => return Err("array_keys() expects parameter 1 to be array".into()),
+        };
+        arr.keys().cloned().collect()
+    };
+    
+    let mut keys_arr = IndexMap::new();
+    let mut idx = 0;
+    
+    for key in keys {
+        let key_val = match key {
+            ArrayKey::Int(i) => Val::Int(i),
+            ArrayKey::Str(s) => Val::String(s),
+        };
+        let key_handle = vm.arena.alloc(key_val);
+        keys_arr.insert(ArrayKey::Int(idx), key_handle);
+        idx += 1;
+    }
+    
+    Ok(vm.arena.alloc(Val::Array(keys_arr)))
+}
+
+pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("array_values() expects exactly 1 parameter".into());
+    }
+    
+    let val = vm.arena.get(args[0]);
+    let arr = match &val.value {
+        Val::Array(arr) => arr,
+        _ => return Err("array_values() expects parameter 1 to be array".into()),
+    };
+    
+    let mut values_arr = IndexMap::new();
+    let mut idx = 0;
+    
+    for (_, value_handle) in arr {
+        values_arr.insert(ArrayKey::Int(idx), *value_handle);
+        idx += 1;
+    }
+    
+    Ok(vm.arena.alloc(Val::Array(values_arr)))
+}

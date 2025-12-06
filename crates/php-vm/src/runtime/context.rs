@@ -34,6 +34,13 @@ impl EngineContext {
         let mut functions = HashMap::new();
         functions.insert(b"strlen".to_vec(), stdlib::php_strlen as NativeHandler);
         functions.insert(b"str_repeat".to_vec(), stdlib::php_str_repeat as NativeHandler);
+        functions.insert(b"substr".to_vec(), stdlib::php_substr as NativeHandler);
+        functions.insert(b"strpos".to_vec(), stdlib::php_strpos as NativeHandler);
+        functions.insert(b"strtolower".to_vec(), stdlib::php_strtolower as NativeHandler);
+        functions.insert(b"strtoupper".to_vec(), stdlib::php_strtoupper as NativeHandler);
+        functions.insert(b"array_merge".to_vec(), stdlib::php_array_merge as NativeHandler);
+        functions.insert(b"array_keys".to_vec(), stdlib::php_array_keys as NativeHandler);
+        functions.insert(b"array_values".to_vec(), stdlib::php_array_values as NativeHandler);
         functions.insert(b"var_dump".to_vec(), stdlib::php_var_dump as NativeHandler);
         functions.insert(b"count".to_vec(), stdlib::php_count as NativeHandler);
         functions.insert(b"is_string".to_vec(), stdlib::php_is_string as NativeHandler);
