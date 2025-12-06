@@ -55,6 +55,44 @@ pub fn php_str_repeat(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
 pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     for arg in args {
+        // Check for __debugInfo
+        let class_sym = if let Val::Object(obj_handle) = vm.arena.get(*arg).value {
+            if let Val::ObjPayload(obj_data) = &vm.arena.get(obj_handle).value {
+                Some((obj_handle, obj_data.class))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some((obj_handle, class)) = class_sym {
+            let debug_info_sym = vm.context.interner.intern(b"__debugInfo");
+            if let Some((method, _, _, _)) = vm.find_method(class, debug_info_sym) {
+                let mut frame = crate::vm::frame::CallFrame::new(method.chunk.clone());
+                frame.func = Some(method.clone());
+                frame.this = Some(obj_handle);
+                frame.class_scope = Some(class);
+                
+                let res = vm.run_frame(frame);
+                if let Ok(res_handle) = res {
+                    let res_val = vm.arena.get(res_handle);
+                    if let Val::Array(arr) = &res_val.value {
+                        println!("object({}) ({}) {{", String::from_utf8_lossy(vm.context.interner.lookup(class).unwrap_or(b"")), arr.len());
+                        for (key, val_handle) in arr.iter() {
+                            match key {
+                                crate::core::value::ArrayKey::Int(i) => print!("  [{}]=>\n", i),
+                                crate::core::value::ArrayKey::Str(s) => print!("  [\"{}\"]=>\n", String::from_utf8_lossy(s)),
+                            }
+                            dump_value(vm, *val_handle, 1);
+                        }
+                        println!("}}");
+                        continue;
+                    }
+                }
+            }
+        }
+        
         dump_value(vm, *arg, 0);
     }
     Ok(vm.arena.alloc(Val::Null))

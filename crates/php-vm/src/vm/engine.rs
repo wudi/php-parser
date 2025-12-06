@@ -46,7 +46,7 @@ impl VM {
         }
     }
 
-    fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
+    pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         let mut current_class = Some(class_name);
         while let Some(name) = current_class {
             if let Some(def) = self.context.classes.get(&name) {
@@ -298,8 +298,18 @@ impl VM {
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
         let initial_frame = CallFrame::new(chunk);
         self.frames.push(initial_frame);
+        self.run_loop(0)
+    }
 
-        while !self.frames.is_empty() {
+    pub fn run_frame(&mut self, frame: CallFrame) -> Result<Handle, VmError> {
+        let depth = self.frames.len();
+        self.frames.push(frame);
+        self.run_loop(depth)?;
+        self.last_return_value.ok_or(VmError::RuntimeError("No return value".into()))
+    }
+
+    fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
+        while self.frames.len() > target_depth {
             let op = {
                 let frame = self.frames.last_mut().unwrap();
                 if frame.ip >= frame.chunk.code.len() {
@@ -311,7 +321,24 @@ impl VM {
                 op
             };
 
-            let res = (|| -> Result<(), VmError> { match op {
+            let res = self.execute_opcode(op, target_depth);
+
+            if let Err(e) = res {
+                match e {
+                    VmError::Exception(h) => {
+                        if !self.handle_exception(h) {
+                            return Err(VmError::Exception(h));
+                        }
+                    },
+                    _ => return Err(e),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn execute_opcode(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
+        match op {
                 OpCode::Throw => {
                     let ex_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     return Err(VmError::Exception(ex_handle));
@@ -1231,7 +1258,7 @@ impl VM {
                         }
                     };
 
-                    if self.frames.is_empty() {
+                    if self.frames.len() == target_depth {
                         self.last_return_value = Some(final_ret_val);
                         return Ok(());
                     }
@@ -3219,19 +3246,6 @@ impl VM {
                     self.operand_stack.push(res_handle);
                 }
             }
-            Ok(()) })();
-
-            if let Err(e) = res {
-                match e {
-                    VmError::Exception(h) => {
-                        if !self.handle_exception(h) {
-                            return Err(VmError::Exception(h));
-                        }
-                    }
-                    _ => return Err(e),
-                }
-            }
-        }
         Ok(())
     }
 
