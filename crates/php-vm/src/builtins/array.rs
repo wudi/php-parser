@@ -64,7 +64,7 @@ pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     for key in keys {
         let key_val = match key {
             ArrayKey::Int(i) => Val::Int(i),
-            ArrayKey::Str(s) => Val::String(s),
+            ArrayKey::Str(s) => Val::String((*s).clone()),
         };
         let key_handle = vm.arena.alloc(key_val);
         keys_arr.insert(ArrayKey::Int(idx), key_handle);

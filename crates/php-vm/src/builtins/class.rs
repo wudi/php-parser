@@ -1,6 +1,7 @@
 use crate::vm::engine::VM;
 use crate::core::value::{Val, Handle, ArrayKey};
 use indexmap::IndexMap;
+use std::rc::Rc;
 
 pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
@@ -22,7 +23,7 @@ pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
             for (prop_sym, val_handle) in properties {
                 if vm.check_prop_visibility(class_sym, prop_sym, current_scope).is_ok() {
                     let prop_name_bytes = vm.context.interner.lookup(prop_sym).unwrap_or(b"").to_vec();
-                    let key = ArrayKey::Str(prop_name_bytes);
+                    let key = ArrayKey::Str(Rc::new(prop_name_bytes));
                     result_map.insert(key, val_handle);
                 }
             }
@@ -388,7 +389,7 @@ pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     
     for (prop_sym, val_handle) in properties {
         let name = vm.context.interner.lookup(prop_sym).unwrap_or(b"").to_vec();
-        let key = ArrayKey::Str(name);
+        let key = ArrayKey::Str(Rc::new(name));
         array.insert(key, val_handle);
     }
     

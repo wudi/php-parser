@@ -574,6 +574,150 @@ impl VM {
         Ok(())
     }
 
+    fn exec_stack_op(&mut self, op: OpCode) -> Result<(), VmError> {
+        match op {
+            OpCode::Const(idx) => {
+                let frame = self.frames.last().unwrap();
+                let val = frame.chunk.constants[idx as usize].clone();
+                let handle = self.arena.alloc(val);
+                self.operand_stack.push(handle);
+            }
+            OpCode::Pop => {
+                self.operand_stack.pop();
+            }
+            OpCode::Dup => {
+                let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                self.operand_stack.push(handle);
+            }
+            OpCode::Nop => {},
+            _ => unreachable!("Not a stack op"),
+        }
+        Ok(())
+    }
+
+    fn exec_math_op(&mut self, op: OpCode) -> Result<(), VmError> {
+        match op {
+            OpCode::Add => self.binary_op(|a, b| a + b)?,
+            OpCode::Sub => self.binary_op(|a, b| a - b)?,
+            OpCode::Mul => self.binary_op(|a, b| a * b)?,
+            OpCode::Div => self.binary_op(|a, b| a / b)?,
+            OpCode::Mod => self.binary_op(|a, b| a % b)?,
+            OpCode::Pow => self.binary_op(|a, b| a.pow(b as u32))?,
+            OpCode::BitwiseAnd => self.binary_op(|a, b| a & b)?,
+            OpCode::BitwiseOr => self.binary_op(|a, b| a | b)?,
+            OpCode::BitwiseXor => self.binary_op(|a, b| a ^ b)?,
+            OpCode::ShiftLeft => self.binary_op(|a, b| a << b)?,
+            OpCode::ShiftRight => self.binary_op(|a, b| a >> b)?,
+            OpCode::BitwiseNot => {
+                let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle).value.clone();
+                let res = match val {
+                    Val::Int(i) => Val::Int(!i),
+                    _ => Val::Null, // TODO: Support other types
+                };
+                let res_handle = self.arena.alloc(res);
+                self.operand_stack.push(res_handle);
+            }
+            OpCode::BoolNot => {
+                let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle);
+                let b = match val.value {
+                    Val::Bool(v) => v,
+                    Val::Int(v) => v != 0,
+                    Val::Null => false,
+                    _ => true, 
+                };
+                let res_handle = self.arena.alloc(Val::Bool(!b));
+                self.operand_stack.push(res_handle);
+            }
+             _ => unreachable!("Not a math op"),
+        }
+        Ok(())
+    }
+
+    fn exec_control_flow(&mut self, op: OpCode) -> Result<(), VmError> {
+        match op {
+            OpCode::Jmp(target) => {
+                let frame = self.frames.last_mut().unwrap();
+                frame.ip = target as usize;
+            }
+            OpCode::JmpIfFalse(target) => {
+                let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle);
+                let b = match val.value {
+                    Val::Bool(v) => v,
+                    Val::Int(v) => v != 0,
+                    Val::Null => false,
+                    _ => true, 
+                };
+                if !b {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.ip = target as usize;
+                }
+            }
+            OpCode::JmpIfTrue(target) => {
+                let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle);
+                let b = match val.value {
+                    Val::Bool(v) => v,
+                    Val::Int(v) => v != 0,
+                    Val::Null => false,
+                    _ => true, 
+                };
+                if b {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.ip = target as usize;
+                }
+            }
+            OpCode::JmpZEx(target) => {
+                let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle);
+                let b = match val.value {
+                    Val::Bool(v) => v,
+                    Val::Int(v) => v != 0,
+                    Val::Null => false,
+                    _ => true, 
+                };
+                if !b {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.ip = target as usize;
+                } else {
+                    self.operand_stack.pop();
+                }
+            }
+            OpCode::JmpNzEx(target) => {
+                let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let val = self.arena.get(handle);
+                let b = match val.value {
+                    Val::Bool(v) => v,
+                    Val::Int(v) => v != 0,
+                    Val::Null => false,
+                    _ => true, 
+                };
+                if b {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.ip = target as usize;
+                } else {
+                    self.operand_stack.pop();
+                }
+            }
+            OpCode::Coalesce(target) => {
+                 let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                 let val = &self.arena.get(handle).value;
+                 let is_null = matches!(val, Val::Null);
+                 
+                 if !is_null {
+                     let frame = self.frames.last_mut().unwrap();
+                     frame.ip = target as usize;
+                 } else {
+                     self.operand_stack.pop();
+                 }
+            }
+            _ => unreachable!("Not a control flow op"),
+        }
+        Ok(())
+    }
+
     fn execute_opcode(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
         match op {
                 OpCode::Throw => {
@@ -583,52 +727,10 @@ impl VM {
                 OpCode::Catch => {
                     // Exception object is already on the operand stack (pushed by handler); nothing else to do.
                 }
-                OpCode::Const(idx) => {
-                    let frame = self.frames.last().unwrap();
-                    let val = frame.chunk.constants[idx as usize].clone();
-                    let handle = self.arena.alloc(val);
-                    self.operand_stack.push(handle);
-                }
-                OpCode::Pop => {
-                    self.operand_stack.pop();
-                }
-                OpCode::Dup => {
-                    let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    self.operand_stack.push(handle);
-                }
-                OpCode::BitwiseNot => {
-                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle).value.clone();
-                    let res = match val {
-                        Val::Int(i) => Val::Int(!i),
-                        _ => Val::Null, // TODO: Support other types
-                    };
-                    let res_handle = self.arena.alloc(res);
-                    self.operand_stack.push(res_handle);
-                }
-                OpCode::BoolNot => {
-                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle);
-                    let b = match val.value {
-                        Val::Bool(v) => v,
-                        Val::Int(v) => v != 0,
-                        Val::Null => false,
-                        _ => true, 
-                    };
-                    let res_handle = self.arena.alloc(Val::Bool(!b));
-                    self.operand_stack.push(res_handle);
-                }
-                OpCode::Add => self.binary_op(|a, b| a + b)?,
-                OpCode::Sub => self.binary_op(|a, b| a - b)?,
-                OpCode::Mul => self.binary_op(|a, b| a * b)?,
-                OpCode::Div => self.binary_op(|a, b| a / b)?,
-                OpCode::Mod => self.binary_op(|a, b| a % b)?,
-                OpCode::Pow => self.binary_op(|a, b| a.pow(b as u32))?,
-                OpCode::BitwiseAnd => self.binary_op(|a, b| a & b)?,
-                OpCode::BitwiseOr => self.binary_op(|a, b| a | b)?,
-                OpCode::BitwiseXor => self.binary_op(|a, b| a ^ b)?,
-                OpCode::ShiftLeft => self.binary_op(|a, b| a << b)?,
-                OpCode::ShiftRight => self.binary_op(|a, b| a >> b)?,
+                OpCode::Const(_) | OpCode::Pop | OpCode::Dup | OpCode::Nop => self.exec_stack_op(op)?,
+                OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div | OpCode::Mod | OpCode::Pow |
+                OpCode::BitwiseAnd | OpCode::BitwiseOr | OpCode::BitwiseXor | OpCode::ShiftLeft | OpCode::ShiftRight |
+                OpCode::BitwiseNot | OpCode::BoolNot => self.exec_math_op(op)?,
                 
                 OpCode::LoadVar(sym) => {
                     let frame = self.frames.last().unwrap();
@@ -1004,91 +1106,8 @@ impl VM {
                     }
                 }
                 
-                OpCode::Jmp(target) => {
-                    let frame = self.frames.last_mut().unwrap();
-                    frame.ip = target as usize;
-                }
-                OpCode::JmpIfFalse(target) => {
-                    let condition_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let condition_val = self.arena.get(condition_handle);
-                    
-                    let is_false = match condition_val.value {
-                        Val::Bool(b) => !b,
-                        Val::Int(i) => i == 0,
-                        Val::Null => true,
-                        _ => false, 
-                    };
-                    
-                    if is_false {
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.ip = target as usize;
-                    }
-                }
-                OpCode::JmpIfTrue(target) => {
-                    let condition_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let condition_val = self.arena.get(condition_handle);
-                    
-                    let is_true = match condition_val.value {
-                        Val::Bool(b) => b,
-                        Val::Int(i) => i != 0,
-                        Val::Null => false,
-                        _ => true, 
-                    };
-                    
-                    if is_true {
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.ip = target as usize;
-                    }
-                }
-                OpCode::JmpZEx(target) => {
-                    let condition_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let condition_val = self.arena.get(condition_handle);
-                    
-                    let is_false = match condition_val.value {
-                        Val::Bool(b) => !b,
-                        Val::Int(i) => i == 0,
-                        Val::Null => true,
-                        _ => false, 
-                    };
-                    
-                    if is_false {
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.ip = target as usize;
-                    } else {
-                        self.operand_stack.pop();
-                    }
-                }
-                OpCode::JmpNzEx(target) => {
-                    let condition_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let condition_val = self.arena.get(condition_handle);
-                    
-                    let is_true = match condition_val.value {
-                        Val::Bool(b) => b,
-                        Val::Int(i) => i != 0,
-                        Val::Null => false,
-                        _ => true, 
-                    };
-                    
-                    if is_true {
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.ip = target as usize;
-                    } else {
-                        self.operand_stack.pop();
-                    }
-                }
-                OpCode::Coalesce(target) => {
-                    let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle);
-                    
-                    let is_null = matches!(val.value, Val::Null);
-                    
-                    if !is_null {
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.ip = target as usize;
-                    } else {
-                        self.operand_stack.pop();
-                    }
-                }
+                OpCode::Jmp(_) | OpCode::JmpIfFalse(_) | OpCode::JmpIfTrue(_) |
+                OpCode::JmpZEx(_) | OpCode::JmpNzEx(_) | OpCode::Coalesce(_) => self.exec_control_flow(op)?,
 
 
                 OpCode::Echo => {
@@ -1419,14 +1438,13 @@ impl VM {
                     
                     match &func_val.value {
                         Val::String(s) => {
-                            let func_name_bytes = s.clone();
-                            let handler = self.context.engine.functions.get(&func_name_bytes).copied();
+                            let handler = self.context.engine.functions.get(s.as_slice()).copied();
                             
                             if let Some(handler) = handler {
                                 let result_handle = handler(self, &args).map_err(VmError::RuntimeError)?;
                                 self.operand_stack.push(result_handle);
                             } else {
-                                let sym = self.context.interner.intern(&func_name_bytes);
+                                let sym = self.context.interner.intern(s);
                                 if let Some(user_func) = self.context.user_functions.get(&sym).cloned() {
                                     if user_func.params.len() != args.len() {
                                         // return Err(VmError::RuntimeError(format!("Function expects {} args, got {}", user_func.params.len(), args.len())));
@@ -1458,7 +1476,7 @@ impl VM {
                                         self.frames.push(frame);
                                     }
                                 } else {
-                                    return Err(VmError::RuntimeError(format!("Undefined function: {:?}", String::from_utf8_lossy(&func_name_bytes))));
+                                    return Err(VmError::RuntimeError(format!("Undefined function: {:?}", String::from_utf8_lossy(s))));
                                 }
                             }
                         }
@@ -1727,7 +1745,7 @@ impl VM {
                                     let val_handle = *v;
                                     let key_handle = match k {
                                         ArrayKey::Int(i) => self.arena.alloc(Val::Int(*i)),
-                                        ArrayKey::Str(s) => self.arena.alloc(Val::String(s.clone())),
+                                        ArrayKey::Str(s) => self.arena.alloc(Val::String(s.as_ref().clone())),
                                     };
                                     
                                     *index += 1;
@@ -1998,7 +2016,6 @@ impl VM {
                     self.frames.push(frame);
                 }
                 
-                OpCode::Nop => {},
                 OpCode::InitArray(_size) => {
                     let handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new()));
                     self.operand_stack.push(handle);
@@ -2011,7 +2028,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -2060,7 +2077,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
 
@@ -2127,7 +2144,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
 
@@ -2213,7 +2230,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -2248,7 +2265,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -2600,7 +2617,7 @@ impl VM {
                         if let Some((key, _)) = map.get_index(idx) {
                             let key_val = match key {
                                 ArrayKey::Int(i) => Val::Int(*i),
-                                ArrayKey::Str(s) => Val::String(s.clone()),
+                                ArrayKey::Str(s) => Val::String(s.as_ref().clone()),
                             };
                             let key_handle = self.arena.alloc(key_val);
                             
@@ -3451,7 +3468,7 @@ impl VM {
                     let mut map = IndexMap::new();
                     for (sym, handle) in &self.context.globals {
                         let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"").to_vec();
-                        map.insert(ArrayKey::Str(key_bytes), *handle);
+                        map.insert(ArrayKey::Str(Rc::new(key_bytes)), *handle);
                     }
                     let arr_handle = self.arena.alloc(Val::Array(map));
                     self.operand_stack.push(arr_handle);
@@ -3753,8 +3770,8 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(s.clone()),
-                                _ => ArrayKey::Str(vec![]),
+                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
                             if let Some(val_handle) = map.get(&key) {
@@ -3780,8 +3797,8 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(s.clone()),
-                                _ => ArrayKey::Str(vec![]),
+                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
                             if let Some(val_handle) = map.get(&key) {
@@ -3807,8 +3824,8 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(s.clone()),
-                                _ => ArrayKey::Str(vec![]), // TODO: proper key conversion
+                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())), // TODO: proper key conversion
                             };
                             
                             if let Some(val_handle) = map.get(&key) {
@@ -3849,8 +3866,8 @@ impl VM {
                     // 1. Resolve key
                     let key = match &self.arena.get(dim).value {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
-                        _ => ArrayKey::Str(vec![]),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                     };
                     
                     // 2. Check if we need to insert (Immutable check)
@@ -4099,8 +4116,8 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim_handle).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(s.clone()),
-                                _ => ArrayKey::Str(vec![]),
+                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             map.get(&key).cloned()
                         }
@@ -4887,7 +4904,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => ArrayKey::Int(0), // Should probably be error or false
                     };
                     
@@ -5384,7 +5401,7 @@ impl VM {
         let key_val = &self.arena.get(key_handle).value;
         let key = match key_val {
             Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(s.clone()),
+            Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
             _ => return Err(VmError::RuntimeError("Invalid array key".into())),
         };
 
@@ -5409,7 +5426,7 @@ impl VM {
         let key_val = &self.arena.get(key_handle).value;
         let key = match key_val {
             Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(s.clone()),
+            Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
             _ => return Err(VmError::RuntimeError("Invalid array key".into())),
         };
 
@@ -5514,7 +5531,7 @@ impl VM {
                     let key_val = &self.arena.get(*key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -5567,7 +5584,7 @@ impl VM {
             } else {
                 match key_val {
                     Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
+                    Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
                     _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                 }
             };

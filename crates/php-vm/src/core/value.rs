@@ -67,7 +67,7 @@ impl PartialEq for ObjectData {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ArrayKey {
     Int(i64),
-    Str(Vec<u8>)
+    Str(Rc<Vec<u8>>)
 }
 
 // The Container (Zval equivalent)
