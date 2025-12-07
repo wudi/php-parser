@@ -1469,6 +1469,8 @@ impl<'src> Emitter<'src> {
                 self.chunk.code.push(OpCode::InitArray(items.len() as u32));
                 for item in *items {
                     if item.unpack {
+                        self.emit_expr(item.value);
+                        self.chunk.code.push(OpCode::AddArrayUnpack);
                         continue;
                     }
                     if let Some(key) = item.key {
