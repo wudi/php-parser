@@ -1090,20 +1090,6 @@ impl VM {
                     }
                 }
 
-                OpCode::Strlen => {
-                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = self.arena.get(handle).value.clone();
-                    let bytes: Vec<u8> = match val {
-                        Val::String(s) => s,
-                        Val::Int(i) => i.to_string().into_bytes(),
-                        Val::Float(f) => f.to_string().into_bytes(),
-                        Val::Bool(b) => if b { b"1".to_vec() } else { vec![] },
-                        Val::Null => vec![],
-                        _ => return Err(VmError::RuntimeError("strlen() expects string or scalar".into())),
-                    };
-                    let len_handle = self.arena.alloc(Val::Int(bytes.len() as i64));
-                    self.operand_stack.push(len_handle);
-                }
 
                 OpCode::Echo => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -1260,18 +1246,6 @@ impl VM {
                         }
                         _ => return Err(VmError::RuntimeError("Value is not callable".into())),
                     }
-                }
-                OpCode::Defined => {
-                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = &self.arena.get(handle).value;
-                    let name = match val {
-                        Val::String(s) => self.context.interner.intern(s),
-                        _ => return Err(VmError::RuntimeError("defined() expects string".into())),
-                    };
-                    
-                    let defined = self.context.constants.contains_key(&name) || self.context.engine.constants.contains_key(&name);
-                    let res_handle = self.arena.alloc(Val::Bool(defined));
-                    self.operand_stack.push(res_handle);
                 }
                 OpCode::DeclareClass => {
                     let parent_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -2286,19 +2260,6 @@ impl VM {
                     };
                     
                     let res_handle = self.arena.alloc(Val::Bool(found));
-                    self.operand_stack.push(res_handle);
-                }
-                OpCode::Count => {
-                    let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let val = &self.arena.get(handle).value;
-                    
-                    let count = match val {
-                        Val::Array(map) => map.len(),
-                        Val::Null => 0,
-                        _ => 1,
-                    };
-                    
-                    let res_handle = self.arena.alloc(Val::Int(count as i64));
                     self.operand_stack.push(res_handle);
                 }
 

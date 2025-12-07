@@ -34,8 +34,14 @@ fn recv_variadic_counts_args() {
     let sym_args = Symbol(0);
     let mut func_chunk = CodeChunk::default();
     func_chunk.code.push(OpCode::RecvVariadic(0));
+    
+    // Call count($args)
+    let count_idx = func_chunk.constants.len();
+    func_chunk.constants.push(Val::String(b"count".to_vec()));
+    func_chunk.code.push(OpCode::Const(count_idx as u16));
     func_chunk.code.push(OpCode::LoadVar(sym_args));
-    func_chunk.code.push(OpCode::Count);
+    func_chunk.code.push(OpCode::Call(1));
+    
     func_chunk.code.push(OpCode::Return);
 
     let user_func = UserFunc {

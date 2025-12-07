@@ -73,7 +73,6 @@ pub enum OpCode {
     UnsetDim,
     InArray,
     ArrayKeyExists,
-    Count,
 
     // Iteration
     IterInit(u32),   // [Array] -> [Array, Index]. If empty, pop and jump.
@@ -140,7 +139,6 @@ pub enum OpCode {
     
     // Type Check
     TypeCheck,
-    Defined,
     
     // Isset/Empty
     IssetVar(Symbol),
@@ -216,7 +214,6 @@ pub enum OpCode {
     InitUserCall,
     SendArray,
     SendUser,
-    Strlen,
     VerifyReturnType,
     InitDynamicCall,
     DoIcall,
