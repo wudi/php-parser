@@ -42,7 +42,7 @@ fn test_dynamic_class_const() {
     let result = vm.arena.get(handle).value.clone();
     
     match result {
-        Val::String(s) => assert_eq!(s, b"baz"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"baz"),
         _ => panic!("Expected string 'baz', got {:?}", result),
     }
 }
@@ -82,7 +82,7 @@ fn test_dynamic_class_const_from_object() {
     let result = vm.arena.get(handle).value.clone();
     
     match result {
-        Val::String(s) => assert_eq!(s, b"baz"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"baz"),
         _ => panic!("Expected string 'baz', got {:?}", result),
     }
 }
@@ -118,7 +118,7 @@ fn test_dynamic_class_keyword() {
     let result = vm.arena.get(handle).value.clone();
     
     match result {
-        Val::String(s) => assert_eq!(s, b"Foo"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"Foo"),
         _ => panic!("Expected string 'Foo', got {:?}", result),
     }
 }
@@ -154,7 +154,7 @@ fn test_dynamic_class_keyword_object() {
     let result = vm.arena.get(handle).value.clone();
     
     match result {
-        Val::String(s) => assert_eq!(s, b"Foo"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"Foo"),
         _ => panic!("Expected string 'Foo', got {:?}", result),
     }
 }

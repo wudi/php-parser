@@ -18,7 +18,7 @@ pub struct ClassDef {
     pub is_trait: bool,
     pub interfaces: Vec<Symbol>,
     pub traits: Vec<Symbol>,
-    pub methods: HashMap<Symbol, (Rc<UserFunc>, Visibility, bool)>, // (func, visibility, is_static)
+    pub methods: HashMap<Symbol, (Rc<UserFunc>, Visibility, bool, Symbol)>, // (func, visibility, is_static, declaring_class)
     pub properties: IndexMap<Symbol, (Val, Visibility)>, // Default values
     pub constants: HashMap<Symbol, (Val, Visibility)>,
     pub static_properties: HashMap<Symbol, (Val, Visibility)>,

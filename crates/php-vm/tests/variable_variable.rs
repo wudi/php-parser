@@ -55,7 +55,7 @@ fn test_variable_variable() {
         
         // Expect $a = "b"
         if let Val::String(s) = a_val {
-            assert_eq!(s, b"b", "$a should be 'b'");
+            assert_eq!(s.as_slice(), b"b", "$a should be 'b'");
         } else {
             panic!("$a should be string, got {:?}", a_val);
         }

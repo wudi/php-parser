@@ -42,9 +42,9 @@ fn run_fetch(op: OpCode) -> (VM, i64) {
     let default_idx = chunk.constants.len();
     chunk.constants.push(Val::Int(123));
     let class_idx = chunk.constants.len();
-    chunk.constants.push(Val::String(b"Foo".to_vec()));
+    chunk.constants.push(Val::String(b"Foo".to_vec().into()));
     let prop_idx = chunk.constants.len();
-    chunk.constants.push(Val::String(b"bar".to_vec()));
+    chunk.constants.push(Val::String(b"bar".to_vec().into()));
 
     chunk.code.push(OpCode::DefClass(foo_sym, None));
     chunk

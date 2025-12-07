@@ -302,7 +302,7 @@ impl<'src> Emitter<'src> {
                             self.emit_expr(target);
                             if let Expr::Variable { span, .. } = property {
                                 let name = self.get_text(*span);
-                                let idx = self.add_constant(Val::String(name.to_vec()));
+                                let idx = self.add_constant(Val::String(name.to_vec().into()));
                                 self.chunk.code.push(OpCode::Const(idx as u16));
                                 self.chunk.code.push(OpCode::UnsetObj);
                             }
@@ -319,7 +319,7 @@ impl<'src> Emitter<'src> {
                                 if let Expr::Variable { span, .. } = class {
                                     let name = self.get_text(*span);
                                     if !name.starts_with(b"$") {
-                                        let idx = self.add_constant(Val::String(name.to_vec()));
+                                        let idx = self.add_constant(Val::String(name.to_vec().into()));
                                         self.chunk.code.push(OpCode::Const(idx as u16));
                                     } else {
                                         let sym = self.interner.intern(&name[1..]);
@@ -328,7 +328,7 @@ impl<'src> Emitter<'src> {
                                     
                                     if let Expr::Variable { span: prop_span, .. } = constant {
                                         let prop_name = self.get_text(*prop_span);
-                                        let idx = self.add_constant(Val::String(prop_name[1..].to_vec()));
+                                        let idx = self.add_constant(Val::String(prop_name[1..].to_vec().into()));
                                         self.chunk.code.push(OpCode::Const(idx as u16));
                                         self.chunk.code.push(OpCode::UnsetStaticProp);
                                     }
@@ -823,13 +823,13 @@ impl<'src> Emitter<'src> {
                 } else {
                     value
                 };
-                Some(Val::String(s.to_vec()))
+                Some(Val::String(s.to_vec().into()))
             }
             Expr::Boolean { value, .. } => Some(Val::Bool(*value)),
             Expr::Null { .. } => Some(Val::Null),
             Expr::Array { items, .. } => {
                 if items.is_empty() {
-                    Some(Val::Array(indexmap::IndexMap::new()))
+                    Some(Val::Array(indexmap::IndexMap::new().into()))
                 } else {
                     None
                 }
@@ -858,7 +858,7 @@ impl<'src> Emitter<'src> {
                 } else {
                     value
                 };
-                let idx = self.add_constant(Val::String(s.to_vec()));
+                let idx = self.add_constant(Val::String(s.to_vec().into()));
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
             Expr::Boolean { value, .. } => {
@@ -1188,7 +1188,7 @@ impl<'src> Emitter<'src> {
                                     if let Expr::Variable { span, .. } = class {
                                         let name = self.get_text(*span);
                                         if !name.starts_with(b"$") {
-                                            let idx = self.add_constant(Val::String(name.to_vec()));
+                                            let idx = self.add_constant(Val::String(name.to_vec().into()));
                                             self.chunk.code.push(OpCode::Const(idx as u16));
                                         } else {
                                             let sym = self.interner.intern(&name[1..]);
@@ -1276,7 +1276,7 @@ impl<'src> Emitter<'src> {
                             if let Expr::Variable { span, .. } = class {
                                 let name = self.get_text(*span);
                                 if !name.starts_with(b"$") {
-                                    let idx = self.add_constant(Val::String(name.to_vec()));
+                                    let idx = self.add_constant(Val::String(name.to_vec().into()));
                                     self.chunk.code.push(OpCode::Const(idx as u16));
                                 } else {
                                     let sym = self.interner.intern(&name[1..]);
@@ -1436,7 +1436,7 @@ impl<'src> Emitter<'src> {
                         if name.starts_with(b"$") {
                             self.emit_expr(func);
                         } else {
-                            let idx = self.add_constant(Val::String(name.to_vec()));
+                            let idx = self.add_constant(Val::String(name.to_vec().into()));
                             self.chunk.code.push(OpCode::Const(idx as u16));
                         }
                     }
@@ -1579,7 +1579,7 @@ impl<'src> Emitter<'src> {
                     let class_name = self.get_text(*span);
                     if !class_name.starts_with(b"$") {
                         if is_class_keyword {
-                            let idx = self.add_constant(Val::String(class_name.to_vec()));
+                            let idx = self.add_constant(Val::String(class_name.to_vec().into()));
                             self.chunk.code.push(OpCode::Const(idx as u16));
                             return;
                         }
@@ -1971,7 +1971,7 @@ impl<'src> Emitter<'src> {
                                          let prop_sym = self.interner.intern(prop_name);
                                          
                                          if let AssignOp::Coalesce = op {
-                                             let idx = self.add_constant(Val::String(class_name.to_vec()));
+                                             let idx = self.add_constant(Val::String(class_name.to_vec().into()));
                                              self.chunk.code.push(OpCode::Const(idx as u16));
                                              self.chunk.code.push(OpCode::IssetStaticProp(prop_sym));
                                              
@@ -2150,9 +2150,9 @@ impl<'src> Emitter<'src> {
             Expr::String { value, .. } => {
                  let s = value;
                  if s.len() >= 2 && ((s[0] == b'"' && s[s.len()-1] == b'"') || (s[0] == b'\'' && s[s.len()-1] == b'\'')) {
-                     Val::String(s[1..s.len()-1].to_vec())
+                     Val::String(s[1..s.len()-1].to_vec().into())
                  } else {
-                     Val::String(s.to_vec())
+                     Val::String(s.to_vec().into())
                  }
             }
             Expr::Boolean { value, .. } => Val::Bool(*value),

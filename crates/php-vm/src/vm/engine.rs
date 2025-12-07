@@ -64,36 +64,20 @@ impl VM {
     }
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
-        let mut current_class = Some(class_name);
-        while let Some(name) = current_class {
-            if let Some(def) = self.context.classes.get(&name) {
-                if let Some((func, vis, is_static)) = def.methods.get(&method_name) {
-                    return Some((func.clone(), *vis, *is_static, name));
-                }
-                current_class = def.parent;
-            } else {
-                break;
+        if let Some(def) = self.context.classes.get(&class_name) {
+            if let Some((func, vis, is_static, declaring_class)) = def.methods.get(&method_name) {
+                return Some((func.clone(), *vis, *is_static, *declaring_class));
             }
         }
         None
     }
 
     pub fn collect_methods(&self, class_name: Symbol) -> Vec<Symbol> {
-        let mut methods = std::collections::HashSet::new();
-        let mut current_class = Some(class_name);
-        
-        while let Some(name) = current_class {
-            if let Some(def) = self.context.classes.get(&name) {
-                for method_name in def.methods.keys() {
-                    methods.insert(*method_name);
-                }
-                current_class = def.parent;
-            } else {
-                break;
-            }
+        if let Some(def) = self.context.classes.get(&class_name) {
+            def.methods.keys().cloned().collect()
+        } else {
+            Vec::new()
         }
-        
-        methods.into_iter().collect()
     }
 
     pub fn has_property(&self, class_name: Symbol, prop_name: Symbol) -> bool {
@@ -442,7 +426,7 @@ impl VM {
     fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
         let val = self.arena.get(handle).value.clone();
         match val {
-            Val::String(s) => Ok(s),
+            Val::String(s) => Ok(s.to_vec()),
             Val::Int(i) => Ok(i.to_string().into_bytes()),
             Val::Float(f) => Ok(f.to_string().into_bytes()),
             Val::Bool(b) => Ok(if b { b"1".to_vec() } else { vec![] }),
@@ -466,7 +450,7 @@ impl VM {
                         let ret_val = self.arena.get(ret_handle).value.clone();
                         
                         match ret_val {
-                            Val::String(s) => Ok(s),
+                            Val::String(s) => Ok(s.to_vec()),
                             _ => Err(VmError::RuntimeError("__toString must return a string".into())),
                         }
                     } else {
@@ -893,17 +877,17 @@ impl VM {
                                 (Val::String(a), Val::String(b)) => {
                                     let mut s = String::from_utf8_lossy(&a).to_string();
                                     s.push_str(&String::from_utf8_lossy(&b));
-                                    Val::String(s.into_bytes())
+                                    Val::String(s.into_bytes().into())
                                 },
                                 (Val::String(a), Val::Int(b)) => {
                                     let mut s = String::from_utf8_lossy(&a).to_string();
                                     s.push_str(&b.to_string());
-                                    Val::String(s.into_bytes())
+                                    Val::String(s.into_bytes().into())
                                 },
                                 (Val::Int(a), Val::String(b)) => {
                                     let mut s = a.to_string();
                                     s.push_str(&String::from_utf8_lossy(&b));
-                                    Val::String(s.into_bytes())
+                                    Val::String(s.into_bytes().into())
                                 },
                                 _ => Val::Null,
                             },
@@ -1152,7 +1136,7 @@ impl VM {
                     
                     if kind == 3 {
                         let s = self.convert_to_string(handle)?;
-                        let res_handle = self.arena.alloc(Val::String(s));
+                        let res_handle = self.arena.alloc(Val::String(s.into()));
                         self.operand_stack.push(res_handle);
                         return Ok(());
                     }
@@ -1188,32 +1172,32 @@ impl VM {
                         },
                         3 => match val { // String
                             Val::String(s) => Val::String(s),
-                            Val::Int(i) => Val::String(i.to_string().into_bytes()),
-                            Val::Float(f) => Val::String(f.to_string().into_bytes()),
-                            Val::Bool(b) => Val::String(if b { b"1".to_vec() } else { b"".to_vec() }),
-                            Val::Null => Val::String(Vec::new()),
+                            Val::Int(i) => Val::String(i.to_string().into_bytes().into()),
+                            Val::Float(f) => Val::String(f.to_string().into_bytes().into()),
+                            Val::Bool(b) => Val::String(if b { b"1".to_vec().into() } else { b"".to_vec().into() }),
+                            Val::Null => Val::String(Vec::new().into()),
                             Val::Object(_) => unreachable!(), // Handled above
-                            _ => Val::String(b"Array".to_vec()),
+                            _ => Val::String(b"Array".to_vec().into()),
                         },
                         4 => match val { // Array
                             Val::Array(a) => Val::Array(a),
-                            Val::Null => Val::Array(IndexMap::new()),
+                            Val::Null => Val::Array(IndexMap::new().into()),
                             _ => {
                                 let mut map = IndexMap::new();
                                 map.insert(ArrayKey::Int(0), self.arena.alloc(val));
-                                Val::Array(map)
+                                Val::Array(map.into())
                             }
                         },
                         5 => match val { // Object
                             Val::Object(h) => Val::Object(h),
                             Val::Array(a) => {
                                 let mut props = IndexMap::new();
-                                for (k, v) in a {
+                                for (k, v) in a.iter() {
                                     let key_sym = match k {
                                         ArrayKey::Int(i) => self.context.interner.intern(i.to_string().as_bytes()),
                                         ArrayKey::Str(s) => self.context.interner.intern(&s),
                                     };
-                                    props.insert(key_sym, v);
+                                    props.insert(key_sym, *v);
                                 }
                                 let obj_data = ObjectData {
                                     class: self.context.interner.intern(b"stdClass"),
@@ -1281,6 +1265,21 @@ impl VM {
                         _ => return Err(VmError::RuntimeError("Parent class name must be string or null".into())),
                     };
                     
+                    let mut methods = HashMap::new();
+                    
+                    if let Some(parent) = parent_sym {
+                        if let Some(parent_def) = self.context.classes.get(&parent) {
+                            // Inherit methods, excluding private ones.
+                            for (name, (func, vis, is_static, decl_class)) in &parent_def.methods {
+                                if *vis != Visibility::Private {
+                                    methods.insert(*name, (func.clone(), *vis, *is_static, *decl_class));
+                                }
+                            }
+                        } else {
+                             return Err(VmError::RuntimeError(format!("Parent class {:?} not found", parent)));
+                        }
+                    }
+
                     let class_def = ClassDef {
                         name: name_sym,
                         parent: parent_sym,
@@ -1288,7 +1287,7 @@ impl VM {
                         is_trait: false,
                         interfaces: Vec::new(),
                         traits: Vec::new(),
-                        methods: HashMap::new(),
+                        methods,
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
@@ -1609,7 +1608,7 @@ impl VM {
                                     }
                                 }
                             }
-                            let arr_handle = self.arena.alloc(Val::Array(arr));
+                            let arr_handle = self.arena.alloc(Val::Array(arr.into()));
                             frame.locals.insert(param.name, arr_handle);
                         }
                     }
@@ -1745,7 +1744,7 @@ impl VM {
                                     let val_handle = *v;
                                     let key_handle = match k {
                                         ArrayKey::Int(i) => self.arena.alloc(Val::Int(*i)),
-                                        ArrayKey::Str(s) => self.arena.alloc(Val::String(s.as_ref().clone())),
+                                        ArrayKey::Str(s) => self.arena.alloc(Val::String(s.as_ref().clone().into())),
                                     };
                                     
                                     *index += 1;
@@ -2017,7 +2016,7 @@ impl VM {
                 }
                 
                 OpCode::InitArray(_size) => {
-                    let handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new()));
+                    let handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
                     self.operand_stack.push(handle);
                 }
 
@@ -2028,7 +2027,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -2077,7 +2076,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
 
@@ -2126,7 +2125,7 @@ impl VM {
                             (Val::String(a), Val::String(b)) => {
                                 let mut s = String::from_utf8_lossy(&a).to_string();
                                 s.push_str(&String::from_utf8_lossy(&b));
-                                Val::String(s.into_bytes())
+                                Val::String(s.into_bytes().into())
                             },
                             _ => Val::Null,
                         },
@@ -2144,13 +2143,13 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
 
                     let array_zval = self.arena.get_mut(array_handle);
                     if let Val::Array(map) = &mut array_zval.value {
-                        map.insert(key, val_handle);
+                        Rc::make_mut(map).insert(key, val_handle);
                     } else {
                         return Err(VmError::RuntimeError("AddArrayElement expects array".into()));
                     }
@@ -2174,7 +2173,7 @@ impl VM {
                     {
                         let dest_zval = self.arena.get_mut(dest_handle);
                         if matches!(dest_zval.value, Val::Null | Val::Bool(false)) {
-                            dest_zval.value = Val::Array(IndexMap::new());
+                            dest_zval.value = Val::Array(IndexMap::new().into());
                         } else if !matches!(dest_zval.value, Val::Array(_)) {
                             return Err(VmError::RuntimeError("Cannot unpack into non-array".into()));
                         }
@@ -2198,7 +2197,7 @@ impl VM {
 
                     let mut next_key = dest_map
                         .keys()
-                        .filter_map(|k| if let ArrayKey::Int(i) = k { Some(*i) } else { None })
+                        .filter_map(|k| if let ArrayKey::Int(i) = k { Some(i) } else { None })
                         .max()
                         .map(|i| i + 1)
                         .unwrap_or(0);
@@ -2206,11 +2205,11 @@ impl VM {
                     for (key, val_handle) in src_map.iter() {
                         match key {
                             ArrayKey::Int(_) => {
-                                dest_map.insert(ArrayKey::Int(next_key), *val_handle);
+                                Rc::make_mut(dest_map).insert(ArrayKey::Int(next_key), *val_handle);
                                 next_key += 1;
                             }
                             ArrayKey::Str(s) => {
-                                dest_map.insert(ArrayKey::Str(s.clone()), *val_handle);
+                                Rc::make_mut(dest_map).insert(ArrayKey::Str(s.clone()), *val_handle);
                             }
                         }
                     }
@@ -2230,13 +2229,13 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
                     let array_zval_mut = self.arena.get_mut(array_handle);
                     if let Val::Array(map) = &mut array_zval_mut.value {
-                        map.shift_remove(&key);
+                        Rc::make_mut(map).shift_remove(&key);
                     }
                 }
                 OpCode::InArray => {
@@ -2265,7 +2264,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -2589,7 +2588,7 @@ impl VM {
                         // Update array
                         let array_zval_mut = self.arena.get_mut(array_handle);
                         if let Val::Array(map) = &mut array_zval_mut.value {
-                             if let Some((_, h_ref)) = map.get_index_mut(idx) {
+                             if let Some((_, h_ref)) = Rc::make_mut(map).get_index_mut(idx) {
                                  *h_ref = new_handle;
                              }
                         }
@@ -2617,7 +2616,7 @@ impl VM {
                         if let Some((key, _)) = map.get_index(idx) {
                             let key_val = match key {
                                 ArrayKey::Int(i) => Val::Int(*i),
-                                ArrayKey::Str(s) => Val::String(s.as_ref().clone()),
+                                ArrayKey::Str(s) => Val::String(s.as_ref().clone().into()),
                             };
                             let key_handle = self.arena.alloc(key_val);
                             
@@ -2727,6 +2726,21 @@ impl VM {
                 }
 
                 OpCode::DefClass(name, parent) => {
+                    let mut methods = HashMap::new();
+                    
+                    if let Some(parent_sym) = parent {
+                        if let Some(parent_def) = self.context.classes.get(&parent_sym) {
+                            // Inherit methods, excluding private ones.
+                            for (m_name, (func, vis, is_static, decl_class)) in &parent_def.methods {
+                                if *vis != Visibility::Private {
+                                    methods.insert(*m_name, (func.clone(), *vis, *is_static, *decl_class));
+                                }
+                            }
+                        } else {
+                             return Err(VmError::RuntimeError(format!("Parent class {:?} not found", parent_sym)));
+                        }
+                    }
+
                     let class_def = ClassDef {
                         name,
                         parent,
@@ -2734,7 +2748,7 @@ impl VM {
                         is_trait: false,
                         interfaces: Vec::new(),
                         traits: Vec::new(),
-                        methods: HashMap::new(),
+                        methods,
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
@@ -2788,8 +2802,10 @@ impl VM {
                     
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.traits.push(trait_name);
-                        for (name, (func, vis, is_static)) in trait_methods {
-                            class_def.methods.entry(name).or_insert((func, vis, is_static));
+                        for (name, (func, vis, is_static, _declaring_class)) in trait_methods {
+                            // When using a trait, the methods become part of the class.
+                            // The declaring class becomes the class using the trait (effectively).
+                            class_def.methods.entry(name).or_insert((func, vis, is_static, class_name));
                         }
                     }
                 }
@@ -2801,7 +2817,7 @@ impl VM {
                     if let Val::Resource(rc) = val {
                         if let Ok(func) = rc.downcast::<UserFunc>() {
                             if let Some(class_def) = self.context.classes.get_mut(&class_name) {
-                                class_def.methods.insert(method_name, (func, visibility, is_static));
+                                class_def.methods.insert(method_name, (func, visibility, is_static, class_name));
                             }
                         }
                     }
@@ -2841,7 +2857,7 @@ impl VM {
                     } else {
                         // If not found, PHP treats it as a string "NAME" and issues a warning.
                         let name_bytes = self.context.interner.lookup(name).unwrap_or(b"???");
-                        let val = Val::String(name_bytes.to_vec());
+                        let val = Val::String(name_bytes.to_vec().into());
                         let handle = self.arena.alloc(val);
                         self.operand_stack.push(handle);
                         // TODO: Issue warning
@@ -2984,7 +3000,42 @@ impl VM {
                         
                         // Check for constructor
                         let constructor_name = self.context.interner.intern(b"__construct");
-                        if let Some((constructor, _, _, defined_class)) = self.find_method(class_name, constructor_name) {
+                        let mut method_lookup = self.find_method(class_name, constructor_name);
+
+                        if method_lookup.is_none() {
+                            if let Some(scope) = self.get_current_class() {
+                                 if let Some(def) = self.context.classes.get(&scope) {
+                                     if let Some((func, vis, is_static, decl_class)) = def.methods.get(&constructor_name) {
+                                         if *vis == Visibility::Private && *decl_class == scope {
+                                             method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
+                                         }
+                                     }
+                                 }
+                            }
+                        }
+
+                        if let Some((constructor, vis, _, defined_class)) = method_lookup {
+                             // Check visibility
+                             match vis {
+                                 Visibility::Public => {},
+                                 Visibility::Private => {
+                                     let current_class = self.get_current_class();
+                                     if current_class != Some(defined_class) {
+                                         return Err(VmError::RuntimeError("Cannot call private constructor".into()));
+                                     }
+                                 },
+                                 Visibility::Protected => {
+                                     let current_class = self.get_current_class();
+                                     if let Some(scope) = current_class {
+                                         if !self.is_subclass_of(scope, defined_class) && !self.is_subclass_of(defined_class, scope) {
+                                             return Err(VmError::RuntimeError("Cannot call protected constructor".into()));
+                                         }
+                                     } else {
+                                         return Err(VmError::RuntimeError("Cannot call protected constructor".into()));
+                                     }
+                                 }
+                             }
+
                              // Collect args
                             let mut args = Vec::new();
                             for _ in 0..arg_count {
@@ -3059,7 +3110,42 @@ impl VM {
                         
                         // Check for constructor
                         let constructor_name = self.context.interner.intern(b"__construct");
-                        if let Some((constructor, _, _, defined_class)) = self.find_method(class_name, constructor_name) {
+                        let mut method_lookup = self.find_method(class_name, constructor_name);
+
+                        if method_lookup.is_none() {
+                            if let Some(scope) = self.get_current_class() {
+                                 if let Some(def) = self.context.classes.get(&scope) {
+                                     if let Some((func, vis, is_static, decl_class)) = def.methods.get(&constructor_name) {
+                                         if *vis == Visibility::Private && *decl_class == scope {
+                                             method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
+                                         }
+                                     }
+                                 }
+                            }
+                        }
+
+                        if let Some((constructor, vis, _, defined_class)) = method_lookup {
+                             // Check visibility
+                             match vis {
+                                 Visibility::Public => {},
+                                 Visibility::Private => {
+                                     let current_class = self.get_current_class();
+                                     if current_class != Some(defined_class) {
+                                         return Err(VmError::RuntimeError("Cannot call private constructor".into()));
+                                     }
+                                 },
+                                 Visibility::Protected => {
+                                     let current_class = self.get_current_class();
+                                     if let Some(scope) = current_class {
+                                         if !self.is_subclass_of(scope, defined_class) && !self.is_subclass_of(defined_class, scope) {
+                                             return Err(VmError::RuntimeError("Cannot call protected constructor".into()));
+                                         }
+                                     } else {
+                                         return Err(VmError::RuntimeError("Cannot call protected constructor".into()));
+                                     }
+                                 }
+                             }
+
                             let mut frame = CallFrame::new(constructor.chunk.clone());
                             frame.func = Some(constructor.clone());
                             frame.this = Some(obj_handle);
@@ -3136,7 +3222,7 @@ impl VM {
                         let magic_get = self.context.interner.intern(b"__get");
                         if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_get) {
                             let prop_name_bytes = self.context.interner.lookup(prop_name).unwrap_or(b"").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes));
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
                             
                             let mut frame = CallFrame::new(method.chunk.clone());
                             frame.func = Some(method.clone());
@@ -3195,7 +3281,7 @@ impl VM {
                         let magic_set = self.context.interner.intern(b"__set");
                         if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_set) {
                             let prop_name_bytes = self.context.interner.lookup(prop_name).unwrap_or(b"").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes));
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
                             
                             let mut frame = CallFrame::new(method.chunk.clone());
                             frame.func = Some(method.clone());
@@ -3246,7 +3332,21 @@ impl VM {
                         return Err(VmError::RuntimeError("Call to member function on non-object".into()));
                     };
                     
-                    let method_lookup = self.find_method(class_name, method_name);
+                    let mut method_lookup = self.find_method(class_name, method_name);
+
+                    if method_lookup.is_none() {
+                        // Fallback: Check if we are in a scope that has this method as private.
+                        // This handles calling private methods of parent class from parent scope on child object.
+                        if let Some(scope) = self.get_current_class() {
+                             if let Some(def) = self.context.classes.get(&scope) {
+                                 if let Some((func, vis, is_static, decl_class)) = def.methods.get(&method_name) {
+                                     if *vis == Visibility::Private && *decl_class == scope {
+                                         method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
+                                     }
+                                 }
+                             }
+                        }
+                    }
 
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
                         // Check visibility
@@ -3327,11 +3427,11 @@ impl VM {
                             for (i, arg) in args.into_iter().enumerate() {
                                 array_map.insert(ArrayKey::Int(i as i64), arg);
                             }
-                            let args_array_handle = self.arena.alloc(Val::Array(array_map));
+                            let args_array_handle = self.arena.alloc(Val::Array(array_map.into()));
                             
                             // Create method name string
                             let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(method_name_str));
+                            let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
                             
                             // Prepare frame for __call
                             let mut frame = CallFrame::new(magic_func.chunk.clone());
@@ -3407,7 +3507,7 @@ impl VM {
                             
                             // Create method name string (prop name)
                             let prop_name_str = self.context.interner.lookup(prop_name).expect("Prop name should be interned").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_str));
+                            let name_handle = self.arena.alloc(Val::String(prop_name_str.into()));
                             
                             // Prepare frame for __unset
                             let mut frame = CallFrame::new(magic_func.chunk.clone());
@@ -3470,7 +3570,7 @@ impl VM {
                         let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"").to_vec();
                         map.insert(ArrayKey::Str(Rc::new(key_bytes)), *handle);
                     }
-                    let arr_handle = self.arena.alloc(Val::Array(map));
+                    let arr_handle = self.arena.alloc(Val::Array(map.into()));
                     self.operand_stack.push(arr_handle);
                 }
                 OpCode::IncludeOrEval => {
@@ -3770,7 +3870,7 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
@@ -3797,7 +3897,7 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
@@ -3824,7 +3924,7 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())), // TODO: proper key conversion
                             };
                             
@@ -3846,10 +3946,10 @@ impl VM {
                             };
                             if idx < s.len() {
                                 let char_str = vec![s[idx]];
-                                let val = self.arena.alloc(Val::String(char_str));
+                                let val = self.arena.alloc(Val::String(char_str.into()));
                                 self.operand_stack.push(val);
                             } else {
-                                let empty = self.arena.alloc(Val::String(vec![]));
+                                let empty = self.arena.alloc(Val::String(vec![].into()));
                                 self.operand_stack.push(empty);
                             }
                         }
@@ -3866,7 +3966,7 @@ impl VM {
                     // 1. Resolve key
                     let key = match &self.arena.get(dim).value {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                     };
                     
@@ -3887,11 +3987,11 @@ impl VM {
                         // 4. Modify container
                         let container = &mut self.arena.get_mut(container_handle).value;
                         if let Val::Null = container {
-                            *container = Val::Array(IndexMap::new());
+                            *container = Val::Array(IndexMap::new().into());
                         }
                         
                         if let Val::Array(map) = container {
-                            map.insert(key, val_handle);
+                            Rc::make_mut(map).insert(key, val_handle);
                             self.operand_stack.push(val_handle);
                         } else {
                             // Should not happen due to check above
@@ -3990,7 +4090,7 @@ impl VM {
                     for (i, handle) in frame.args.iter().enumerate() {
                         map.insert(ArrayKey::Int(i as i64), *handle);
                     }
-                    let handle = self.arena.alloc(Val::Array(map));
+                    let handle = self.arena.alloc(Val::Array(map.into()));
                     self.operand_stack.push(handle);
                 }
                 OpCode::InitMethodCall => {
@@ -4089,7 +4189,7 @@ impl VM {
                                 Val::Bool(b) => !b,
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
-                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::String(s) => s.is_empty() || s.as_slice() == b"0",
                                 Val::Array(a) => a.is_empty(),
                                 _ => false,
                             }
@@ -4116,7 +4216,7 @@ impl VM {
                         Val::Array(map) => {
                             let key = match &self.arena.get(dim_handle).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
-                                Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             map.get(&key).cloned()
@@ -4125,7 +4225,7 @@ impl VM {
                             // Property check
                             let prop_name = match &self.arena.get(dim_handle).value {
                                 Val::String(s) => s.clone(),
-                                _ => vec![],
+                                _ => vec![].into(),
                             };
                             if prop_name.is_empty() {
                                 None
@@ -4156,7 +4256,7 @@ impl VM {
                                 Val::Bool(b) => !b,
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
-                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::String(s) => s.is_empty() || s.as_slice() == b"0",
                                 Val::Array(a) => a.is_empty(),
                                 _ => false,
                             }
@@ -4190,7 +4290,7 @@ impl VM {
                         Val::Object(obj_handle) => {
                             let prop_name = match &self.arena.get(prop_handle).value {
                                 Val::String(s) => s.clone(),
-                                _ => vec![],
+                                _ => vec![].into(),
                             };
                             if prop_name.is_empty() {
                                 None
@@ -4221,7 +4321,7 @@ impl VM {
                                 Val::Bool(b) => !b,
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
-                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::String(s) => s.is_empty() || s.as_slice() == b"0",
                                 Val::Array(a) => a.is_empty(),
                                 _ => false,
                             }
@@ -4276,7 +4376,7 @@ impl VM {
                                 Val::Bool(b) => !b,
                                 Val::Int(i) => i == 0,
                                 Val::Float(f) => f == 0.0,
-                                Val::String(s) => s.is_empty() || s == b"0",
+                                Val::String(s) => s.is_empty() || s.as_slice() == b"0",
                                 Val::Array(a) => a.is_empty(),
                                 _ => false,
                             }
@@ -4339,7 +4439,7 @@ impl VM {
                             (Val::String(a), Val::String(b)) => {
                                 let mut s = String::from_utf8_lossy(&a).to_string();
                                 s.push_str(&String::from_utf8_lossy(&b));
-                                Val::String(s.into_bytes())
+                                Val::String(s.into_bytes().into())
                             },
                             _ => Val::Null,
                         },
@@ -4568,7 +4668,7 @@ impl VM {
                             (Val::String(a), Val::String(b)) => {
                                 let mut s = String::from_utf8_lossy(&a).to_string();
                                 s.push_str(&String::from_utf8_lossy(&b));
-                                Val::String(s.into_bytes())
+                                Val::String(s.into_bytes().into())
                             },
                             _ => Val::Null,
                         },
@@ -4761,19 +4861,19 @@ impl VM {
                         (Val::String(a), Val::String(b)) => {
                             let mut s = String::from_utf8_lossy(&a).to_string();
                             s.push_str(&String::from_utf8_lossy(&b));
-                            Val::String(s.into_bytes())
+                            Val::String(s.into_bytes().into())
                         },
                         (Val::String(a), Val::Int(b)) => {
                             let mut s = String::from_utf8_lossy(&a).to_string();
                             s.push_str(&b.to_string());
-                            Val::String(s.into_bytes())
+                            Val::String(s.into_bytes().into())
                         },
                         (Val::Int(a), Val::String(b)) => {
                             let mut s = a.to_string();
                             s.push_str(&String::from_utf8_lossy(&b));
-                            Val::String(s.into_bytes())
+                            Val::String(s.into_bytes().into())
                         },
-                        _ => Val::String(b"".to_vec()),
+                        _ => Val::String(b"".to_vec().into()),
                     };
                     
                     let res_handle = self.arena.alloc(res);
@@ -4787,7 +4887,7 @@ impl VM {
                         Val::Object(h) => {
                             if let Val::ObjPayload(data) = &self.arena.get(h).value {
                                 let name_bytes = self.context.interner.lookup(data.class).unwrap_or(b"");
-                                let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
+                                let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec().into()));
                                 self.operand_stack.push(res_handle);
                             } else {
                                 return Err(VmError::RuntimeError("Invalid object payload".into()));
@@ -4806,7 +4906,7 @@ impl VM {
                     let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
                     if let Some(scope) = frame.called_scope {
                         let name_bytes = self.context.interner.lookup(scope).unwrap_or(b"");
-                        let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec()));
+                        let res_handle = self.arena.alloc(Val::String(name_bytes.to_vec().into()));
                         self.operand_stack.push(res_handle);
                     } else {
                         return Err(VmError::RuntimeError("get_called_class() called from outside a class".into()));
@@ -4826,7 +4926,7 @@ impl VM {
                         Val::Resource(_) => "resource",
                         _ => "unknown",
                     };
-                    let res_handle = self.arena.alloc(Val::String(type_str.as_bytes().to_vec()));
+                    let res_handle = self.arena.alloc(Val::String(type_str.as_bytes().to_vec().into()));
                     self.operand_stack.push(res_handle);
                 }
                 OpCode::Clone => {
@@ -4904,7 +5004,7 @@ impl VM {
                     let key_val = &self.arena.get(key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => ArrayKey::Int(0), // Should probably be error or false
                     };
                     
@@ -4960,7 +5060,7 @@ impl VM {
                             
                             // Create method name string (prop name)
                             let prop_name_str = self.context.interner.lookup(prop_name).expect("Prop name should be interned").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_str));
+                            let name_handle = self.arena.alloc(Val::String(prop_name_str.into()));
                             
                             // Prepare frame for __isset
                             let mut frame = CallFrame::new(magic_func.chunk.clone());
@@ -5002,7 +5102,19 @@ impl VM {
                 OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
                     let resolved_class = self.resolve_class_name(class_name)?;
                     
-                    let method_lookup = self.find_method(resolved_class, method_name);
+                    let mut method_lookup = self.find_method(resolved_class, method_name);
+
+                    if method_lookup.is_none() {
+                        if let Some(scope) = self.get_current_class() {
+                             if let Some(def) = self.context.classes.get(&scope) {
+                                 if let Some((func, vis, is_static, decl_class)) = def.methods.get(&method_name) {
+                                     if *vis == Visibility::Private && *decl_class == scope {
+                                         method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
+                                     }
+                                 }
+                             }
+                        }
+                    }
 
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
                         if !is_static {
@@ -5064,11 +5176,11 @@ impl VM {
                             for (i, arg) in args.into_iter().enumerate() {
                                 array_map.insert(ArrayKey::Int(i as i64), arg);
                             }
-                            let args_array_handle = self.arena.alloc(Val::Array(array_map));
+                            let args_array_handle = self.arena.alloc(Val::Array(array_map.into()));
                             
                             // Create method name string
                             let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(method_name_str));
+                            let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
                             
                             // Prepare frame for __callStatic
                             let mut frame = CallFrame::new(magic_func.chunk.clone());
@@ -5105,7 +5217,7 @@ impl VM {
                     let mut res = a_str;
                     res.extend(b_str);
                     
-                    let res_handle = self.arena.alloc(Val::String(res));
+                    let res_handle = self.arena.alloc(Val::String(res.into()));
                     self.operand_stack.push(res_handle);
                 }
                 
@@ -5119,7 +5231,7 @@ impl VM {
                     let mut res = a_str;
                     res.extend(b_str);
                     
-                    let res_handle = self.arena.alloc(Val::String(res));
+                    let res_handle = self.arena.alloc(Val::String(res.into()));
                     self.operand_stack.push(res_handle);
                 }
                 
@@ -5224,7 +5336,7 @@ impl VM {
                         let magic_set = self.context.interner.intern(b"__set");
                         if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_set) {
                             let prop_name_bytes = self.context.interner.lookup(prop_name).unwrap_or(b"").to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes));
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
                             
                             let mut frame = CallFrame::new(method.chunk.clone());
                             frame.func = Some(method.clone());
@@ -5305,7 +5417,7 @@ impl VM {
                     }
                     
                     let resolved_name_bytes = self.context.interner.lookup(resolved_sym).unwrap().to_vec();
-                    let res_handle = self.arena.alloc(Val::String(resolved_name_bytes));
+                    let res_handle = self.arena.alloc(Val::String(resolved_name_bytes.into()));
                     self.operand_stack.push(res_handle);
                 }
 
@@ -5401,7 +5513,7 @@ impl VM {
         let key_val = &self.arena.get(key_handle).value;
         let key = match key_val {
             Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+            Val::String(s) => ArrayKey::Str(s.clone()),
             _ => return Err(VmError::RuntimeError("Invalid array key".into())),
         };
 
@@ -5426,7 +5538,7 @@ impl VM {
         let key_val = &self.arena.get(key_handle).value;
         let key = match key_val {
             Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+            Val::String(s) => ArrayKey::Str(s.clone()),
             _ => return Err(VmError::RuntimeError("Invalid array key".into())),
         };
 
@@ -5436,11 +5548,11 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
             
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(indexmap::IndexMap::new());
+                array_zval_mut.value = Val::Array(indexmap::IndexMap::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
-                map.insert(key, val_handle);
+                Rc::make_mut(map).insert(key, val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -5450,11 +5562,11 @@ impl VM {
             let mut new_val = array_zval.value.clone();
             
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(indexmap::IndexMap::new());
+                new_val = Val::Array(indexmap::IndexMap::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
-                map.insert(key, val_handle);
+                Rc::make_mut(map).insert(key, val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -5472,16 +5584,17 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
             
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(indexmap::IndexMap::new());
+                array_zval_mut.value = Val::Array(indexmap::IndexMap::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
-                let next_key = map.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(*i),
+                let map_mut = Rc::make_mut(map);
+                let next_key = map_mut.keys().filter_map(|k| match k {
+                    ArrayKey::Int(i) => Some(i),
                     _ => None
                 }).max().map(|i| i + 1).unwrap_or(0);
                 
-                map.insert(ArrayKey::Int(next_key), val_handle);
+                map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -5491,16 +5604,17 @@ impl VM {
             let mut new_val = array_zval.value.clone();
             
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(indexmap::IndexMap::new());
+                new_val = Val::Array(indexmap::IndexMap::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
-                let next_key = map.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(*i),
+                let map_mut = Rc::make_mut(map);
+                let next_key = map_mut.keys().filter_map(|k| match k {
+                    ArrayKey::Int(i) => Some(i),
                     _ => None
                 }).max().map(|i| i + 1).unwrap_or(0);
                 
-                map.insert(ArrayKey::Int(next_key), val_handle);
+                map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -5531,7 +5645,7 @@ impl VM {
                     let key_val = &self.arena.get(*key_handle).value;
                     let key = match key_val {
                         Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
@@ -5569,22 +5683,23 @@ impl VM {
         let mut new_val = current_zval.value.clone();
         
         if let Val::Null | Val::Bool(false) = new_val {
-            new_val = Val::Array(indexmap::IndexMap::new());
+            new_val = Val::Array(indexmap::IndexMap::new().into());
         }
         
         if let Val::Array(ref mut map) = new_val {
+            let map_mut = Rc::make_mut(map);
             // Resolve key
             let key_val = &self.arena.get(key_handle).value;
             let key = if let Val::AppendPlaceholder = key_val {
-                let next_key = map.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(*i),
+                let next_key = map_mut.keys().filter_map(|k| match k {
+                    ArrayKey::Int(i) => Some(i),
                     _ => None
                 }).max().map(|i| i + 1).unwrap_or(0);
                 ArrayKey::Int(next_key)
             } else {
                 match key_val {
                     Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(std::rc::Rc::new(s.clone())),
+                    Val::String(s) => ArrayKey::Str(s.clone()),
                     _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                 }
             };
@@ -5592,7 +5707,7 @@ impl VM {
             if remaining_keys.is_empty() {
                 // We are at the last key.
                 let mut updated_ref = false;
-                if let Some(existing_handle) = map.get(&key) {
+                if let Some(existing_handle) = map_mut.get(&key) {
                     if self.arena.get(*existing_handle).is_ref {
                         // Update Ref value
                         let new_val = self.arena.get(val_handle).value.clone();
@@ -5602,19 +5717,19 @@ impl VM {
                 }
                 
                 if !updated_ref {
-                    map.insert(key, val_handle);
+                    map_mut.insert(key, val_handle);
                 }
             } else {
                 // We need to go deeper.
-                let next_handle = if let Some(h) = map.get(&key) {
+                let next_handle = if let Some(h) = map_mut.get(&key) {
                     *h
                 } else {
                     // Create empty array
-                    self.arena.alloc(Val::Array(indexmap::IndexMap::new()))
+                    self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()))
                 };
                 
                 let new_next_handle = self.assign_nested_recursive(next_handle, remaining_keys, val_handle)?;
-                map.insert(key, new_next_handle);
+                map_mut.insert(key, new_next_handle);
             }
         } else {
             return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
@@ -5672,7 +5787,7 @@ mod tests {
         
         // Let's manually construct stack in VM.
         let mut vm = create_vm();
-        let array_handle = vm.arena.alloc(Val::Array(indexmap::IndexMap::new()));
+        let array_handle = vm.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
         let key_handle = vm.arena.alloc(Val::Int(0));
         let val_handle = vm.arena.alloc(Val::Int(99));
         
@@ -5776,9 +5891,9 @@ mod tests {
     fn test_echo_and_call() {
         // echo str_repeat("hi", 3);
         let mut chunk = CodeChunk::default();
-        chunk.constants.push(Val::String(b"hi".to_vec())); // 0
+        chunk.constants.push(Val::String(b"hi".to_vec().into())); // 0
         chunk.constants.push(Val::Int(3)); // 1
-        chunk.constants.push(Val::String(b"str_repeat".to_vec())); // 2
+        chunk.constants.push(Val::String(b"str_repeat".to_vec().into())); // 2
         
         // Push "str_repeat" (function name)
         chunk.code.push(OpCode::Const(2));
@@ -5833,7 +5948,7 @@ mod tests {
         let mut chunk = CodeChunk::default();
         chunk.constants.push(Val::Int(1)); // 0
         chunk.constants.push(Val::Int(2)); // 1
-        chunk.constants.push(Val::String(b"add".to_vec())); // 2
+        chunk.constants.push(Val::String(b"add".to_vec().into())); // 2
         
         // Push "add"
         chunk.code.push(OpCode::Const(2));

@@ -116,7 +116,7 @@ fn test_lsb_static() {
     
     let result = run_code(src);
     match result {
-        Val::String(s) => assert_eq!(s, b"B"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"B"),
         _ => panic!("Expected String('B'), got {:?}", result),
     }
 }
@@ -140,7 +140,7 @@ fn test_lsb_property() {
     
     let result = run_code(src);
     match result {
-        Val::String(s) => assert_eq!(s, b"B"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"B"),
         _ => panic!("Expected String('B'), got {:?}", result),
     }
 }

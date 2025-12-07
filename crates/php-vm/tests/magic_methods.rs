@@ -39,7 +39,7 @@ fn test_magic_get() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"got foo");
+        assert_eq!(s.as_slice(), b"got foo");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -63,7 +63,7 @@ fn test_magic_set() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"bar=baz");
+        assert_eq!(s.as_slice(), b"bar=baz");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -84,7 +84,7 @@ fn test_magic_call() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"called missing with arg1");
+        assert_eq!(s.as_slice(), b"called missing with arg1");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -107,7 +107,7 @@ fn test_magic_construct() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"init");
+        assert_eq!(s.as_slice(), b"init");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -127,7 +127,7 @@ fn test_magic_call_static() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"static called missing with arg1");
+        assert_eq!(s.as_slice(), b"static called missing with arg1");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -195,7 +195,7 @@ fn test_magic_tostring() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"I am a string");
+        assert_eq!(s.as_slice(), b"I am a string");
     } else {
         panic!("Expected string, got {:?}", res);
     }
@@ -216,7 +216,7 @@ fn test_magic_invoke() {
     
     let res = run_php(src);
     if let Val::String(s) = res {
-        assert_eq!(s, b"Invoked with foo");
+        assert_eq!(s.as_slice(), b"Invoked with foo");
     } else {
         panic!("Expected string, got {:?}", res);
     }

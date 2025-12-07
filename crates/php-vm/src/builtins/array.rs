@@ -25,7 +25,7 @@ pub fn php_array_merge(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         let val = vm.arena.get(*arg_handle);
         match &val.value {
             Val::Array(arr) => {
-                for (key, value_handle) in arr {
+                for (key, value_handle) in arr.iter() {
                     match key {
                         ArrayKey::Int(_) => {
                             new_array.insert(ArrayKey::Int(next_int_key), *value_handle);
@@ -41,7 +41,7 @@ pub fn php_array_merge(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         }
     }
     
-    Ok(vm.arena.alloc(Val::Array(new_array)))
+    Ok(vm.arena.alloc(Val::Array(new_array.into())))
 }
 
 pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -64,14 +64,14 @@ pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     for key in keys {
         let key_val = match key {
             ArrayKey::Int(i) => Val::Int(i),
-            ArrayKey::Str(s) => Val::String((*s).clone()),
+            ArrayKey::Str(s) => Val::String((*s).clone().into()),
         };
         let key_handle = vm.arena.alloc(key_val);
         keys_arr.insert(ArrayKey::Int(idx), key_handle);
         idx += 1;
     }
     
-    Ok(vm.arena.alloc(Val::Array(keys_arr)))
+    Ok(vm.arena.alloc(Val::Array(keys_arr.into())))
 }
 
 pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -88,10 +88,10 @@ pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
     let mut values_arr = IndexMap::new();
     let mut idx = 0;
     
-    for (_, value_handle) in arr {
+    for (_, value_handle) in arr.iter() {
         values_arr.insert(ArrayKey::Int(idx), *value_handle);
         idx += 1;
     }
     
-    Ok(vm.arena.alloc(Val::Array(values_arr)))
+    Ok(vm.arena.alloc(Val::Array(values_arr.into())))
 }

@@ -72,7 +72,7 @@ fn test_trait_method_copy() {
     "#;
     let result = run_code(code);
     match result {
-        Val::String(s) => assert_eq!(s, b"Log: Hello"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"Log: Hello"),
         _ => panic!("Expected string, got {:?}", result),
     }
 }

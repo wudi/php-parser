@@ -140,7 +140,7 @@ fn test_cast() {
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Bool(true));
     
     match get_array_idx(&vm, &ret, 3) {
-        Val::String(s) => assert_eq!(s, b"123"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"123"),
         _ => panic!("Expected string"),
     }
 }

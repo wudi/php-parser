@@ -28,7 +28,7 @@ pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
                 }
             }
             
-            return Ok(vm.arena.alloc(Val::Array(result_map)));
+            return Ok(vm.arena.alloc(Val::Array(result_map.into())));
         }
     }
     
@@ -40,7 +40,7 @@ pub fn php_get_class(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         if let Some(frame) = vm.frames.last() {
             if let Some(class_scope) = frame.class_scope {
                 let name = vm.context.interner.lookup(class_scope).unwrap_or(b"").to_vec();
-                return Ok(vm.arena.alloc(Val::String(name)));
+                return Ok(vm.arena.alloc(Val::String(name.into())));
             }
         }
         return Err("get_class() called without object from outside a class".into());
@@ -51,7 +51,7 @@ pub fn php_get_class(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         let obj_zval = vm.arena.get(h);
         if let Val::ObjPayload(obj_data) = &obj_zval.value {
             let class_name = vm.context.interner.lookup(obj_data.class).unwrap_or(b"").to_vec();
-            return Ok(vm.arena.alloc(Val::String(class_name)));
+            return Ok(vm.arena.alloc(Val::String(class_name.into())));
         }
     }
     
@@ -94,7 +94,7 @@ pub fn php_get_parent_class(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     if let Some(def) = vm.context.classes.get(&class_name_sym) {
         if let Some(parent_sym) = def.parent {
             let parent_name = vm.context.interner.lookup(parent_sym).unwrap_or(b"").to_vec();
-            return Ok(vm.arena.alloc(Val::String(parent_name)));
+            return Ok(vm.arena.alloc(Val::String(parent_name.into())));
         }
     }
 
@@ -342,7 +342,7 @@ pub fn php_get_class_methods(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
             if let Val::ObjPayload(obj_data) = &obj_zval.value {
                 obj_data.class
             } else {
-                return Ok(vm.arena.alloc(Val::Array(IndexMap::new())));
+                return Ok(vm.arena.alloc(Val::Array(IndexMap::new().into())));
             }
         }
         Val::String(s) => {
@@ -360,11 +360,11 @@ pub fn php_get_class_methods(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     
     for (i, method_sym) in methods.iter().enumerate() {
         let name = vm.context.interner.lookup(*method_sym).unwrap_or(b"").to_vec();
-        let val_handle = vm.arena.alloc(Val::String(name));
+        let val_handle = vm.arena.alloc(Val::String(name.into()));
         array.insert(ArrayKey::Int(i as i64), val_handle);
     }
     
-    Ok(vm.arena.alloc(Val::Array(array)))
+    Ok(vm.arena.alloc(Val::Array(array.into())))
 }
 
 pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -393,7 +393,7 @@ pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         array.insert(key, val_handle);
     }
     
-    Ok(vm.arena.alloc(Val::Array(array)))
+    Ok(vm.arena.alloc(Val::Array(array.into())))
 }
 
 pub fn php_get_called_class(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
@@ -401,7 +401,7 @@ pub fn php_get_called_class(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Str
     
     if let Some(scope) = frame.called_scope {
         let name = vm.context.interner.lookup(scope).unwrap_or(b"").to_vec();
-        Ok(vm.arena.alloc(Val::String(name)))
+        Ok(vm.arena.alloc(Val::String(name.into())))
     } else {
         Err("get_called_class() called from outside a class".into())
     }

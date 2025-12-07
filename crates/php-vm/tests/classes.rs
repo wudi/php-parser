@@ -82,7 +82,7 @@ fn test_inheritance() {
     let res_val = vm.arena.get(res_handle).value.clone();
     
     match res_val {
-        Val::String(s) => assert_eq!(s, b"woof"),
+        Val::String(s) => assert_eq!(s.as_slice(), b"woof"),
         _ => panic!("Expected String('woof'), got {:?}", res_val),
     }
 }

@@ -91,7 +91,7 @@ fn test_keyed_array() {
     let result = run_code(source);
     
     if let Val::String(s) = result {
-        assert_eq!(s, b"bar");
+        assert_eq!(s.as_slice(), b"bar");
     } else {
         panic!("Expected String('bar'), got {:?}", result);
     }

@@ -30,8 +30,8 @@ fn php_eval_int(script: &str) -> i64 {
 fn send_val_dynamic_call_strlen() {
     // Build a chunk that calls strlen("abc") using InitDynamicCall + SendVal + DoFcall.
     let mut chunk = CodeChunk::default();
-    chunk.constants.push(Val::String(b"strlen".to_vec())); // 0
-    chunk.constants.push(Val::String(b"abc".to_vec())); // 1
+    chunk.constants.push(Val::String(b"strlen".to_vec().into())); // 0
+    chunk.constants.push(Val::String(b"abc".to_vec().into())); // 1
 
     chunk.code.push(OpCode::Const(0)); // function name
     chunk.code.push(OpCode::InitDynamicCall);
@@ -81,7 +81,7 @@ fn send_ref_mutates_caller() {
     // $a = 1; foo($a); return $a;
     let sym_a = Symbol(0);
     let mut chunk = CodeChunk::default();
-    chunk.constants.push(Val::String(b"foo".to_vec())); // 0
+    chunk.constants.push(Val::String(b"foo".to_vec().into())); // 0
     chunk.constants.push(Val::Int(1)); // 1
 
     chunk.code.push(OpCode::Const(0)); // "foo"

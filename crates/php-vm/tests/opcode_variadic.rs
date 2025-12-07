@@ -37,7 +37,7 @@ fn recv_variadic_counts_args() {
     
     // Call count($args)
     let count_idx = func_chunk.constants.len();
-    func_chunk.constants.push(Val::String(b"count".to_vec()));
+    func_chunk.constants.push(Val::String(b"count".to_vec().into()));
     func_chunk.code.push(OpCode::Const(count_idx as u16));
     func_chunk.code.push(OpCode::LoadVar(sym_args));
     func_chunk.code.push(OpCode::Call(1));
@@ -55,7 +55,7 @@ fn recv_variadic_counts_args() {
 
     // Main chunk: call varcnt(1, 2, 3)
     let mut chunk = CodeChunk::default();
-    chunk.constants.push(Val::String(b"varcnt".to_vec())); // 0
+    chunk.constants.push(Val::String(b"varcnt".to_vec().into())); // 0
     chunk.constants.push(Val::Int(1)); // 1
     chunk.constants.push(Val::Int(2)); // 2
     chunk.constants.push(Val::Int(3)); // 3
@@ -119,7 +119,7 @@ fn send_unpack_passes_array_elements() {
 
     // Main chunk builds $arr = [1,2,3]; sum3(...$arr);
     let mut chunk = CodeChunk::default();
-    chunk.constants.push(Val::String(b"sum3".to_vec())); // 0
+    chunk.constants.push(Val::String(b"sum3".to_vec().into())); // 0
     chunk.constants.push(Val::Int(0)); // 1 key0
     chunk.constants.push(Val::Int(1)); // 2 val1/key1
     chunk.constants.push(Val::Int(2)); // 3 val2/key2

@@ -41,13 +41,13 @@ pub fn php_str_repeat(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
     
     let repeated = s.repeat(count as usize);
-    Ok(vm.arena.alloc(Val::String(repeated)))
+    Ok(vm.arena.alloc(Val::String(repeated.into())))
 }
 
 pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // implode(separator, array) or implode(array)
     let (sep, arr_handle) = if args.len() == 1 {
-        (vec![], args[0])
+        (vec![].into(), args[0])
     } else if args.len() == 2 {
         let sep_val = vm.arena.get(args[0]);
         let sep = match &sep_val.value {
@@ -81,7 +81,7 @@ pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         }
     }
     
-    Ok(vm.arena.alloc(Val::String(result)))
+    Ok(vm.arena.alloc(Val::String(result.into())))
 }
 
 pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -117,7 +117,7 @@ pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     while let Some(pos) = find_subsequence(current_slice, &sep) {
         let part = &current_slice[..pos];
-        let val = vm.arena.alloc(Val::String(part.to_vec()));
+        let val = vm.arena.alloc(Val::String(part.to_vec().into()));
         result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
         idx += 1;
 
@@ -126,10 +126,10 @@ pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
     
     // Last part
-    let val = vm.arena.alloc(Val::String(current_slice.to_vec()));
+    let val = vm.arena.alloc(Val::String(current_slice.to_vec().into()));
     result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
 
-    Ok(vm.arena.alloc(Val::Array(result_arr)))
+    Ok(vm.arena.alloc(Val::Array(result_arr.into())))
 }
 
 pub fn php_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -172,7 +172,7 @@ pub fn php_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
     
     if actual_start >= str_len {
-        return Ok(vm.arena.alloc(Val::String(vec![])));
+        return Ok(vm.arena.alloc(Val::String(vec![].into())));
     }
     
     let mut actual_len = if let Some(l) = len {
@@ -193,7 +193,7 @@ pub fn php_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let end = if end > str_len { str_len } else { end };
     
     let sub = s[actual_start as usize..end as usize].to_vec();
-    Ok(vm.arena.alloc(Val::String(sub)))
+    Ok(vm.arena.alloc(Val::String(sub.into())))
 }
 
 pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -250,7 +250,7 @@ pub fn php_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("strtolower() expects parameter 1 to be string".into()),
     };
     
-    let lower = s.iter().map(|b| b.to_ascii_lowercase()).collect();
+    let lower = s.iter().map(|b| b.to_ascii_lowercase()).collect::<Vec<u8>>().into();
     Ok(vm.arena.alloc(Val::String(lower)))
 }
 
@@ -265,6 +265,6 @@ pub fn php_strtoupper(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("strtoupper() expects parameter 1 to be string".into()),
     };
     
-    let upper = s.iter().map(|b| b.to_ascii_uppercase()).collect();
+    let upper = s.iter().map(|b| b.to_ascii_uppercase()).collect::<Vec<u8>>().into();
     Ok(vm.arena.alloc(Val::String(upper)))
 }

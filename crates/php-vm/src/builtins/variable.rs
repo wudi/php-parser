@@ -120,7 +120,7 @@ pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     export_value(vm, val_handle, 0, &mut output);
     
     if return_res {
-        Ok(vm.arena.alloc(Val::String(output.into_bytes())))
+        Ok(vm.arena.alloc(Val::String(output.into_bytes().into())))
     } else {
         print!("{}", output);
         Ok(vm.arena.alloc(Val::Null))
@@ -218,7 +218,7 @@ pub fn php_gettype(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => "unknown type",
     };
     
-    Ok(vm.arena.alloc(Val::String(type_str.as_bytes().to_vec())))
+    Ok(vm.arena.alloc(Val::String(type_str.as_bytes().to_vec().into())))
 }
 
 pub fn php_define(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {

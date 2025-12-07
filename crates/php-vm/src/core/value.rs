@@ -22,8 +22,8 @@ pub enum Val {
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(Vec<u8>), // PHP strings are byte arrays
-    Array(IndexMap<ArrayKey, Handle>), // Recursive handles
+    String(Rc<Vec<u8>>), // PHP strings are byte arrays (COW)
+    Array(Rc<IndexMap<ArrayKey, Handle>>), // Recursive handles (COW)
     Object(Handle),
     ObjPayload(ObjectData),
     Resource(Rc<dyn Any>), // Changed to Rc to support Clone
