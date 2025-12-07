@@ -1,5 +1,5 @@
 ---
-source: tests/variable_variables.rs
+source: crates/php-parser/tests/variable_variables.rs
 assertion_line: 20
 expression: program
 ---
@@ -13,10 +13,16 @@ Program {
         },
         Expression {
             expr: Assign {
-                var: Variable {
-                    name: Span {
-                        start: 11,
-                        end: 13,
+                var: IndirectVariable {
+                    name: Variable {
+                        name: Span {
+                            start: 11,
+                            end: 13,
+                        },
+                        span: Span {
+                            start: 11,
+                            end: 13,
+                        },
                     },
                     span: Span {
                         start: 10,
@@ -44,10 +50,16 @@ Program {
         },
         Expression {
             expr: Assign {
-                var: Variable {
-                    name: Span {
-                        start: 25,
-                        end: 27,
+                var: IndirectVariable {
+                    name: Variable {
+                        name: Span {
+                            start: 25,
+                            end: 27,
+                        },
+                        span: Span {
+                            start: 25,
+                            end: 27,
+                        },
                     },
                     span: Span {
                         start: 23,
@@ -75,10 +87,17 @@ Program {
         },
         Expression {
             expr: Assign {
-                var: Variable {
-                    name: Span {
-                        start: 40,
-                        end: 43,
+                var: IndirectVariable {
+                    name: String {
+                        value: [
+                            39,
+                            99,
+                            39,
+                        ],
+                        span: Span {
+                            start: 40,
+                            end: 43,
+                        },
                     },
                     span: Span {
                         start: 38,
@@ -106,10 +125,35 @@ Program {
         },
         Expression {
             expr: Assign {
-                var: Variable {
-                    name: Span {
-                        start: 56,
-                        end: 63,
+                var: IndirectVariable {
+                    name: ArrayDimFetch {
+                        array: Variable {
+                            name: Span {
+                                start: 56,
+                                end: 58,
+                            },
+                            span: Span {
+                                start: 56,
+                                end: 58,
+                            },
+                        },
+                        dim: Some(
+                            String {
+                                value: [
+                                    39,
+                                    101,
+                                    39,
+                                ],
+                                span: Span {
+                                    start: 59,
+                                    end: 62,
+                                },
+                            },
+                        ),
+                        span: Span {
+                            start: 56,
+                            end: 63,
+                        },
                     },
                     span: Span {
                         start: 54,

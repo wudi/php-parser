@@ -6,7 +6,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 fn php_out(code: &str) -> (String, bool) {
-    let script = format!("<?php {}\n", code);
+    // `php -r` expects code without opening tags.
+    let script = format!("{}\n", code);
     let output = Command::new("php")
         .arg("-r")
         .arg(script)

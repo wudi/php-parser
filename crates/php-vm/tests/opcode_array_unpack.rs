@@ -1,6 +1,6 @@
-use php_vm::vm::engine::VM;
+use php_vm::core::value::{ArrayKey, Handle, Val};
 use php_vm::runtime::context::EngineContext;
-use php_vm::core::value::{Handle, Val};
+use php_vm::vm::engine::VM;
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -54,15 +54,28 @@ fn val_to_json(vm: &VM, handle: Handle) -> String {
             format!("\"{}\"", escaped)
         }
         Val::Array(map) => {
-            let mut parts = Vec::new();
-            for (k, h) in map.iter() {
-                let key = match k {
-                    php_vm::core::value::ArrayKey::Int(i) => i.to_string(),
-                    php_vm::core::value::ArrayKey::Str(s) => format!("\"{}\"", String::from_utf8_lossy(s)),
-                };
-                parts.push(format!("{}:{}", key, val_to_json(vm, *h)));
+            let is_list = map
+                .iter()
+                .enumerate()
+                .all(|(idx, (k, _))| matches!(k, ArrayKey::Int(i) if *i == idx as i64));
+
+            if is_list {
+                let mut parts = Vec::new();
+                for (_, h) in map.iter() {
+                    parts.push(val_to_json(vm, *h));
+                }
+                format!("[{}]", parts.join(","))
+            } else {
+                let mut parts = Vec::new();
+                for (k, h) in map.iter() {
+                    let key = match k {
+                        ArrayKey::Int(i) => i.to_string(),
+                        ArrayKey::Str(s) => format!("\"{}\"", String::from_utf8_lossy(s)),
+                    };
+                    parts.push(format!("{}:{}", key, val_to_json(vm, *h)));
+                }
+                format!("{{{}}}", parts.join(","))
             }
-            format!("{{{}}}", parts.join(","))
         }
         _ => "\"unsupported\"".into(),
     }

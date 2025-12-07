@@ -9,7 +9,11 @@ pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let val = vm.arena.get(args[0]);
     let len = match &val.value {
         Val::String(s) => s.len(),
-        _ => return Err("strlen() expects parameter 1 to be string".into()),
+        Val::Int(i) => i.to_string().len(),
+        Val::Float(f) => f.to_string().len(),
+        Val::Bool(b) => if *b { 1 } else { 0 },
+        Val::Null => 0,
+        _ => return Err("strlen() expects string or scalar".into()),
     };
     
     Ok(vm.arena.alloc(Val::Int(len as i64)))
