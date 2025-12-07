@@ -250,7 +250,7 @@ pub enum OpCode {
     GeneratorReturn,
     FastCall,
     FastRet,
-    RecvVariadic,
+    RecvVariadic(u32),
     SendUnpack,
     CopyTmp,
     FuncNumArgs,
