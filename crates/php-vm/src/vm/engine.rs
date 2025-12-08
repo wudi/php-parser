@@ -867,7 +867,11 @@ impl VM {
                                 return Err(VmError::RuntimeError("Using $this when not in object context".into()));
                             }
                         } else {
-                            return Err(VmError::RuntimeError(format!("Undefined variable: {:?}", sym)));
+                            let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
+                            let msg = format!("Undefined variable: ${}", var_name);
+                            self.error_handler.report(ErrorLevel::Notice, &msg);
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
                         }
                     }
                 }
@@ -880,7 +884,11 @@ impl VM {
                     if let Some(&handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(handle);
                     } else {
-                        return Err(VmError::RuntimeError(format!("Undefined variable: {:?}", sym)));
+                        let var_name = String::from_utf8_lossy(&name_bytes);
+                        let msg = format!("Undefined variable: ${}", var_name);
+                        self.error_handler.report(ErrorLevel::Notice, &msg);
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
                     }
                 }
                 OpCode::LoadRef(sym) => {
