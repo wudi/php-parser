@@ -150,7 +150,7 @@ fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
             output.push_str("NULL");
         }
         Val::Array(arr) => {
-            output.push_str("array(\n");
+            output.push_str("array (\n");
             for (key, val_handle) in arr.iter() {
                 output.push_str(&indent);
                 output.push_str("  ");

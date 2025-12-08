@@ -7,3 +7,10 @@ edition = "2021"
 indexmap = "2.0"
 php-parser = { path = "../php-parser" }
 bumpalo = "3.12"
+clap = { version = "4.5", features = ["derive"] }
+rustyline = "14.0"
+anyhow = "1.0"
+
+[[bin]]
+name = "php"
+path = "src/bin/php.rs"
