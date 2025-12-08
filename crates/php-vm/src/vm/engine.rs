@@ -439,19 +439,31 @@ impl VM {
         }
     }
 
-    fn check_method_visibility(&self, defining_class: Symbol, visibility: Visibility) -> Result<(), VmError> {
+    fn check_method_visibility(&self, defining_class: Symbol, visibility: Visibility, method_name: Option<Symbol>) -> Result<(), VmError> {
         let caller_scope = self.get_current_class();
         if self.method_visible_to(defining_class, visibility, caller_scope) {
             return Ok(());
         }
 
-        let msg = match visibility {
+        // Build descriptive error message
+        let class_str = self.context.interner.lookup(defining_class)
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        let method_str = method_name
+            .and_then(|s| self.context.interner.lookup(s))
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        
+        let vis_str = match visibility {
             Visibility::Public => unreachable!("public accesses should always succeed"),
-            Visibility::Private => "Cannot access private method",
-            Visibility::Protected => "Cannot access protected method",
+            Visibility::Private => "private",
+            Visibility::Protected => "protected",
         };
 
-        Err(VmError::RuntimeError(msg.into()))
+        Err(VmError::RuntimeError(
+            format!("Cannot access {} method {}::{}", vis_str, class_str, method_str)
+        ))
     }
 
     fn method_visible_to(
@@ -596,7 +608,7 @@ impl VM {
                         }
                     }
 
-                    self.check_method_visibility(defining_class, visibility)?;
+                    self.check_method_visibility(defining_class, visibility, Some(name))?;
 
                     let mut frame = CallFrame::new(method.chunk.clone());
                     frame.func = Some(method.clone());
@@ -727,7 +739,7 @@ impl VM {
 
                     let invoke_sym = self.context.interner.intern(b"__invoke");
                     if let Some((method, visibility, _, defining_class)) = self.find_method(obj_data.class, invoke_sym) {
-                        self.check_method_visibility(defining_class, visibility)?;
+                        self.check_method_visibility(defining_class, visibility, Some(invoke_sym))?;
 
                         let mut frame = CallFrame::new(method.chunk.clone());
                         frame.func = Some(method.clone());
@@ -770,7 +782,7 @@ impl VM {
                         if let Some((method, visibility, is_static, defining_class)) =
                             self.find_method(class_sym, method_sym)
                         {
-                            self.check_method_visibility(defining_class, visibility)?;
+                            self.check_method_visibility(defining_class, visibility, Some(method_sym))?;
 
                             let mut frame = CallFrame::new(method.chunk.clone());
                             frame.func = Some(method.clone());
@@ -799,7 +811,7 @@ impl VM {
                             if let Some((method, visibility, _, defining_class)) =
                                 self.find_method(obj_data.class, method_sym)
                             {
-                                self.check_method_visibility(defining_class, visibility)?;
+                                self.check_method_visibility(defining_class, visibility, Some(method_sym))?;
 
                                 let mut frame = CallFrame::new(method.chunk.clone());
                                 frame.func = Some(method.clone());
@@ -896,8 +908,9 @@ impl VM {
                 Ok(b"Array".to_vec())
             }
             Val::Resource(_) => {
-                // TODO: Emit E_NOTICE: Resource to string conversion
+                self.error_handler.report(ErrorLevel::Notice, "Resource to string conversion");
                 // PHP outputs "Resource id #N" where N is the resource ID
+                // For now, just return "Resource"
                 Ok(b"Resource".to_vec())
             }
             _ => {
@@ -1027,23 +1040,31 @@ impl VM {
 
     fn exec_math_op(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
-            OpCode::Add => self.binary_op(|a, b| a + b)?,
-            OpCode::Sub => self.binary_op(|a, b| a - b)?,
-            OpCode::Mul => self.binary_op(|a, b| a * b)?,
-            OpCode::Div => self.binary_op(|a, b| a / b)?,
-            OpCode::Mod => self.binary_op(|a, b| a % b)?,
-            OpCode::Pow => self.binary_op(|a, b| a.pow(b as u32))?,
-            OpCode::BitwiseAnd => self.binary_op(|a, b| a & b)?,
-            OpCode::BitwiseOr => self.binary_op(|a, b| a | b)?,
-            OpCode::BitwiseXor => self.binary_op(|a, b| a ^ b)?,
-            OpCode::ShiftLeft => self.binary_op(|a, b| a << b)?,
-            OpCode::ShiftRight => self.binary_op(|a, b| a >> b)?,
+            OpCode::Add => self.arithmetic_add()?,
+            OpCode::Sub => self.arithmetic_sub()?,
+            OpCode::Mul => self.arithmetic_mul()?,
+            OpCode::Div => self.arithmetic_div()?,
+            OpCode::Mod => self.arithmetic_mod()?,
+            OpCode::Pow => self.arithmetic_pow()?,
+            OpCode::BitwiseAnd => self.bitwise_and()?,
+            OpCode::BitwiseOr => self.bitwise_or()?,
+            OpCode::BitwiseXor => self.bitwise_xor()?,
+            OpCode::ShiftLeft => self.bitwise_shl()?,
+            OpCode::ShiftRight => self.bitwise_shr()?,
             OpCode::BitwiseNot => {
                 let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 let val = self.arena.get(handle).value.clone();
                 let res = match val {
                     Val::Int(i) => Val::Int(!i),
-                    _ => Val::Null, // TODO: Support other types
+                    Val::String(s) => {
+                        // Bitwise NOT on strings flips each byte
+                        let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
+                        Val::String(Rc::new(inverted))
+                    }
+                    _ => {
+                        let i = val.to_int();
+                        Val::Int(!i)
+                    }
                 };
                 let res_handle = self.arena.alloc(res);
                 self.operand_stack.push(res_handle);
@@ -1127,6 +1148,19 @@ impl VM {
         match op {
                 OpCode::Throw => {
                     let ex_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    
+                    // Validate that the thrown value is an object (should implement Throwable)
+                    let ex_val = &self.arena.get(ex_handle).value;
+                    if !matches!(ex_val, Val::Object(_)) {
+                        // PHP requires thrown exceptions to be objects implementing Throwable
+                        return Err(VmError::RuntimeError(
+                            "Can only throw objects".into()
+                        ));
+                    }
+                    
+                    // TODO: In a full implementation, check that the object implements Throwable interface
+                    // For now, we just check it's an object
+                    
                     return Err(VmError::Exception(ex_handle));
                 }
                 OpCode::Catch => {
@@ -2431,12 +2465,35 @@ impl VM {
                             if let Some(val_handle) = map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
-                                // Warning: Undefined array key
+                                // Emit notice for undefined array key
+                                let key_str = match &key {
+                                    ArrayKey::Int(i) => i.to_string(),
+                                    ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
+                                };
+                                self.error_handler.report(
+                                    ErrorLevel::Notice,
+                                    &format!("Undefined array key \"{}\"", key_str)
+                                );
                                 let null_handle = self.arena.alloc(Val::Null);
                                 self.operand_stack.push(null_handle);
                             }
                         }
-                        _ => return Err(VmError::RuntimeError("Trying to access offset on non-array".into())),
+                        _ => {
+                            let type_str = match array_val {
+                                Val::Null => "null",
+                                Val::Bool(_) => "bool",
+                                Val::Int(_) => "int",
+                                Val::Float(_) => "float",
+                                Val::String(_) => "string",
+                                _ => "value",
+                            };
+                            self.error_handler.report(
+                                ErrorLevel::Warning,
+                                &format!("Trying to access array offset on value of type {}", type_str)
+                            );
+                            let null_handle = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null_handle);
+                        }
                     }
                 }
 
@@ -3697,7 +3754,7 @@ impl VM {
                     }
 
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
-                        self.check_method_visibility(defined_class, visibility)?;
+                        self.check_method_visibility(defined_class, visibility, Some(method_name))?;
 
                         let args = self.collect_call_args(arg_count)?;
 
@@ -4322,6 +4379,7 @@ impl VM {
                     let container_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     
                     let container = &self.arena.get(container_handle).value;
+                    let is_fetch_r = matches!(op, OpCode::FetchDimR);
                     
                     match container {
                         Val::Array(map) => {
@@ -4334,9 +4392,17 @@ impl VM {
                             if let Some(val_handle) = map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
-                                // Warning if FetchDimR
-                                // No warning if FetchDimIs/Unset
-                                // For now, just push Null
+                                // Emit notice for FetchDimR, but not for isset/empty (FetchDimIs)
+                                if is_fetch_r {
+                                    let key_str = match &key {
+                                        ArrayKey::Int(i) => i.to_string(),
+                                        ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
+                                    };
+                                    self.error_handler.report(
+                                        ErrorLevel::Notice,
+                                        &format!("Undefined array key \"{}\"", key_str)
+                                    );
+                                }
                                 let null = self.arena.alloc(Val::Null);
                                 self.operand_stack.push(null);
                             }
@@ -4352,11 +4418,30 @@ impl VM {
                                 let val = self.arena.alloc(Val::String(char_str.into()));
                                 self.operand_stack.push(val);
                             } else {
+                                if is_fetch_r {
+                                    self.error_handler.report(
+                                        ErrorLevel::Notice,
+                                        &format!("Undefined string offset: {}", idx)
+                                    );
+                                }
                                 let empty = self.arena.alloc(Val::String(vec![].into()));
                                 self.operand_stack.push(empty);
                             }
                         }
                         _ => {
+                            if is_fetch_r {
+                                let type_str = match container {
+                                    Val::Null => "null",
+                                    Val::Bool(_) => "bool",
+                                    Val::Int(_) => "int",
+                                    Val::Float(_) => "float",
+                                    _ => "value",
+                                };
+                                self.error_handler.report(
+                                    ErrorLevel::Warning,
+                                    &format!("Trying to access array offset on value of type {}", type_str)
+                                );
+                            }
                             let null = self.arena.alloc(Val::Null);
                             self.operand_stack.push(null);
                         }
@@ -5532,7 +5617,7 @@ impl VM {
                              }
                         }
                         
-                        self.check_method_visibility(defined_class, visibility)?;
+                        self.check_method_visibility(defined_class, visibility, Some(method_name))?;
                         
                         let args = self.collect_call_args(arg_count)?;
 
@@ -5863,6 +5948,191 @@ impl VM {
         Ok(())
     }
 
+    // Arithmetic operations following PHP type juggling
+    // Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+    
+    fn arithmetic_add(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        // Array + Array = union
+        if let (Val::Array(a_arr), Val::Array(b_arr)) = (a_val, b_val) {
+            let mut result = (**a_arr).clone();
+            for (k, v) in b_arr.iter() {
+                result.entry(k.clone()).or_insert(*v);
+            }
+            let res_handle = self.arena.alloc(Val::Array(Rc::new(result)));
+            self.operand_stack.push(res_handle);
+            return Ok(());
+        }
+        
+        // Numeric addition
+        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
+        let result = if needs_float {
+            Val::Float(a_val.to_float() + b_val.to_float())
+        } else {
+            Val::Int(a_val.to_int() + b_val.to_int())
+        };
+        
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn arithmetic_sub(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
+        let result = if needs_float {
+            Val::Float(a_val.to_float() - b_val.to_float())
+        } else {
+            Val::Int(a_val.to_int() - b_val.to_int())
+        };
+        
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn arithmetic_mul(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
+        let result = if needs_float {
+            Val::Float(a_val.to_float() * b_val.to_float())
+        } else {
+            Val::Int(a_val.to_int() * b_val.to_int())
+        };
+        
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn arithmetic_div(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let divisor = b_val.to_float();
+        if divisor == 0.0 {
+            self.error_handler.report(ErrorLevel::Warning, "Division by zero");
+            let res_handle = self.arena.alloc(Val::Float(f64::INFINITY));
+            self.operand_stack.push(res_handle);
+            return Ok(());
+        }
+        
+        // PHP always returns float for division
+        let result = Val::Float(a_val.to_float() / divisor);
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn arithmetic_mod(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let divisor = b_val.to_int();
+        if divisor == 0 {
+            self.error_handler.report(ErrorLevel::Warning, "Modulo by zero");
+            let res_handle = self.arena.alloc(Val::Bool(false));
+            self.operand_stack.push(res_handle);
+            return Ok(());
+        }
+        
+        let result = Val::Int(a_val.to_int() % divisor);
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn arithmetic_pow(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let base = a_val.to_float();
+        let exp = b_val.to_float();
+        let result = Val::Float(base.powf(exp));
+        
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn bitwise_and(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let result = Val::Int(a_val.to_int() & b_val.to_int());
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn bitwise_or(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let result = Val::Int(a_val.to_int() | b_val.to_int());
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn bitwise_xor(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let result = Val::Int(a_val.to_int() ^ b_val.to_int());
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn bitwise_shl(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let result = Val::Int(a_val.to_int() << b_val.to_int());
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+    
+    fn bitwise_shr(&mut self) -> Result<(), VmError> {
+        let b_handle = self.pop_operand()?;
+        let a_handle = self.pop_operand()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+        
+        let result = Val::Int(a_val.to_int() >> b_val.to_int());
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+
     fn binary_cmp<F>(&mut self, op: F) -> Result<(), VmError> 
     where F: Fn(&Val, &Val) -> bool {
         let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -5875,25 +6145,6 @@ impl VM {
         let res_handle = self.arena.alloc(Val::Bool(res));
         self.operand_stack.push(res_handle);
         Ok(())
-    }
-
-    fn binary_op<F>(&mut self, op: F) -> Result<(), VmError> 
-    where F: Fn(i64, i64) -> i64 {
-        let b_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-        let a_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-        let b_val = self.arena.get(b_handle).value.clone();
-        let a_val = self.arena.get(a_handle).value.clone();
-
-        match (a_val, b_val) {
-            (Val::Int(a), Val::Int(b)) => {
-                let res = op(a, b);
-                let res_handle = self.arena.alloc(Val::Int(res));
-                self.operand_stack.push(res_handle);
-                Ok(())
-            }
-            _ => Err(VmError::RuntimeError("Type error: expected Ints".into())),
-        }
     }
 
     fn assign_dim_value(&mut self, array_handle: Handle, key_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
@@ -5965,6 +6216,33 @@ impl VM {
         Ok(())
     }
 
+    /// Compute the next auto-increment array index
+    /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
+    /// 
+    /// OPTIMIZATION NOTE: This is O(n) on every append. PHP tracks this in the HashTable struct
+    /// as `nNextFreeElement`. To match PHP performance, we would need to add metadata to Val::Array,
+    /// tracking the next auto-index and updating it on insert/delete. For now, we scan all integer
+    /// keys to find the max.
+    /// 
+    /// TODO: Consider adding ArrayMeta { next_free: i64, .. } wrapper around IndexMap
+    fn compute_next_array_index(map: &indexmap::IndexMap<ArrayKey, Handle>) -> i64 {
+        map.keys()
+            .filter_map(|k| match k {
+                ArrayKey::Int(i) => Some(*i),
+                // PHP also considers numeric string keys when computing next index
+                ArrayKey::Str(s) => {
+                    if let Ok(s_str) = std::str::from_utf8(s) {
+                        s_str.parse::<i64>().ok()
+                    } else {
+                        None
+                    }
+                }
+            })
+            .max()
+            .map(|i| i + 1)
+            .unwrap_or(0)
+    }
+
     fn append_array(&mut self, array_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
         let is_ref = self.arena.get(array_handle).is_ref;
 
@@ -5977,10 +6255,7 @@ impl VM {
 
             if let Val::Array(map) = &mut array_zval_mut.value {
                 let map_mut = Rc::make_mut(map);
-                let next_key = map_mut.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(i),
-                    _ => None
-                }).max().map(|i| i + 1).unwrap_or(0);
+                let next_key = Self::compute_next_array_index(map_mut);
                 
                 map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
@@ -5997,10 +6272,7 @@ impl VM {
 
             if let Val::Array(ref mut map) = new_val {
                 let map_mut = Rc::make_mut(map);
-                let next_key = map_mut.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(i),
-                    _ => None
-                }).max().map(|i| i + 1).unwrap_or(0);
+                let next_key = Self::compute_next_array_index(map_mut);
                 
                 map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
@@ -6040,13 +6312,41 @@ impl VM {
                     if let Some(val) = map.get(&key) {
                         current_handle = *val;
                     } else {
-                        // Undefined index: return NULL (and maybe warn)
-                        // For now, just return NULL
+                        // Undefined index: emit notice and return NULL
+                        let key_str = match &key {
+                            ArrayKey::Int(i) => i.to_string(),
+                            ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
+                        };
+                        self.error_handler.report(
+                            ErrorLevel::Notice,
+                            &format!("Undefined array key \"{}\"", key_str)
+                        );
                         return Ok(self.arena.alloc(Val::Null));
                     }
                 }
+                Val::String(_) => {
+                    // Trying to access string offset
+                    // PHP allows this but we need proper implementation
+                    // For now, treat as undefined and emit notice
+                    self.error_handler.report(
+                        ErrorLevel::Notice,
+                        "Trying to access array offset on value of type string"
+                    );
+                    return Ok(self.arena.alloc(Val::Null));
+                }
                 _ => {
-                    // Trying to access dim on non-array
+                    // Trying to access dim on scalar (non-array, non-string)
+                    let type_str = match current_val {
+                        Val::Null => "null",
+                        Val::Bool(_) => "bool",
+                        Val::Int(_) => "int",
+                        Val::Float(_) => "float",
+                        _ => "value",
+                    };
+                    self.error_handler.report(
+                        ErrorLevel::Warning,
+                        &format!("Trying to access array offset on value of type {}", type_str)
+                    );
                     return Ok(self.arena.alloc(Val::Null));
                 }
             }
@@ -6057,16 +6357,126 @@ impl VM {
     
     fn assign_nested_recursive(&mut self, current_handle: Handle, keys: &[Handle], val_handle: Handle) -> Result<Handle, VmError> {
         if keys.is_empty() {
-            // Should not happen if called correctly, but if it does, it means we replace the current value?
-            // Or maybe we just return val_handle?
-            // If keys is empty, we are at the target.
             return Ok(val_handle);
         }
         
         let key_handle = keys[0];
         let remaining_keys = &keys[1..];
         
-        // COW: Clone current array
+        // Check if current handle is a reference - if so, mutate in place
+        let is_ref = self.arena.get(current_handle).is_ref;
+        
+        if is_ref {
+            // For refs, we need to mutate in place
+            // First, get the key and auto-vivify if needed
+            let (needs_autovivify, key) = {
+                let current_zval = self.arena.get(current_handle);
+                let needs_autovivify = matches!(current_zval.value, Val::Null | Val::Bool(false));
+                
+                // Resolve key
+                let key_val = &self.arena.get(key_handle).value;
+                let key = if let Val::AppendPlaceholder = key_val {
+                    // We'll compute this after autovivify
+                    None
+                } else {
+                    Some(match key_val {
+                        Val::Int(i) => ArrayKey::Int(*i),
+                        Val::String(s) => ArrayKey::Str(s.clone()),
+                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
+                    })
+                };
+                
+                (needs_autovivify, key)
+            };
+            
+            // Auto-vivify if needed
+            if needs_autovivify {
+                self.arena.get_mut(current_handle).value = Val::Array(indexmap::IndexMap::new().into());
+            }
+            
+            // Now compute the actual key if it was AppendPlaceholder
+            let key = if let Some(k) = key {
+                k
+            } else {
+                // Compute next auto-index
+                let current_zval = self.arena.get(current_handle);
+                if let Val::Array(map) = &current_zval.value {
+                    let next_key = Self::compute_next_array_index(map);
+                    ArrayKey::Int(next_key)
+                } else {
+                    return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+                }
+            };
+            
+            if remaining_keys.is_empty() {
+                // We are at the last key - check for existing ref
+                let (existing_handle, is_existing_ref) = {
+                    let current_zval = self.arena.get(current_handle);
+                    if let Val::Array(map) = &current_zval.value {
+                        if let Some(h) = map.get(&key) {
+                            (*h, self.arena.get(*h).is_ref)
+                        } else {
+                            (Handle(0), false) // dummy
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+                    }
+                };
+                
+                if is_existing_ref && existing_handle.0 != 0 {
+                    // Update the ref value
+                    let new_val = self.arena.get(val_handle).value.clone();
+                    self.arena.get_mut(existing_handle).value = new_val;
+                } else {
+                    // Insert new value
+                    let current_zval = self.arena.get_mut(current_handle);
+                    if let Val::Array(ref mut map) = current_zval.value {
+                        Rc::make_mut(map).insert(key, val_handle);
+                    }
+                }
+            } else {
+                // Go deeper - get or create next level
+                let (next_handle, was_created) = {
+                    let current_zval = self.arena.get(current_handle);
+                    if let Val::Array(map) = &current_zval.value {
+                        if let Some(h) = map.get(&key) {
+                            (*h, false)
+                        } else {
+                            // Mark that we need to create
+                            (Handle(0), true) // dummy handle
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+                    }
+                };
+                
+                let next_handle = if was_created {
+                    // Create empty array and insert it
+                    let empty_handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
+                    let current_zval_mut = self.arena.get_mut(current_handle);
+                    if let Val::Array(ref mut map) = current_zval_mut.value {
+                        Rc::make_mut(map).insert(key.clone(), empty_handle);
+                    }
+                    empty_handle
+                } else {
+                    next_handle
+                };
+                
+                let new_next_handle = self.assign_nested_recursive(next_handle, remaining_keys, val_handle)?;
+                
+                // Only update if changed (if next_handle is a ref, it's mutated in place)
+                if new_next_handle != next_handle {
+                    let current_zval = self.arena.get_mut(current_handle);
+                    if let Val::Array(ref mut map) = current_zval.value {
+                        Rc::make_mut(map).insert(key, new_next_handle);
+                    }
+                }
+            }
+            
+            return Ok(current_handle);
+        }
+        
+        // Not a reference - COW: Clone current array
         let current_zval = self.arena.get(current_handle);
         let mut new_val = current_zval.value.clone();
         
@@ -6079,10 +6489,7 @@ impl VM {
             // Resolve key
             let key_val = &self.arena.get(key_handle).value;
             let key = if let Val::AppendPlaceholder = key_val {
-                let next_key = map_mut.keys().filter_map(|k| match k {
-                    ArrayKey::Int(i) => Some(i),
-                    _ => None
-                }).max().map(|i| i + 1).unwrap_or(0);
+                let next_key = Self::compute_next_array_index(map_mut);
                 ArrayKey::Int(next_key)
             } else {
                 match key_val {
