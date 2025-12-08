@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::{self, Write};
 use indexmap::IndexMap;
 use crate::core::heap::Arena;
 use crate::core::value::{Val, ArrayKey, Handle, ObjectData, Symbol, Visibility};
@@ -17,6 +18,28 @@ use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 pub enum VmError {
     RuntimeError(String),
     Exception(Handle),
+}
+
+pub trait OutputWriter {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError>;
+    fn flush(&mut self) -> Result<(), VmError> {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct StdoutWriter;
+
+impl OutputWriter for StdoutWriter {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
+        let mut stdout = io::stdout();
+        stdout
+            .write_all(bytes)
+            .map_err(|e| VmError::RuntimeError(format!("Failed to write output: {}", e)))?;
+        stdout
+            .flush()
+            .map_err(|e| VmError::RuntimeError(format!("Failed to flush output: {}", e)))
+    }
 }
 
 pub struct PendingCall {
@@ -36,6 +59,7 @@ pub struct VM {
     pub last_return_value: Option<Handle>,
     pub silence_stack: Vec<u32>,
     pub pending_calls: Vec<PendingCall>,
+    pub output_writer: Box<dyn OutputWriter>,
 }
 
 impl VM {
@@ -48,6 +72,7 @@ impl VM {
             last_return_value: None,
             silence_stack: Vec::new(),
             pending_calls: Vec::new(),
+            output_writer: Box::new(StdoutWriter::default()),
         }
     }
 
@@ -60,7 +85,21 @@ impl VM {
             last_return_value: None,
             silence_stack: Vec::new(),
             pending_calls: Vec::new(),
+            output_writer: Box::new(StdoutWriter::default()),
         }
+    }
+
+    pub fn with_output_writer(mut self, writer: Box<dyn OutputWriter>) -> Self {
+        self.output_writer = writer;
+        self
+    }
+
+    pub fn set_output_writer(&mut self, writer: Box<dyn OutputWriter>) {
+        self.output_writer = writer;
+    }
+
+    fn write_output(&mut self, bytes: &[u8]) -> Result<(), VmError> {
+        self.output_writer.write(bytes)
     }
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
@@ -1099,14 +1138,12 @@ impl VM {
                 OpCode::Echo => {
                     let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let s = self.convert_to_string(handle)?;
-                    let s_str = String::from_utf8_lossy(&s);
-                    print!("{}", s_str);
+                    self.write_output(&s)?;
                 }
                 OpCode::Exit => {
                     if let Some(handle) = self.operand_stack.pop() {
                         let s = self.convert_to_string(handle)?;
-                        let s_str = String::from_utf8_lossy(&s);
-                        print!("{}", s_str);
+                        self.write_output(&s)?;
                     }
                     self.frames.clear();
                     return Ok(());
