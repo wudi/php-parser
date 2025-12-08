@@ -10,7 +10,6 @@ use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::vm::engine::{VM, VmError};
 use php_vm::compiler::emitter::Emitter;
-use php_vm::core::interner::Interner;
 use php_vm::runtime::context::EngineContext;
 
 #[derive(Parser)]
@@ -53,7 +52,6 @@ fn run_repl() -> anyhow::Result<()> {
 
     let engine_context = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine_context);
-    let mut interner = Interner::new();
 
     loop {
         let readline = rl.readline("php > ");
@@ -81,7 +79,7 @@ fn run_repl() -> anyhow::Result<()> {
                     format!("<?php {}", line)
                 };
 
-                if let Err(e) = execute_source(&source_code, &mut vm, &mut interner) {
+                if let Err(e) = execute_source(&source_code, &mut vm) {
                     println!("Error: {:?}", e);
                 }
             },
@@ -107,14 +105,13 @@ fn run_file(path: PathBuf) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
     let engine_context = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine_context);
-    let mut interner = Interner::new();
     
-    execute_source(&source, &mut vm, &mut interner).map_err(|e| anyhow::anyhow!("VM Error: {:?}", e))?;
+    execute_source(&source, &mut vm).map_err(|e| anyhow::anyhow!("VM Error: {:?}", e))?;
     
     Ok(())
 }
 
-fn execute_source(source: &str, vm: &mut VM, interner: &mut Interner) -> Result<(), VmError> {
+fn execute_source(source: &str, vm: &mut VM) -> Result<(), VmError> {
     let source_bytes = source.as_bytes();
     let arena = Bump::new();
     let lexer = Lexer::new(source_bytes);
@@ -130,7 +127,7 @@ fn execute_source(source: &str, vm: &mut VM, interner: &mut Interner) -> Result<
     }
     
     // Compile
-    let emitter = Emitter::new(source_bytes, interner);
+    let emitter = Emitter::new(source_bytes, &mut vm.context.interner);
     let (chunk, _has_error) = emitter.compile(program.statements);
     
     // Run

@@ -82,8 +82,13 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
             let payload_val = vm.arena.get(*handle);
             if let Val::ObjPayload(obj) = &payload_val.value {
                 let class_name = vm.context.interner.lookup(obj.class).unwrap_or(b"<unknown>");
-                println!("{}object({})", indent, String::from_utf8_lossy(class_name));
-                // TODO: Dump properties
+                println!("{}object({})#{} ({}) {{", indent, String::from_utf8_lossy(class_name), handle.0, obj.properties.len());
+                for (prop_sym, prop_handle) in &obj.properties {
+                     let prop_name = vm.context.interner.lookup(*prop_sym).unwrap_or(b"<unknown>");
+                     println!("{}  [\"{}\"]=>", indent, String::from_utf8_lossy(prop_name));
+                     dump_value(vm, *prop_handle, depth + 1);
+                }
+                println!("{}}}", indent);
             } else {
                 println!("{}object(INVALID)", indent);
             }
