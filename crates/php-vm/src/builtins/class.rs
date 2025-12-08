@@ -1,4 +1,4 @@
-use crate::vm::engine::VM;
+use crate::vm::engine::{VM, PropertyCollectionMode};
 use crate::core::value::{Val, Handle, ArrayKey};
 use indexmap::IndexMap;
 use std::rc::Rc;
@@ -355,7 +355,8 @@ pub fn php_get_class_methods(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
         _ => return Ok(vm.arena.alloc(Val::Null)),
     };
     
-    let methods = vm.collect_methods(class_sym);
+    let caller_scope = vm.get_current_class();
+    let methods = vm.collect_methods(class_sym, caller_scope);
     let mut array = IndexMap::new();
     
     for (i, method_sym) in methods.iter().enumerate() {
@@ -384,7 +385,8 @@ pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         _ => return Err("get_class_vars() expects a string".into()),
     };
     
-    let properties = vm.collect_properties(class_sym);
+    let caller_scope = vm.get_current_class();
+    let properties = vm.collect_properties(class_sym, PropertyCollectionMode::VisibleTo(caller_scope));
     let mut array = IndexMap::new();
     
     for (prop_sym, val_handle) in properties {

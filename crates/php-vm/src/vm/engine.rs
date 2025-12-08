@@ -9,10 +9,8 @@ use crate::core::value::{Val, ArrayKey, Handle, ObjectData, Symbol, Visibility};
 use crate::vm::stack::Stack;
 use crate::vm::opcode::OpCode;
 use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData};
-#[cfg(test)]
-use crate::compiler::chunk::FuncParam;
 use crate::vm::frame::{ArgList, CallFrame, GeneratorData, GeneratorState, SubIterator, SubGenState};
-use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
+use crate::runtime::context::{RequestContext, EngineContext, ClassDef, MethodEntry};
 
 #[derive(Debug)]
 pub enum VmError {
@@ -110,6 +108,12 @@ pub struct PendingCall {
     pub this_handle: Option<Handle>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum PropertyCollectionMode {
+    All,
+    VisibleTo(Option<Symbol>),
+}
+
 pub struct VM {
     pub arena: Arena,
     pub operand_stack: Stack,
@@ -141,6 +145,22 @@ impl VM {
     #[inline]
     fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
         bytes.iter().map(|b| b.to_ascii_lowercase()).collect()
+    }
+
+    fn method_lookup_key(&self, name: Symbol) -> Option<Symbol> {
+        let name_bytes = self.context.interner.lookup(name)?;
+        let lower = Self::to_lowercase_bytes(name_bytes);
+        self.context.interner.find(&lower)
+    }
+
+    fn intern_lowercase_symbol(&mut self, name: Symbol) -> Result<Symbol, VmError> {
+        let name_bytes = self
+            .context
+            .interner
+            .lookup(name)
+            .ok_or_else(|| VmError::RuntimeError("Invalid method symbol".into()))?;
+        let lower = Self::to_lowercase_bytes(name_bytes);
+        Ok(self.context.interner.intern(&lower))
     }
 
     pub fn new_with_context(context: RequestContext) -> Self {
@@ -210,27 +230,54 @@ impl VM {
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         if let Some(def) = self.context.classes.get(&class_name) {
-            // PHP method names are case-insensitive
-            let search_name = self.context.interner.lookup(method_name)?;
-            let search_lower = Self::to_lowercase_bytes(search_name);
-            
-            for (stored_name, (func, vis, is_static, declaring_class)) in &def.methods {
-                let stored_bytes = self.context.interner.lookup(*stored_name)?;
-                let stored_lower = Self::to_lowercase_bytes(stored_bytes);
-                if search_lower == stored_lower {
-                    return Some((func.clone(), *vis, *is_static, *declaring_class));
+            if let Some(key) = self.method_lookup_key(method_name) {
+                if let Some(entry) = def.methods.get(&key) {
+                    return Some((
+                        entry.func.clone(),
+                        entry.visibility,
+                        entry.is_static,
+                        entry.declaring_class,
+                    ));
+                }
+            }
+
+            if let Some(search_name) = self.context.interner.lookup(method_name) {
+                let search_lower = Self::to_lowercase_bytes(search_name);
+                for entry in def.methods.values() {
+                    if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
+                        if Self::to_lowercase_bytes(stored_bytes) == search_lower {
+                            return Some((
+                                entry.func.clone(),
+                                entry.visibility,
+                                entry.is_static,
+                                entry.declaring_class,
+                            ));
+                        }
+                    }
                 }
             }
         }
         None
     }
 
-    pub fn collect_methods(&self, class_name: Symbol) -> Vec<Symbol> {
+    pub fn collect_methods(&self, class_name: Symbol, caller_scope: Option<Symbol>) -> Vec<Symbol> {
+        let mut visible = Vec::new();
+
         if let Some(def) = self.context.classes.get(&class_name) {
-            def.methods.keys().cloned().collect()
-        } else {
-            Vec::new()
+            for entry in def.methods.values() {
+                if self.method_visible_to(entry.declaring_class, entry.visibility, caller_scope) {
+                    visible.push(entry.name);
+                }
+            }
         }
+
+        visible.sort_by(|a, b| {
+            let a_bytes = self.context.interner.lookup(*a).unwrap_or(b"");
+            let b_bytes = self.context.interner.lookup(*b).unwrap_or(b"");
+            a_bytes.cmp(b_bytes)
+        });
+
+        visible
     }
 
     pub fn has_property(&self, class_name: Symbol, prop_name: Symbol) -> bool {
@@ -248,7 +295,7 @@ impl VM {
         false
     }
 
-    pub fn collect_properties(&mut self, class_name: Symbol) -> IndexMap<Symbol, Handle> {
+    pub fn collect_properties(&mut self, class_name: Symbol, mode: PropertyCollectionMode) -> IndexMap<Symbol, Handle> {
         let mut properties = IndexMap::new();
         let mut chain = Vec::new();
         let mut current_class = Some(class_name);
@@ -263,7 +310,13 @@ impl VM {
         }
         
         for def in chain.iter().rev() {
-            for (name, (default_val, _)) in &def.properties {
+            for (name, (default_val, _visibility)) in &def.properties {
+                if let PropertyCollectionMode::VisibleTo(scope) = mode {
+                    if self.check_prop_visibility(class_name, *name, scope).is_err() {
+                        continue;
+                    }
+                }
+
                 let handle = self.arena.alloc(default_val.clone());
                 properties.insert(*name, handle);
             }
@@ -387,25 +440,34 @@ impl VM {
     }
 
     fn check_method_visibility(&self, defining_class: Symbol, visibility: Visibility) -> Result<(), VmError> {
-        let current_scope = self.get_current_class();
+        let caller_scope = self.get_current_class();
+        if self.method_visible_to(defining_class, visibility, caller_scope) {
+            return Ok(());
+        }
+
+        let msg = match visibility {
+            Visibility::Public => unreachable!("public accesses should always succeed"),
+            Visibility::Private => "Cannot access private method",
+            Visibility::Protected => "Cannot access protected method",
+        };
+
+        Err(VmError::RuntimeError(msg.into()))
+    }
+
+    fn method_visible_to(
+        &self,
+        defining_class: Symbol,
+        visibility: Visibility,
+        caller_scope: Option<Symbol>,
+    ) -> bool {
         match visibility {
-            Visibility::Public => Ok(()),
-            Visibility::Private => {
-                if current_scope == Some(defining_class) {
-                    Ok(())
-                } else {
-                    Err(VmError::RuntimeError("Cannot access private method".into()))
-                }
-            }
+            Visibility::Public => true,
+            Visibility::Private => caller_scope == Some(defining_class),
             Visibility::Protected => {
-                if let Some(scope) = current_scope {
-                    if scope == defining_class || self.is_subclass_of(scope, defining_class) {
-                        Ok(())
-                    } else {
-                        Err(VmError::RuntimeError("Cannot access protected method".into()))
-                    }
+                if let Some(scope) = caller_scope {
+                    scope == defining_class || self.is_subclass_of(scope, defining_class)
                 } else {
-                    Err(VmError::RuntimeError("Cannot access protected method".into()))
+                    false
                 }
             }
         }
@@ -513,7 +575,7 @@ impl VM {
     fn execute_pending_call(&mut self, call: PendingCall) -> Result<(), VmError> {
         let PendingCall {
             func_name,
-            func_handle: _func_handle,
+            func_handle,
             args,
             is_static: call_is_static,
             class_name,
@@ -566,42 +628,208 @@ impl VM {
                     return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, name_str)));
                 }
             } else {
-                // Function call
-                let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
-                let lower_name = Self::to_lowercase_bytes(name_bytes);
-                if let Some(handler) = self.context.engine.functions.get(&lower_name) {
-                    let res = handler(self, &args).map_err(VmError::RuntimeError)?;
-                    self.operand_stack.push(res);
-                } else if let Some(func) = self.context.user_functions.get(&name) {
-                    let mut frame = CallFrame::new(func.chunk.clone());
-                    frame.func = Some(func.clone());
-                    frame.args = args;
-
-                    for (i, param) in func.params.iter().enumerate() {
-                        if i < frame.args.len() {
-                            let arg_handle = frame.args[i];
-                            if param.by_ref {
-                                if !self.arena.get(arg_handle).is_ref {
-                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                }
-                                frame.locals.insert(param.name, arg_handle);
-                            } else {
-                                let val = self.arena.get(arg_handle).value.clone();
-                                let final_handle = self.arena.alloc(val);
-                                frame.locals.insert(param.name, final_handle);
-                            }
-                        }
-                    }
-
-                    self.frames.push(frame);
-                } else {
-                    return Err(VmError::RuntimeError(format!("Call to undefined function: {}", String::from_utf8_lossy(name_bytes))));
-                }
+                self.invoke_function_symbol(name, args)?;
             }
+        } else if let Some(callable_handle) = func_handle {
+            self.invoke_callable_value(callable_handle, args)?;
         } else {
             return Err(VmError::RuntimeError("Dynamic function call not supported yet".into()));
         }
         Ok(())
+    }
+
+    fn invoke_function_symbol(&mut self, name: Symbol, args: ArgList) -> Result<(), VmError> {
+        let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
+        let lower_name = Self::to_lowercase_bytes(name_bytes);
+
+        if let Some(handler) = self.context.engine.functions.get(&lower_name) {
+            let res = handler(self, &args).map_err(VmError::RuntimeError)?;
+            self.operand_stack.push(res);
+            return Ok(());
+        }
+
+        if let Some(func) = self.context.user_functions.get(&name) {
+            let mut frame = CallFrame::new(func.chunk.clone());
+            frame.func = Some(func.clone());
+            frame.args = args;
+
+            if func.is_generator {
+                let gen_data = GeneratorData {
+                    state: GeneratorState::Created(frame),
+                    current_val: None,
+                    current_key: None,
+                    auto_key: 0,
+                    sub_iter: None,
+                    sent_val: None,
+                };
+                let obj_data = ObjectData {
+                    class: self.context.interner.intern(b"Generator"),
+                    properties: IndexMap::new(),
+                    internal: Some(Rc::new(RefCell::new(gen_data))),
+                };
+                let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
+                let obj_handle = self.arena.alloc(Val::Object(payload_handle));
+                self.operand_stack.push(obj_handle);
+                return Ok(());
+            }
+
+            for (i, param) in func.params.iter().enumerate() {
+                if i < frame.args.len() {
+                    let arg_handle = frame.args[i];
+                    if param.by_ref {
+                        if !self.arena.get(arg_handle).is_ref {
+                            self.arena.get_mut(arg_handle).is_ref = true;
+                        }
+                        frame.locals.insert(param.name, arg_handle);
+                    } else {
+                        let val = self.arena.get(arg_handle).value.clone();
+                        let final_handle = self.arena.alloc(val);
+                        frame.locals.insert(param.name, final_handle);
+                    }
+                }
+            }
+
+            self.frames.push(frame);
+            Ok(())
+        } else {
+            Err(VmError::RuntimeError(format!(
+                "Call to undefined function: {}",
+                String::from_utf8_lossy(name_bytes)
+            )))
+        }
+    }
+
+    fn invoke_callable_value(&mut self, callable_handle: Handle, args: ArgList) -> Result<(), VmError> {
+        let callable_zval = self.arena.get(callable_handle);
+        match &callable_zval.value {
+            Val::String(s) => {
+                let sym = self.context.interner.intern(s);
+                self.invoke_function_symbol(sym, args)
+            }
+            Val::Object(payload_handle) => {
+                let payload_val = self.arena.get(*payload_handle);
+                if let Val::ObjPayload(obj_data) = &payload_val.value {
+                    if let Some(internal) = &obj_data.internal {
+                        if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
+                            let mut frame = CallFrame::new(closure.func.chunk.clone());
+                            frame.func = Some(closure.func.clone());
+                            frame.args = args;
+
+                            for (sym, handle) in &closure.captures {
+                                frame.locals.insert(*sym, *handle);
+                            }
+
+                            frame.this = closure.this;
+                            self.frames.push(frame);
+                            return Ok(());
+                        }
+                    }
+
+                    let invoke_sym = self.context.interner.intern(b"__invoke");
+                    if let Some((method, visibility, _, defining_class)) = self.find_method(obj_data.class, invoke_sym) {
+                        self.check_method_visibility(defining_class, visibility)?;
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(callable_handle);
+                        frame.class_scope = Some(defining_class);
+                        frame.called_scope = Some(obj_data.class);
+                        frame.args = args;
+
+                        self.frames.push(frame);
+                        Ok(())
+                    } else {
+                        Err(VmError::RuntimeError("Object is not a closure and does not implement __invoke".into()))
+                    }
+                } else {
+                    Err(VmError::RuntimeError("Invalid object payload".into()))
+                }
+            }
+            Val::Array(map) => {
+                if map.len() != 2 {
+                    return Err(VmError::RuntimeError("Callable array must have exactly 2 elements".into()));
+                }
+
+                let class_or_obj = map
+                    .get_index(0)
+                    .map(|(_, v)| *v)
+                    .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
+                let method_handle = map
+                    .get_index(1)
+                    .map(|(_, v)| *v)
+                    .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
+
+                let method_name_bytes = self.convert_to_string(method_handle)?;
+                let method_sym = self.context.interner.intern(&method_name_bytes);
+
+                match &self.arena.get(class_or_obj).value {
+                    Val::String(class_name_bytes) => {
+                        let class_sym = self.context.interner.intern(class_name_bytes);
+                        let class_sym = self.resolve_class_name(class_sym)?;
+
+                        if let Some((method, visibility, is_static, defining_class)) =
+                            self.find_method(class_sym, method_sym)
+                        {
+                            self.check_method_visibility(defining_class, visibility)?;
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.class_scope = Some(defining_class);
+                            frame.called_scope = Some(class_sym);
+                            frame.args = args;
+
+                            if !is_static {
+                                // Allow but do not provide $this; PHP would emit a notice.
+                            }
+
+                            self.frames.push(frame);
+                            Ok(())
+                        } else {
+                            let class_str = String::from_utf8_lossy(class_name_bytes);
+                            let method_str = String::from_utf8_lossy(&method_name_bytes);
+                            Err(VmError::RuntimeError(format!(
+                                "Call to undefined method {}::{}",
+                                class_str, method_str
+                            )))
+                        }
+                    }
+                    Val::Object(payload_handle) => {
+                        let payload_val = self.arena.get(*payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_val.value {
+                            if let Some((method, visibility, _, defining_class)) =
+                                self.find_method(obj_data.class, method_sym)
+                            {
+                                self.check_method_visibility(defining_class, visibility)?;
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(class_or_obj);
+                                frame.class_scope = Some(defining_class);
+                                frame.called_scope = Some(obj_data.class);
+                                frame.args = args;
+
+                                self.frames.push(frame);
+                                Ok(())
+                            } else {
+                                let class_str =
+                                    String::from_utf8_lossy(self.context.interner.lookup(obj_data.class).unwrap_or(b"?"));
+                                let method_str = String::from_utf8_lossy(&method_name_bytes);
+                                Err(VmError::RuntimeError(format!(
+                                    "Call to undefined method {}::{}",
+                                    class_str, method_str
+                                )))
+                            }
+                        } else {
+                            Err(VmError::RuntimeError("Invalid object in callable array".into()))
+                        }
+                    }
+                    _ => Err(VmError::RuntimeError(
+                        "First element of callable array must be object or class name".into(),
+                    )),
+                }
+            }
+            _ => Err(VmError::RuntimeError("Call expects function name or closure".into())),
+        }
     }
 
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
@@ -783,7 +1011,9 @@ impl VM {
                 self.operand_stack.push(handle);
             }
             OpCode::Pop => {
-                self.operand_stack.pop();
+                if self.operand_stack.pop().is_none() {
+                    return Err(VmError::RuntimeError("Stack underflow".into()));
+                }
             }
             OpCode::Dup => {
                 let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
@@ -1463,9 +1693,9 @@ impl VM {
                     if let Some(parent) = parent_sym {
                         if let Some(parent_def) = self.context.classes.get(&parent) {
                             // Inherit methods, excluding private ones.
-                            for (name, (func, vis, is_static, decl_class)) in &parent_def.methods {
-                                if *vis != Visibility::Private {
-                                    methods.insert(*name, (func.clone(), *vis, *is_static, *decl_class));
+                            for (key, entry) in &parent_def.methods {
+                                if entry.visibility != Visibility::Private {
+                                    methods.insert(*key, entry.clone());
                                 }
                             }
                         } else {
@@ -1622,178 +1852,7 @@ impl VM {
                     let args = self.collect_call_args(arg_count)?;
                     
                     let func_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    let func_val = self.arena.get(func_handle);
-                    
-                    match &func_val.value {
-                        Val::String(s) => {
-                            let lower_name = Self::to_lowercase_bytes(s.as_slice());
-                            let handler = self.context.engine.functions.get(&lower_name).copied();
-                            
-                            if let Some(handler) = handler {
-                                let result_handle = handler(self, &args).map_err(VmError::RuntimeError)?;
-                                self.operand_stack.push(result_handle);
-                            } else {
-                                let sym = self.context.interner.intern(s);
-                                if let Some(user_func) = self.context.user_functions.get(&sym).cloned() {
-                                    if user_func.params.len() != args.len() {
-                                        // return Err(VmError::RuntimeError(format!("Function expects {} args, got {}", user_func.params.len(), args.len())));
-                                        // PHP allows extra args, but warns on missing. For now, ignore.
-                                    }
-                                    
-                                    let mut frame = CallFrame::new(user_func.chunk.clone());
-                                    frame.func = Some(user_func.clone());
-                                    frame.args = args;
-                                    
-                                    if user_func.is_generator {
-                                        let gen_data = GeneratorData {
-                                            state: GeneratorState::Created(frame),
-                                            current_val: None,
-                                            current_key: None,
-                                            auto_key: 0,
-                                            sub_iter: None,
-                                            sent_val: None,
-                                        };
-                                        let obj_data = ObjectData {
-                                            class: self.context.interner.intern(b"Generator"),
-                                            properties: IndexMap::new(),
-                                            internal: Some(Rc::new(RefCell::new(gen_data))),
-                                        };
-                                        let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
-                                        let obj_handle = self.arena.alloc(Val::Object(payload_handle));
-                                        self.operand_stack.push(obj_handle);
-                                    } else {
-                                        self.frames.push(frame);
-                                    }
-                                } else {
-                                    return Err(VmError::RuntimeError(format!("Undefined function: {:?}", String::from_utf8_lossy(s))));
-                                }
-                            }
-                        }
-                        Val::Object(payload_handle) => {
-                            let mut closure_data = None;
-                            let mut obj_class = None;
-                            
-                            {
-                                let payload_val = self.arena.get(*payload_handle);
-                                if let Val::ObjPayload(obj_data) = &payload_val.value {
-                                    if let Some(internal) = &obj_data.internal {
-                                        if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
-                                            closure_data = Some(closure);
-                                        }
-                                    }
-                                    if closure_data.is_none() {
-                                        obj_class = Some(obj_data.class);
-                                    }
-                                }
-                            }
-                            
-                            if let Some(closure) = closure_data {
-                                let mut frame = CallFrame::new(closure.func.chunk.clone());
-                                frame.func = Some(closure.func.clone());
-                                frame.args = args;
-                                
-                                for (sym, handle) in &closure.captures {
-                                    frame.locals.insert(*sym, *handle);
-                                }
-                                
-                                frame.this = closure.this;
-                                
-                                self.frames.push(frame);
-                            } else if let Some(class_name) = obj_class {
-                                // Check for __invoke
-                                let invoke_sym = self.context.interner.intern(b"__invoke");
-                                let method_lookup = self.find_method(class_name, invoke_sym);
-                                
-                                if let Some((method, _, _, _)) = method_lookup {
-                                    let mut frame = CallFrame::new(method.chunk.clone());
-                                    frame.func = Some(method.clone());
-                                    frame.this = Some(func_handle);  // Pass the object handle, not payload
-                                    frame.class_scope = Some(class_name);
-                                    frame.args = args;
-                                    
-                                    self.frames.push(frame);
-                                } else {
-                                    return Err(VmError::RuntimeError("Object is not a closure and does not implement __invoke".into()));
-                                }
-                            } else {
-                                return Err(VmError::RuntimeError("Invalid object payload".into()));
-                            }
-                        }
-                        Val::Array(map) => {
-                            // Array callable: [$obj, 'method'] or ['ClassName', 'method']
-                            if map.len() != 2 {
-                                return Err(VmError::RuntimeError("Callable array must have exactly 2 elements".into()));
-                            }
-                            
-                            let class_or_obj = map.get_index(0).map(|(_, v)| *v)
-                                .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
-                            let method_handle = map.get_index(1).map(|(_, v)| *v)
-                                .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
-                            
-                            let method_name_bytes = self.convert_to_string(method_handle)?;
-                            let method_sym = self.context.interner.intern(&method_name_bytes);
-                            
-                            let class_or_obj_val = &self.arena.get(class_or_obj).value;
-                            
-                            match class_or_obj_val {
-                                Val::String(class_name_bytes) => {
-                                    // Static method call: ['ClassName', 'method']
-                                    let class_sym = self.context.interner.intern(class_name_bytes);
-                                    let class_sym = self.resolve_class_name(class_sym)?;
-                                    
-                                    if let Some((method, visibility, is_static, defining_class)) = self.find_method(class_sym, method_sym) {
-                                        self.check_method_visibility(defining_class, visibility)?;
-                                        
-                                        let mut frame = CallFrame::new(method.chunk.clone());
-                                        frame.func = Some(method.clone());
-                                        frame.class_scope = Some(defining_class);
-                                        frame.called_scope = Some(class_sym);
-                                        frame.args = args;
-                                        
-                                        // Note: Static call with no $this
-                                        if !is_static {
-                                            // PHP allows non-static method call statically in some cases
-                                            // We'll allow it but not set $this
-                                        }
-                                        
-                                        self.frames.push(frame);
-                                    } else {
-                                        let class_str = String::from_utf8_lossy(class_name_bytes);
-                                        let method_str = String::from_utf8_lossy(&method_name_bytes);
-                                        return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, method_str)));
-                                    }
-                                }
-                                Val::Object(payload_handle) => {
-                                    // Instance method call: [$obj, 'method']
-                                    let payload_val = self.arena.get(*payload_handle);
-                                    if let Val::ObjPayload(obj_data) = &payload_val.value {
-                                        let class_name = obj_data.class;
-                                        
-                                        if let Some((method, visibility, _, defining_class)) = self.find_method(class_name, method_sym) {
-                                            self.check_method_visibility(defining_class, visibility)?;
-                                            
-                                            let mut frame = CallFrame::new(method.chunk.clone());
-                                            frame.func = Some(method.clone());
-                                            frame.this = Some(class_or_obj);
-                                            frame.class_scope = Some(defining_class);
-                                            frame.called_scope = Some(class_name);
-                                            frame.args = args;
-                                            
-                                            self.frames.push(frame);
-                                        } else {
-                                            let class_str = String::from_utf8_lossy(self.context.interner.lookup(class_name).unwrap_or(b"?"));
-                                            let method_str = String::from_utf8_lossy(&method_name_bytes);
-                                            return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, method_str)));
-                                        }
-                                    } else {
-                                        return Err(VmError::RuntimeError("Invalid object in callable array".into()));
-                                    }
-                                }
-                                _ => return Err(VmError::RuntimeError("First element of callable array must be object or class name".into())),
-                            }
-                        }
-                        _ => return Err(VmError::RuntimeError("Call expects function name or closure".into())),
-                    }
+                    self.invoke_callable_value(func_handle, args)?;
                 }
 
                 OpCode::Return => self.handle_return(false, target_depth)?,
@@ -3065,9 +3124,9 @@ impl VM {
                     if let Some(parent_sym) = parent {
                         if let Some(parent_def) = self.context.classes.get(&parent_sym) {
                             // Inherit methods, excluding private ones.
-                            for (m_name, (func, vis, is_static, decl_class)) in &parent_def.methods {
-                                if *vis != Visibility::Private {
-                                    methods.insert(*m_name, (func.clone(), *vis, *is_static, *decl_class));
+                            for (key, entry) in &parent_def.methods {
+                                if entry.visibility != Visibility::Private {
+                                    methods.insert(*key, entry.clone());
                                 }
                             }
                         } else {
@@ -3136,10 +3195,11 @@ impl VM {
                     
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.traits.push(trait_name);
-                        for (name, (func, vis, is_static, _declaring_class)) in trait_methods {
+                        for (key, mut entry) in trait_methods {
                             // When using a trait, the methods become part of the class.
                             // The declaring class becomes the class using the trait (effectively).
-                            class_def.methods.entry(name).or_insert((func, vis, is_static, class_name));
+                            entry.declaring_class = class_name;
+                            class_def.methods.entry(key).or_insert(entry);
                         }
                     }
                 }
@@ -3150,8 +3210,16 @@ impl VM {
                     };
                     if let Val::Resource(rc) = val {
                         if let Ok(func) = rc.downcast::<UserFunc>() {
+                            let lower_key = self.intern_lowercase_symbol(method_name)?;
                             if let Some(class_def) = self.context.classes.get_mut(&class_name) {
-                                class_def.methods.insert(method_name, (func, visibility, is_static, class_name));
+                                let entry = MethodEntry {
+                                    name: method_name,
+                                    func,
+                                    visibility,
+                                    is_static,
+                                    declaring_class: class_name,
+                                };
+                                class_def.methods.insert(lower_key, entry);
                             }
                         }
                     }
@@ -3320,7 +3388,7 @@ impl VM {
                 }
                 OpCode::New(class_name, arg_count) => {
                     if self.context.classes.contains_key(&class_name) {
-                        let properties = self.collect_properties(class_name);
+                        let properties = self.collect_properties(class_name, PropertyCollectionMode::All);
                         
                         let obj_data = ObjectData {
                             class: class_name,
@@ -3338,13 +3406,11 @@ impl VM {
 
                         if method_lookup.is_none() {
                             if let Some(scope) = self.get_current_class() {
-                                 if let Some(def) = self.context.classes.get(&scope) {
-                                     if let Some((func, vis, is_static, decl_class)) = def.methods.get(&constructor_name) {
-                                         if *vis == Visibility::Private && *decl_class == scope {
-                                             method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
-                                         }
-                                     }
-                                 }
+                                if let Some((func, vis, is_static, decl_class)) = self.find_method(scope, constructor_name) {
+                                    if vis == Visibility::Private && decl_class == scope {
+                                        method_lookup = Some((func, vis, is_static, decl_class));
+                                    }
+                                }
                             }
                         }
 
@@ -3401,7 +3467,7 @@ impl VM {
                     };
                     
                     if self.context.classes.contains_key(&class_name) {
-                        let properties = self.collect_properties(class_name);
+                        let properties = self.collect_properties(class_name, PropertyCollectionMode::All);
                         
                         let obj_data = ObjectData {
                             class: class_name,
@@ -3419,13 +3485,11 @@ impl VM {
 
                         if method_lookup.is_none() {
                             if let Some(scope) = self.get_current_class() {
-                                 if let Some(def) = self.context.classes.get(&scope) {
-                                     if let Some((func, vis, is_static, decl_class)) = def.methods.get(&constructor_name) {
-                                         if *vis == Visibility::Private && *decl_class == scope {
-                                             method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
-                                         }
-                                     }
-                                 }
+                                if let Some((func, vis, is_static, decl_class)) = self.find_method(scope, constructor_name) {
+                                    if vis == Visibility::Private && decl_class == scope {
+                                        method_lookup = Some((func, vis, is_static, decl_class));
+                                    }
+                                }
                             }
                         }
 
@@ -3624,13 +3688,11 @@ impl VM {
                         // Fallback: Check if we are in a scope that has this method as private.
                         // This handles calling private methods of parent class from parent scope on child object.
                         if let Some(scope) = self.get_current_class() {
-                             if let Some(def) = self.context.classes.get(&scope) {
-                                 if let Some((func, vis, is_static, decl_class)) = def.methods.get(&method_name) {
-                                     if *vis == Visibility::Private && *decl_class == scope {
-                                         method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
-                                     }
-                                 }
-                             }
+                            if let Some((func, vis, is_static, decl_class)) = self.find_method(scope, method_name) {
+                                if vis == Visibility::Private && decl_class == scope {
+                                    method_lookup = Some((func, vis, is_static, decl_class));
+                                }
+                            }
                         }
                     }
 
@@ -5447,13 +5509,11 @@ impl VM {
 
                     if method_lookup.is_none() {
                         if let Some(scope) = self.get_current_class() {
-                             if let Some(def) = self.context.classes.get(&scope) {
-                                 if let Some((func, vis, is_static, decl_class)) = def.methods.get(&method_name) {
-                                     if *vis == Visibility::Private && *decl_class == scope {
-                                         method_lookup = Some((func.clone(), *vis, *is_static, *decl_class));
-                                     }
-                                 }
-                             }
+                            if let Some((func, vis, is_static, decl_class)) = self.find_method(scope, method_name) {
+                                if vis == Visibility::Private && decl_class == scope {
+                                    method_lookup = Some((func, vis, is_static, decl_class));
+                                }
+                            }
                         }
                     }
 
@@ -6075,7 +6135,7 @@ mod tests {
     use crate::core::value::Symbol;
     use std::sync::Arc;
     use crate::runtime::context::EngineContext;
-    use crate::compiler::chunk::UserFunc;
+    use crate::compiler::chunk::{UserFunc, FuncParam};
     use crate::builtins::string::{php_strlen, php_str_repeat};
 
     fn create_vm() -> VM {
@@ -6089,6 +6149,31 @@ mod tests {
         });
         
         VM::new(engine)
+    }
+
+    fn make_add_user_func() -> Rc<UserFunc> {
+        let mut func_chunk = CodeChunk::default();
+        let sym_a = Symbol(0);
+        let sym_b = Symbol(1);
+
+        func_chunk.code.push(OpCode::Recv(0));
+        func_chunk.code.push(OpCode::Recv(1));
+        func_chunk.code.push(OpCode::LoadVar(sym_a));
+        func_chunk.code.push(OpCode::LoadVar(sym_b));
+        func_chunk.code.push(OpCode::Add);
+        func_chunk.code.push(OpCode::Return);
+
+        Rc::new(UserFunc {
+            params: vec![
+                FuncParam { name: sym_a, by_ref: false },
+                FuncParam { name: sym_b, by_ref: false },
+            ],
+            uses: Vec::new(),
+            chunk: Rc::new(func_chunk),
+            is_static: false,
+            is_generator: false,
+            statics: Rc::new(RefCell::new(HashMap::new())),
+        })
     }
 
     #[test]
@@ -6246,31 +6331,7 @@ mod tests {
         // function add($a, $b) { return $a + $b; }
         // echo add(1, 2);
         
-        // Construct function chunk
-        let mut func_chunk = CodeChunk::default();
-        // Params: $a (Sym 0), $b (Sym 1)
-        // Code: LoadVar($a), LoadVar($b), Add, Return
-        let sym_a = Symbol(0);
-        let sym_b = Symbol(1);
-        
-        func_chunk.code.push(OpCode::Recv(0));
-        func_chunk.code.push(OpCode::Recv(1));
-        func_chunk.code.push(OpCode::LoadVar(sym_a));
-        func_chunk.code.push(OpCode::LoadVar(sym_b));
-        func_chunk.code.push(OpCode::Add);
-        func_chunk.code.push(OpCode::Return);
-        
-        let user_func = UserFunc {
-            params: vec![
-                FuncParam { name: sym_a, by_ref: false },
-                FuncParam { name: sym_b, by_ref: false }
-            ],
-            uses: Vec::new(),
-            chunk: Rc::new(func_chunk),
-            is_static: false,
-            is_generator: false,
-            statics: Rc::new(RefCell::new(HashMap::new())),
-        };
+        let user_func = make_add_user_func();
         
         // Main chunk
         let mut chunk = CodeChunk::default();
@@ -6293,10 +6354,55 @@ mod tests {
         let mut vm = create_vm();
         
         let sym_add = vm.context.interner.intern(b"add");
-        vm.context.user_functions.insert(sym_add, Rc::new(user_func));
+        vm.context.user_functions.insert(sym_add, user_func);
         
         vm.run(Rc::new(chunk)).unwrap();
         
         assert!(vm.operand_stack.is_empty());
+    }
+
+    #[test]
+    fn test_pending_call_dynamic_callable_handle() {
+        let mut vm = create_vm();
+        let sym_add = vm.context.interner.intern(b"add");
+        vm.context.user_functions.insert(sym_add, make_add_user_func());
+
+        let callable_handle = vm.arena.alloc(Val::String(b"add".to_vec().into()));
+        let mut args = ArgList::new();
+        args.push(vm.arena.alloc(Val::Int(1)));
+        args.push(vm.arena.alloc(Val::Int(2)));
+
+        let call = PendingCall {
+            func_name: None,
+            func_handle: Some(callable_handle),
+            args,
+            is_static: false,
+            class_name: None,
+            this_handle: None,
+        };
+
+        vm.execute_pending_call(call).unwrap();
+        vm.run_loop(0).unwrap();
+
+        let result_handle = vm.last_return_value.expect("missing return value");
+        let result = vm.arena.get(result_handle);
+        if let Val::Int(i) = result.value {
+            assert_eq!(i, 3);
+        } else {
+            panic!("Expected int 3, got {:?}", result.value);
+        }
+    }
+
+    #[test]
+    fn test_pop_underflow_errors() {
+        let mut vm = create_vm();
+        let mut chunk = CodeChunk::default();
+        chunk.code.push(OpCode::Pop);
+
+        let result = vm.run(Rc::new(chunk));
+        match result {
+            Err(VmError::RuntimeError(msg)) => assert_eq!(msg, "Stack underflow"),
+            other => panic!("Expected stack underflow error, got {:?}", other),
+        }
     }
 }

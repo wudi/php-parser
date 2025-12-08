@@ -11,6 +11,15 @@ use crate::builtins::{string, array, class, variable, function};
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 
 #[derive(Debug, Clone)]
+pub struct MethodEntry {
+    pub name: Symbol,
+    pub func: Rc<UserFunc>,
+    pub visibility: Visibility,
+    pub is_static: bool,
+    pub declaring_class: Symbol,
+}
+
+#[derive(Debug, Clone)]
 pub struct ClassDef {
     pub name: Symbol,
     pub parent: Option<Symbol>,
@@ -18,7 +27,7 @@ pub struct ClassDef {
     pub is_trait: bool,
     pub interfaces: Vec<Symbol>,
     pub traits: Vec<Symbol>,
-    pub methods: HashMap<Symbol, (Rc<UserFunc>, Visibility, bool, Symbol)>, // (func, visibility, is_static, declaring_class)
+    pub methods: HashMap<Symbol, MethodEntry>,
     pub properties: IndexMap<Symbol, (Val, Visibility)>, // Default values
     pub constants: HashMap<Symbol, (Val, Visibility)>,
     pub static_properties: HashMap<Symbol, (Val, Visibility)>,

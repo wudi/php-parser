@@ -360,6 +360,47 @@ fn test_get_class_methods_string() {
 }
 
 #[test]
+fn test_get_class_methods_visibility_global_scope() {
+    let code = r#"<?php
+        class A {
+            private function hidden() {}
+            protected function mid() {}
+            public function open() {}
+        }
+        return implode(',', get_class_methods('A'));
+    "#;
+
+    let val = run_php(code.as_bytes());
+    if let Val::String(s) = val {
+        assert_eq!(s.as_ref(), b"open");
+    } else {
+        panic!("Expected string, got {:?}", val);
+    }
+}
+
+#[test]
+fn test_get_class_methods_visibility_internal_scope() {
+    let code = r#"<?php
+        class A {
+            private function hidden() {}
+            protected function mid() {}
+            public function open() {}
+            public static function expose() {
+                return implode(',', get_class_methods('A'));
+            }
+        }
+        return A::expose();
+    "#;
+
+    let val = run_php(code.as_bytes());
+    if let Val::String(s) = val {
+        assert_eq!(s.as_ref(), b"expose,hidden,mid,open");
+    } else {
+        panic!("Expected string, got {:?}", val);
+    }
+}
+
+#[test]
 fn test_get_class_vars() {
     let code = r#"<?php
         class A {
@@ -375,6 +416,55 @@ fn test_get_class_vars() {
         assert_eq!(i, 2);
     } else {
         panic!("Expected int 2, got {:?}", val);
+    }
+}
+
+#[test]
+fn test_get_class_vars_visibility_global_scope() {
+    let code = r#"<?php
+        class A {
+            public $open = 1;
+            protected $mid = 2;
+            private $hidden = 3;
+        }
+        $vars = get_class_vars('A');
+        if (isset($vars['open']) && !isset($vars['mid']) && !isset($vars['hidden'])) {
+            return count($vars);
+        }
+        return -1;
+    "#;
+
+    let val = run_php(code.as_bytes());
+    if let Val::Int(i) = val {
+        assert_eq!(i, 1);
+    } else {
+        panic!("Expected int, got {:?}", val);
+    }
+}
+
+#[test]
+fn test_get_class_vars_visibility_internal_scope() {
+    let code = r#"<?php
+        class A {
+            public $open = 1;
+            protected $mid = 2;
+            private $hidden = 3;
+            public static function expose() {
+                $vars = get_class_vars('A');
+                if (isset($vars['open']) && isset($vars['mid']) && isset($vars['hidden'])) {
+                    return count($vars);
+                }
+                return -1;
+            }
+        }
+        return A::expose();
+    "#;
+
+    let val = run_php(code.as_bytes());
+    if let Val::Int(i) = val {
+        assert_eq!(i, 3);
+    } else {
+        panic!("Expected int, got {:?}", val);
     }
 }
 

@@ -294,7 +294,6 @@ impl<'src> Emitter<'src> {
                                     
                                     self.chunk.code.push(OpCode::UnsetDim);
                                     self.chunk.code.push(OpCode::StoreVar(sym));
-                                    self.chunk.code.push(OpCode::Pop);
                                 }
                             }
                         }
@@ -1094,8 +1093,6 @@ impl<'src> Emitter<'src> {
                     // cond ?: false (Elvis)
                     let end_jump = self.chunk.code.len();
                     self.chunk.code.push(OpCode::JmpNzEx(0)); // Placeholder
-                    
-                    self.chunk.code.push(OpCode::Pop); // Pop cond if false
                     self.emit_expr(if_false);
                     
                     let end_label = self.chunk.code.len();
@@ -1316,7 +1313,6 @@ impl<'src> Emitter<'src> {
                 let label_true = self.chunk.code.len();
                 self.patch_jump(jump_if_not_set, label_true);
                 
-                self.chunk.code.push(OpCode::Pop);
                 let idx = self.add_constant(Val::Bool(true));
                 self.chunk.code.push(OpCode::Const(idx as u16));
                 
@@ -1857,6 +1853,7 @@ impl<'src> Emitter<'src> {
                             
                             // Store
                             self.chunk.code.push(OpCode::StoreVar(sym));
+                            self.chunk.code.push(OpCode::LoadVar(sym));
                         }
                     }
                     Expr::IndirectVariable { name, .. } => {
@@ -2098,12 +2095,7 @@ impl<'src> Emitter<'src> {
                                 let var_name = &name[1..];
                                 let sym = self.interner.intern(var_name);
                                 self.chunk.code.push(OpCode::StoreVar(sym));
-                                // StoreVar leaves value on stack?
-                                // OpCode::StoreVar implementation:
-                                // let val_handle = self.operand_stack.pop()...;
-                                // ...
-                                // self.operand_stack.push(val_handle);
-                                // Yes, it leaves value on stack.
+                                    self.chunk.code.push(OpCode::LoadVar(sym));
                             }
                         }
                     }
