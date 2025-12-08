@@ -11,7 +11,7 @@ use crate::vm::opcode::OpCode;
 use crate::compiler::chunk::{CodeChunk, UserFunc, ClosureData};
 #[cfg(test)]
 use crate::compiler::chunk::FuncParam;
-use crate::vm::frame::{CallFrame, GeneratorData, GeneratorState, SubIterator, SubGenState};
+use crate::vm::frame::{ArgList, CallFrame, GeneratorData, GeneratorState, SubIterator, SubGenState};
 use crate::runtime::context::{RequestContext, EngineContext, ClassDef};
 
 #[derive(Debug)]
@@ -92,7 +92,7 @@ impl OutputWriter for StdoutWriter {
 pub struct PendingCall {
     pub func_name: Option<Symbol>,
     pub func_handle: Option<Handle>,
-    pub args: Vec<Handle>,
+    pub args: ArgList,
     pub is_static: bool,
     pub class_name: Option<Symbol>,
     pub this_handle: Option<Handle>,
@@ -175,6 +175,19 @@ impl VM {
     #[inline]
     fn pop_operand(&mut self) -> Result<Handle, VmError> {
         self.operand_stack.pop().ok_or_else(|| VmError::RuntimeError("Operand stack empty".into()))
+    }
+
+    fn collect_call_args<T>(&mut self, arg_count: T) -> Result<ArgList, VmError>
+    where
+        T: Into<usize>,
+    {
+        let count = arg_count.into();
+        let mut args = ArgList::with_capacity(count);
+        for _ in 0..count {
+            args.push(self.pop_operand()?);
+        }
+        args.reverse();
+        Ok(args)
     }
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
@@ -342,6 +355,32 @@ impl VM {
                     Ok(())
                 } else {
                     Err(VmError::RuntimeError("Cannot access protected constant".into()))
+                }
+            }
+        }
+    }
+
+    fn check_method_visibility(&self, defining_class: Symbol, visibility: Visibility) -> Result<(), VmError> {
+        let current_scope = self.get_current_class();
+        match visibility {
+            Visibility::Public => Ok(()),
+            Visibility::Private => {
+                if current_scope == Some(defining_class) {
+                    Ok(())
+                } else {
+                    Err(VmError::RuntimeError("Cannot access private method".into()))
+                }
+            }
+            Visibility::Protected => {
+                // Mirrors zendi_check_protected in $PHP_SRC_PATH/Zend/zend_inheritance.c
+                if let Some(scope) = current_scope {
+                    if scope == defining_class || self.is_subclass_of(scope, defining_class) {
+                        Ok(())
+                    } else {
+                        Err(VmError::RuntimeError("Cannot access protected method".into()))
+                    }
+                } else {
+                    Err(VmError::RuntimeError("Cannot access protected method".into()))
                 }
             }
         }
@@ -1569,11 +1608,7 @@ impl VM {
                 }
 
                 OpCode::Call(arg_count) => {
-                    let mut args = Vec::with_capacity(arg_count as usize);
-                    for _ in 0..arg_count {
-                        args.push(self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?);
-                    }
-                    args.reverse();
+                    let mut args = self.collect_call_args(arg_count)?;
                     
                     let func_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let func_val = self.arena.get(func_handle);
@@ -3251,37 +3286,12 @@ impl VM {
                              }
 
                              // Collect args
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.operand_stack.pop().unwrap());
-                            }
-                            args.reverse();
-
                             let mut frame = CallFrame::new(constructor.chunk.clone());
                             frame.func = Some(constructor.clone());
                             frame.this = Some(obj_handle);
                             frame.is_constructor = true;
                             frame.class_scope = Some(defined_class);
-
-                            for (i, param) in constructor.params.iter().enumerate() {
-                                if i < args.len() {
-                                    let arg_handle = args[i];
-                                    if param.by_ref {
-                                        if !self.arena.get(arg_handle).is_ref {
-                                            self.arena.get_mut(arg_handle).is_ref = true;
-                                        }
-                                        frame.locals.insert(param.name, arg_handle);
-                                    } else {
-                                        let final_handle = if self.arena.get(arg_handle).is_ref {
-                                            let val = self.arena.get(arg_handle).value.clone();
-                                            self.arena.alloc(val)
-                                        } else {
-                                            arg_handle
-                                        };
-                                        frame.locals.insert(param.name, final_handle);
-                                    }
-                                }
-                            }
+                            frame.args = self.collect_call_args(arg_count)?;
                             self.frames.push(frame);
                         } else {
                             if arg_count > 0 {
@@ -3297,12 +3307,8 @@ impl VM {
                 }
                 OpCode::NewDynamic(arg_count) => {
                     // Collect args first
-                    let mut args = Vec::new();
-                    for _ in 0..arg_count {
-                        args.push(self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?);
-                    }
-                    args.reverse();
-                    
+                    let mut args = self.collect_call_args(arg_count)?;
+
                     let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let class_name = match &self.arena.get(class_handle).value {
                         Val::String(s) => self.context.interner.intern(s),
@@ -3365,26 +3371,7 @@ impl VM {
                             frame.this = Some(obj_handle);
                             frame.is_constructor = true;
                             frame.class_scope = Some(defined_class);
-
-                            for (i, param) in constructor.params.iter().enumerate() {
-                                if i < args.len() {
-                                    let arg_handle = args[i];
-                                    if param.by_ref {
-                                        if !self.arena.get(arg_handle).is_ref {
-                                            self.arena.get_mut(arg_handle).is_ref = true;
-                                        }
-                                        frame.locals.insert(param.name, arg_handle);
-                                    } else {
-                                        let final_handle = if self.arena.get(arg_handle).is_ref {
-                                            let val = self.arena.get(arg_handle).value.clone();
-                                            self.arena.alloc(val)
-                                        } else {
-                                            arg_handle
-                                        };
-                                        frame.locals.insert(param.name, final_handle);
-                                    }
-                                }
-                            }
+                            frame.args = args;
                             self.frames.push(frame);
                         } else {
                             if arg_count > 0 {
@@ -3563,35 +3550,12 @@ impl VM {
                     }
 
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
-                        // Check visibility
-                        match visibility {
-                            Visibility::Public => {},
-                            Visibility::Private => {
-                                let current_class = self.get_current_class();
-                                if current_class != Some(defined_class) {
-                                    return Err(VmError::RuntimeError("Cannot access private method".into()));
-                                }
-                            },
-                            Visibility::Protected => {
-                                let current_class = self.get_current_class();
-                                if let Some(scope) = current_class {
-                                    if !self.is_subclass_of(scope, defined_class) && !self.is_subclass_of(defined_class, scope) {
-                                        return Err(VmError::RuntimeError("Cannot access protected method".into()));
-                                    }
-                                } else {
-                                    return Err(VmError::RuntimeError("Cannot access protected method".into()));
-                                }
-                            }
-                        }
+                        self.check_method_visibility(defined_class, visibility)?;
 
-                        let mut args = Vec::new();
-                        for _ in 0..arg_count {
-                            args.push(self.operand_stack.pop().unwrap());
-                        }
-                        args.reverse();
-                        
+                        let mut args = self.collect_call_args(arg_count)?;
+
                         let obj_handle = self.operand_stack.pop().unwrap();
-                        
+
                         let mut frame = CallFrame::new(user_func.chunk.clone());
                         frame.func = Some(user_func.clone());
                         if !is_static {
@@ -3599,27 +3563,8 @@ impl VM {
                         }
                         frame.class_scope = Some(defined_class);
                         frame.called_scope = Some(class_name);
-                        
-                        for (i, param) in user_func.params.iter().enumerate() {
-                            if i < args.len() {
-                                let arg_handle = args[i];
-                                if param.by_ref {
-                                    if !self.arena.get(arg_handle).is_ref {
-                                        self.arena.get_mut(arg_handle).is_ref = true;
-                                    }
-                                    frame.locals.insert(param.name, arg_handle);
-                                } else {
-                                    let final_handle = if self.arena.get(arg_handle).is_ref {
-                                        let val = self.arena.get(arg_handle).value.clone();
-                                        self.arena.alloc(val)
-                                    } else {
-                                        arg_handle
-                                    };
-                                    frame.locals.insert(param.name, final_handle);
-                                }
-                            }
-                        }
-                        
+                        frame.args = args;
+
                         self.frames.push(frame);
                     } else {
                         // Method not found. Check for __call.
@@ -3628,11 +3573,7 @@ impl VM {
                             // Found __call.
                             
                             // Pop args
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.operand_stack.pop().unwrap());
-                            }
-                            args.reverse();
+                            let mut args = self.collect_call_args(arg_count)?;
                             
                             let obj_handle = self.operand_stack.pop().unwrap();
                             
@@ -4076,7 +4017,7 @@ impl VM {
                     self.pending_calls.push(PendingCall {
                         func_name: Some(name_sym),
                         func_handle: None,
-                        args: Vec::new(),
+                        args: ArgList::new(),
                         is_static: false,
                         class_name: None,
                         this_handle: None,
@@ -4093,7 +4034,7 @@ impl VM {
                     self.pending_calls.push(PendingCall {
                         func_name: Some(name_sym),
                         func_handle: None,
-                        args: Vec::new(),
+                        args: ArgList::new(),
                         is_static: false,
                         class_name: None,
                         this_handle: None,
@@ -4108,7 +4049,7 @@ impl VM {
                             self.pending_calls.push(PendingCall {
                                 func_name: Some(sym),
                                 func_handle: Some(callable_handle),
-                                args: Vec::new(),
+                                args: ArgList::new(),
                                 is_static: false,
                                 class_name: None,
                                 this_handle: None,
@@ -4121,7 +4062,7 @@ impl VM {
                                 self.pending_calls.push(PendingCall {
                                     func_name: Some(invoke),
                                     func_handle: Some(callable_handle),
-                                    args: Vec::new(),
+                                    args: ArgList::new(),
                                     is_static: false,
                                     class_name: Some(obj_data.class),
                                     this_handle: Some(callable_handle),
@@ -4417,7 +4358,7 @@ impl VM {
                     self.pending_calls.push(PendingCall {
                         func_name: Some(name_sym),
                         func_handle: None,
-                        args: Vec::new(),
+                        args: ArgList::new(),
                         is_static: false,
                         class_name: None, // Will be resolved from object
                         this_handle: Some(obj_handle),
@@ -4456,7 +4397,7 @@ impl VM {
                     self.pending_calls.push(PendingCall {
                         func_name: Some(name_sym),
                         func_handle: None,
-                        args: Vec::new(),
+                        args: ArgList::new(),
                         is_static: true,
                         class_name: Some(resolved_class),
                         this_handle: None,
@@ -5442,40 +5383,17 @@ impl VM {
                              }
                         }
                         
-                        self.check_const_visibility(defined_class, visibility)?;
+                        self.check_method_visibility(defined_class, visibility)?;
                         
-                        let mut args = Vec::new();
-                        for _ in 0..arg_count {
-                            args.push(self.operand_stack.pop().unwrap());
-                        }
-                        args.reverse();
-                        
+                        let mut args = self.collect_call_args(arg_count)?;
+
                         let mut frame = CallFrame::new(user_func.chunk.clone());
                         frame.func = Some(user_func.clone());
                         frame.this = this_handle;
                         frame.class_scope = Some(defined_class);
                         frame.called_scope = Some(resolved_class);
-                        
-                        for (i, param) in user_func.params.iter().enumerate() {
-                            if i < args.len() {
-                                let arg_handle = args[i];
-                                if param.by_ref {
-                                    if !self.arena.get(arg_handle).is_ref {
-                                        self.arena.get_mut(arg_handle).is_ref = true;
-                                    }
-                                    frame.locals.insert(param.name, arg_handle);
-                                } else {
-                                    let final_handle = if self.arena.get(arg_handle).is_ref {
-                                        let val = self.arena.get(arg_handle).value.clone();
-                                        self.arena.alloc(val)
-                                    } else {
-                                        arg_handle
-                                    };
-                                    frame.locals.insert(param.name, final_handle);
-                                }
-                            }
-                        }
-                        
+                        frame.args = args;
+
                         self.frames.push(frame);
                     } else {
                         // Method not found. Check for __callStatic.
@@ -5486,11 +5404,7 @@ impl VM {
                             }
                             
                             // Pop args
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.operand_stack.pop().unwrap());
-                            }
-                            args.reverse();
+                            let mut args = self.collect_call_args(arg_count)?;
                             
                             // Create array from args
                             let mut array_map = IndexMap::new();

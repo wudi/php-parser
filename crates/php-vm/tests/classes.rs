@@ -86,3 +86,81 @@ fn test_inheritance() {
         _ => panic!("Expected String('woof'), got {:?}", res_val),
     }
 }
+
+#[test]
+fn test_method_argument_binding() {
+    let src = b"<?php
+        class Combiner {
+            function mix($left, $right = 'R') {
+                return $left . ':' . $right;
+            }
+        }
+
+        $c = new Combiner();
+        $a = $c->mix('L');
+        $b = $c->mix('L', 'Custom');
+
+        return $a . '|' . $b;
+    ";
+
+    let context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(context);
+
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(src);
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let (chunk, _) = emitter.compile(&program.statements);
+
+    let mut vm = VM::new_with_context(request_context);
+    vm.run(Rc::new(chunk)).unwrap();
+
+    let res_handle = vm.last_return_value.expect("Should return value");
+    let res_val = vm.arena.get(res_handle).value.clone();
+
+    match res_val {
+        Val::String(s) => assert_eq!(s.as_slice(), b"L:R|L:Custom"),
+        _ => panic!("Expected string result, got {:?}", res_val),
+    }
+}
+
+#[test]
+fn test_static_method_argument_binding() {
+    let src = b"<?php
+        class MathUtil {
+            public static function sum($a = 1, $b = 1) {
+                return $a + $b;
+            }
+        }
+
+        $first = MathUtil::sum();
+        $second = MathUtil::sum(10);
+        $third = MathUtil::sum(10, 32);
+
+        return $first . '|' . $second . '|' . $third;
+    ";
+
+    let context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(context);
+
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(src);
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let (chunk, _) = emitter.compile(&program.statements);
+
+    let mut vm = VM::new_with_context(request_context);
+    vm.run(Rc::new(chunk)).unwrap();
+
+    let res_handle = vm.last_return_value.expect("Should return value");
+    let res_val = vm.arena.get(res_handle).value.clone();
+
+    match res_val {
+        Val::String(s) => assert_eq!(s.as_slice(), b"2|11|42"),
+        _ => panic!("Expected string result, got {:?}", res_val),
+    }
+}

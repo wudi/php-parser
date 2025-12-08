@@ -1,7 +1,11 @@
 use std::rc::Rc;
 use std::collections::HashMap;
+use smallvec::SmallVec;
 use crate::compiler::chunk::{CodeChunk, UserFunc};
 use crate::core::value::{Symbol, Handle};
+
+pub const INLINE_ARG_CAPACITY: usize = 8;
+pub type ArgList = SmallVec<[Handle; INLINE_ARG_CAPACITY]>;
 
 #[derive(Debug, Clone)]
 pub struct CallFrame {
@@ -15,7 +19,7 @@ pub struct CallFrame {
     pub called_scope: Option<Symbol>,
     pub generator: Option<Handle>,
     pub discard_return: bool,
-    pub args: Vec<Handle>,
+    pub args: ArgList,
 }
 
 impl CallFrame {
@@ -31,7 +35,7 @@ impl CallFrame {
             called_scope: None,
             generator: None,
             discard_return: false,
-            args: Vec::new(),
+            args: ArgList::new(),
         }
     }
 }

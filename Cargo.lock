@@ -973,6 +973,7 @@ dependencies = [
  "indexmap",
  "php-parser",
  "rustyline",
+ "smallvec",
 ]
 
 [[package]]
