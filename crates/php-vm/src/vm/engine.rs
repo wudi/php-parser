@@ -20,6 +20,53 @@ pub enum VmError {
     Exception(Handle),
 }
 
+/// PHP error levels matching Zend constants
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorLevel {
+    Notice,      // E_NOTICE
+    Warning,     // E_WARNING
+    Error,       // E_ERROR
+    ParseError,  // E_PARSE
+    UserNotice,  // E_USER_NOTICE
+    UserWarning, // E_USER_WARNING
+    UserError,   // E_USER_ERROR
+}
+
+pub trait ErrorHandler {
+    /// Report an error/warning/notice at runtime
+    fn report(&mut self, level: ErrorLevel, message: &str);
+}
+
+/// Default error handler that writes to stderr
+pub struct StderrErrorHandler {
+    stderr: io::Stderr,
+}
+
+impl Default for StderrErrorHandler {
+    fn default() -> Self {
+        Self {
+            stderr: io::stderr(),
+        }
+    }
+}
+
+impl ErrorHandler for StderrErrorHandler {
+    fn report(&mut self, level: ErrorLevel, message: &str) {
+        let level_str = match level {
+            ErrorLevel::Notice => "Notice",
+            ErrorLevel::Warning => "Warning",
+            ErrorLevel::Error => "Error",
+            ErrorLevel::ParseError => "Parse error",
+            ErrorLevel::UserNotice => "User notice",
+            ErrorLevel::UserWarning => "User warning",
+            ErrorLevel::UserError => "User error",
+        };
+        // Follow the same pattern as OutputWriter - write to stderr and handle errors gracefully
+        let _ = writeln!(self.stderr, "{}: {}", level_str, message);
+        let _ = self.stderr.flush();
+    }
+}
+
 pub trait OutputWriter {
     fn write(&mut self, bytes: &[u8]) -> Result<(), VmError>;
     fn flush(&mut self) -> Result<(), VmError> {
@@ -60,6 +107,7 @@ pub struct VM {
     pub silence_stack: Vec<u32>,
     pub pending_calls: Vec<PendingCall>,
     pub output_writer: Box<dyn OutputWriter>,
+    pub error_handler: Box<dyn ErrorHandler>,
 }
 
 impl VM {
@@ -73,6 +121,7 @@ impl VM {
             silence_stack: Vec::new(),
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
+            error_handler: Box::new(StderrErrorHandler::default()),
         }
     }
 
@@ -86,6 +135,7 @@ impl VM {
             silence_stack: Vec::new(),
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
+            error_handler: Box::new(StderrErrorHandler::default()),
         }
     }
 
@@ -96,6 +146,10 @@ impl VM {
 
     pub fn set_output_writer(&mut self, writer: Box<dyn OutputWriter>) {
         self.output_writer = writer;
+    }
+
+    pub fn set_error_handler(&mut self, handler: Box<dyn ErrorHandler>) {
+        self.error_handler = handler;
     }
 
     fn write_output(&mut self, bytes: &[u8]) -> Result<(), VmError> {
@@ -535,9 +589,7 @@ impl VM {
                 }
             }
             Val::Array(_) => {
-                // TODO: Emit E_NOTICE: Array to string conversion
-                #[cfg(debug_assertions)]
-                eprintln!("Notice: Array to string conversion");
+                self.error_handler.report(ErrorLevel::Notice, "Array to string conversion");
                 Ok(b"Array".to_vec())
             }
             Val::Resource(_) => {
@@ -3942,9 +3994,8 @@ impl VM {
                                     if is_require {
                                         return Err(VmError::RuntimeError(format!("Require failed: {}", e)));
                                     } else {
-                                        // TODO: Emit proper PHP warning instead of debug println (Issue #7)
-                                        #[cfg(debug_assertions)]
-                                        eprintln!("Warning: include({}): failed to open stream: {}", path_str, e);
+                                        let msg = format!("include({}): Failed to open stream: {}", path_str, e);
+                                        self.error_handler.report(ErrorLevel::Warning, &msg);
                                         let false_val = self.arena.alloc(Val::Bool(false));
                                         self.operand_stack.push(false_val);
                                     }
@@ -3958,9 +4009,9 @@ impl VM {
                     if let Some(handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(*handle);
                     } else {
-                        // TODO: Emit proper PHP warning for undefined variable
-                        #[cfg(debug_assertions)]
-                        eprintln!("Warning: Undefined variable");
+                        let var_name = String::from_utf8_lossy(self.context.interner.lookup(sym).unwrap_or(b"unknown"));
+                        let msg = format!("Undefined variable: ${}", var_name);
+                        self.error_handler.report(ErrorLevel::Notice, &msg);
                         let null = self.arena.alloc(Val::Null);
                         self.operand_stack.push(null);
                     }
@@ -3980,9 +4031,9 @@ impl VM {
                     if let Some(handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(*handle);
                     } else {
-                        // TODO: Emit proper PHP warning for undefined variable
-                        #[cfg(debug_assertions)]
-                        eprintln!("Warning: Undefined variable");
+                        let var_name = String::from_utf8_lossy(self.context.interner.lookup(sym).unwrap_or(b"unknown"));
+                        let msg = format!("Undefined variable: ${}", var_name);
+                        self.error_handler.report(ErrorLevel::Notice, &msg);
                         let null = self.arena.alloc(Val::Null);
                         frame.locals.insert(sym, null);
                         self.operand_stack.push(null);
