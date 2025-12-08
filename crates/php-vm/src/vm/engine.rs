@@ -102,6 +102,27 @@ impl VM {
         self.output_writer.write(bytes)
     }
 
+    // Safe frame access helpers (no-panic guarantee)
+    #[inline]
+    fn current_frame(&self) -> Result<&CallFrame, VmError> {
+        self.frames.last().ok_or_else(|| VmError::RuntimeError("No active frame".into()))
+    }
+
+    #[inline]
+    fn current_frame_mut(&mut self) -> Result<&mut CallFrame, VmError> {
+        self.frames.last_mut().ok_or_else(|| VmError::RuntimeError("No active frame".into()))
+    }
+
+    #[inline]
+    fn pop_frame(&mut self) -> Result<CallFrame, VmError> {
+        self.frames.pop().ok_or_else(|| VmError::RuntimeError("Frame stack empty".into()))
+    }
+
+    #[inline]
+    fn pop_operand(&mut self) -> Result<Handle, VmError> {
+        self.operand_stack.pop().ok_or_else(|| VmError::RuntimeError("Operand stack empty".into()))
+    }
+
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         if let Some(def) = self.context.classes.get(&class_name) {
             if let Some((func, vis, is_static, declaring_class)) = def.methods.get(&method_name) {
@@ -262,7 +283,8 @@ impl VM {
             Visibility::Protected => {
                 let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
                 let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access protected constant".into()))?;
-                if self.is_subclass_of(scope, defining_class) || self.is_subclass_of(defining_class, scope) {
+                // Protected members accessible only from defining class or subclasses (one-directional)
+                if scope == defining_class || self.is_subclass_of(scope, defining_class) {
                     Ok(())
                 } else {
                     Err(VmError::RuntimeError("Cannot access protected constant".into()))
@@ -305,7 +327,9 @@ impl VM {
                 },
                 Visibility::Protected => {
                     if let Some(scope) = current_scope {
-                        if self.is_subclass_of(scope, defined_class.unwrap()) || self.is_subclass_of(defined_class.unwrap(), scope) {
+                        let defined = defined_class.ok_or_else(|| VmError::RuntimeError("Missing defined class".into()))?;
+                        // Protected members accessible only from defining class or subclasses (one-directional)
+                        if scope == defined || self.is_subclass_of(scope, defined) {
                              Ok(())
                         } else {
                              Err(VmError::RuntimeError(format!("Cannot access protected property")))
@@ -477,6 +501,9 @@ impl VM {
                 if let Val::ObjPayload(obj_data) = &obj_zval.value {
                     let to_string_magic = self.context.interner.intern(b"__toString");
                     if let Some((magic_func, _, _, magic_class)) = self.find_method(obj_data.class, to_string_magic) {
+                        // Save caller's return value to avoid corruption (Zend allocates per-call zval)
+                        let saved_return_value = self.last_return_value.take();
+                        
                         let mut frame = CallFrame::new(magic_func.chunk.clone());
                         frame.func = Some(magic_func.clone());
                         frame.this = Some(h);
@@ -490,6 +517,9 @@ impl VM {
                         let ret_handle = self.last_return_value.ok_or(VmError::RuntimeError("__toString must return a value".into()))?;
                         let ret_val = self.arena.get(ret_handle).value.clone();
                         
+                        // Restore caller's return value
+                        self.last_return_value = saved_return_value;
+                        
                         match ret_val {
                             Val::String(s) => Ok(s.to_vec()),
                             _ => Err(VmError::RuntimeError("__toString must return a string".into())),
@@ -502,8 +532,20 @@ impl VM {
                     Err(VmError::RuntimeError("Invalid object payload".into()))
                 }
             }
+            Val::Array(_) => {
+                // TODO: Emit E_NOTICE: Array to string conversion
+                #[cfg(debug_assertions)]
+                eprintln!("Notice: Array to string conversion");
+                Ok(b"Array".to_vec())
+            }
+            Val::Resource(_) => {
+                // TODO: Emit E_NOTICE: Resource to string conversion
+                // PHP outputs "Resource id #N" where N is the resource ID
+                Ok(b"Resource".to_vec())
+            }
             _ => {
-                Ok(format!("{:?}", val).into_bytes())
+                // Other types (e.g., ObjPayload) should not occur here
+                Err(VmError::RuntimeError(format!("Cannot convert value to string")))
             }
         }
     }
@@ -512,10 +554,10 @@ impl VM {
         let ret_val = if self.operand_stack.is_empty() {
             self.arena.alloc(Val::Null)
         } else {
-            self.operand_stack.pop().unwrap()
+            self.pop_operand()?
         };
 
-        let popped_frame = self.frames.pop().expect("Frame stack empty on Return");
+        let popped_frame = self.pop_frame()?;
 
         if let Some(gen_handle) = popped_frame.generator {
             let gen_val = self.arena.get(gen_handle);
@@ -573,7 +615,7 @@ impl VM {
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
         while self.frames.len() > target_depth {
             let op = {
-                let frame = self.frames.last_mut().unwrap();
+                let frame = self.current_frame_mut()?;
                 if frame.ip >= frame.chunk.code.len() {
                     self.frames.pop();
                     continue;
@@ -602,7 +644,7 @@ impl VM {
     fn exec_stack_op(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
             OpCode::Const(idx) => {
-                let frame = self.frames.last().unwrap();
+                let frame = self.current_frame()?;
                 let val = frame.chunk.constants[idx as usize].clone();
                 let handle = self.arena.alloc(val);
                 self.operand_stack.push(handle);
@@ -663,7 +705,7 @@ impl VM {
     fn exec_control_flow(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
             OpCode::Jmp(target) => {
-                let frame = self.frames.last_mut().unwrap();
+                let frame = self.current_frame_mut()?;
                 frame.ip = target as usize;
             }
             OpCode::JmpIfFalse(target) => {
@@ -676,7 +718,7 @@ impl VM {
                     _ => true, 
                 };
                 if !b {
-                    let frame = self.frames.last_mut().unwrap();
+                    let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
                 }
             }
@@ -690,7 +732,7 @@ impl VM {
                     _ => true, 
                 };
                 if b {
-                    let frame = self.frames.last_mut().unwrap();
+                    let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
                 }
             }
@@ -704,7 +746,7 @@ impl VM {
                     _ => true, 
                 };
                 if !b {
-                    let frame = self.frames.last_mut().unwrap();
+                    let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
                 } else {
                     self.operand_stack.pop();
@@ -720,7 +762,7 @@ impl VM {
                     _ => true, 
                 };
                 if b {
-                    let frame = self.frames.last_mut().unwrap();
+                    let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
                 } else {
                     self.operand_stack.pop();
@@ -732,7 +774,7 @@ impl VM {
                  let is_null = matches!(val, Val::Null);
                  
                  if !is_null {
-                     let frame = self.frames.last_mut().unwrap();
+                     let frame = self.current_frame_mut()?;
                      frame.ip = target as usize;
                  } else {
                      self.operand_stack.pop();
@@ -758,7 +800,7 @@ impl VM {
                 OpCode::BitwiseNot | OpCode::BoolNot => self.exec_math_op(op)?,
                 
                 OpCode::LoadVar(sym) => {
-                    let frame = self.frames.last().unwrap();
+                    let frame = self.current_frame()?;
                     if let Some(&handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(handle);
                     } else {
@@ -1720,7 +1762,6 @@ impl VM {
                     let frame_idx = self.frames.len() - 1;
                     let frame = &mut self.frames[frame_idx];
                     let gen_handle = frame.generator.ok_or(VmError::RuntimeError("YieldFrom outside of generator context".into()))?;
-                    println!("YieldFrom: Parent generator {:?}", gen_handle);
                     
                     let (mut sub_iter, is_new) = {
                         let gen_val = self.arena.get(gen_handle);
@@ -1728,9 +1769,7 @@ impl VM {
                             let payload = self.arena.get(*payload_handle);
                             if let Val::ObjPayload(obj_data) = &payload.value {
                                 if let Some(internal) = &obj_data.internal {
-                                    println!("YieldFrom: Parent internal ptr: {:p}", internal);
                                     if let Ok(gen_data) = internal.clone().downcast::<RefCell<GeneratorData>>() {
-                                        println!("YieldFrom: Parent gen_data ptr: {:p}", gen_data);
                                         let mut data = gen_data.borrow_mut();
                                         if let Some(iter) = &data.sub_iter {
                                             (iter.clone(), false)
@@ -2047,11 +2086,22 @@ impl VM {
                     let emitter = crate::compiler::emitter::Emitter::new(&source, &mut self.context.interner);
                     let (chunk, _) = emitter.compile(program.statements);
                     
+                    let caller_frame_idx = self.frames.len() - 1;
                     let mut frame = CallFrame::new(Rc::new(chunk));
-                    if let Some(current_frame) = self.frames.last() {
-                        frame.locals = current_frame.locals.clone();
+                    if caller_frame_idx < self.frames.len() {
+                        frame.locals = self.frames[caller_frame_idx].locals.clone();
                     }
+                    
+                    let depth = self.frames.len();
                     self.frames.push(frame);
+                    self.run_loop(depth)?;
+                    
+                    // Copy modified locals back to caller (Include shares caller's symbol table)
+                    if let Some(included_frame) = self.frames.pop() {
+                        if caller_frame_idx < self.frames.len() {
+                            self.frames[caller_frame_idx].locals = included_frame.locals;
+                        }
+                    }
                 }
                 
                 OpCode::InitArray(_size) => {
@@ -2498,7 +2548,6 @@ impl VM {
                                 if let Some(internal) = &obj_data.internal {
                                     if let Ok(gen_data) = internal.clone().downcast::<RefCell<GeneratorData>>() {
                                         let mut data = gen_data.borrow_mut();
-                                        println!("IterNext: Resuming generator {:?} state: {:?}", iterable_handle, data.state);
                                         if let GeneratorState::Suspended(frame) = &data.state {
                                             let mut frame = frame.clone();
                                             frame.generator = Some(iterable_handle);
@@ -3647,35 +3696,25 @@ impl VM {
                         let emitter = crate::compiler::emitter::Emitter::new(source, &mut self.context.interner);
                         let (chunk, _) = emitter.compile(program.statements);
                         
-                        // Run in current scope? Eval shares scope.
-                        // But we need a new frame for the chunk.
-                        // We should copy locals?
-                        // Actually eval runs in the same scope.
-                        // But our VM uses frames for chunks.
-                        // So we need to merge locals back and forth?
-                        // Or maybe we can execute the chunk in the current frame?
-                        // No, the chunk has its own code.
-                        
-                        // For now, let's create a new frame but share the locals.
-                        // But locals are in the frame struct.
-                        // We can copy locals in, and copy them out after?
-                        
+                        let caller_frame_idx = self.frames.len() - 1;
                         let mut frame = CallFrame::new(Rc::new(chunk));
-                        if let Some(current_frame) = self.frames.last() {
-                            frame.locals = current_frame.locals.clone();
-                            frame.this = current_frame.this;
-                            frame.class_scope = current_frame.class_scope;
-                            frame.called_scope = current_frame.called_scope;
+                        if caller_frame_idx < self.frames.len() {
+                            frame.locals = self.frames[caller_frame_idx].locals.clone();
+                            frame.this = self.frames[caller_frame_idx].this;
+                            frame.class_scope = self.frames[caller_frame_idx].class_scope;
+                            frame.called_scope = self.frames[caller_frame_idx].called_scope;
                         }
                         
                         let depth = self.frames.len();
                         self.frames.push(frame);
                         self.run_loop(depth)?;
                         
-                        // Copy locals back?
-                        // Only if they were modified or added.
-                        // This is complex with our current architecture.
-                        // TODO: Proper eval scope handling.
+                        // Copy modified locals back to caller (eval shares caller's symbol table)
+                        if let Some(eval_frame) = self.frames.pop() {
+                            if caller_frame_idx < self.frames.len() {
+                                self.frames[caller_frame_idx].locals = eval_frame.locals;
+                            }
+                        }
                         
                         if let Some(ret) = self.last_return_value {
                             self.operand_stack.push(ret);
@@ -3710,18 +3749,26 @@ impl VM {
                                     let emitter = crate::compiler::emitter::Emitter::new(&source, &mut self.context.interner);
                                     let (chunk, _) = emitter.compile(program.statements);
                                     
+                                    let caller_frame_idx = self.frames.len() - 1;
                                     let mut frame = CallFrame::new(Rc::new(chunk));
                                     // Include inherits scope
-                                    if let Some(current_frame) = self.frames.last() {
-                                        frame.locals = current_frame.locals.clone();
-                                        frame.this = current_frame.this;
-                                        frame.class_scope = current_frame.class_scope;
-                                        frame.called_scope = current_frame.called_scope;
+                                    if caller_frame_idx < self.frames.len() {
+                                        frame.locals = self.frames[caller_frame_idx].locals.clone();
+                                        frame.this = self.frames[caller_frame_idx].this;
+                                        frame.class_scope = self.frames[caller_frame_idx].class_scope;
+                                        frame.called_scope = self.frames[caller_frame_idx].called_scope;
                                     }
                                     
                                     let depth = self.frames.len();
                                     self.frames.push(frame);
                                     self.run_loop(depth)?;
+                                    
+                                    // Copy modified locals back to caller (include shares caller's symbol table)
+                                    if let Some(included_frame) = self.frames.pop() {
+                                        if caller_frame_idx < self.frames.len() {
+                                            self.frames[caller_frame_idx].locals = included_frame.locals;
+                                        }
+                                    }
                                     
                                     if let Some(ret) = self.last_return_value {
                                         self.operand_stack.push(ret);
@@ -3734,8 +3781,9 @@ impl VM {
                                     if include_type == 8 || include_type == 64 {
                                         return Err(VmError::RuntimeError(format!("Require failed: {}", e)));
                                     } else {
-                                        // Warning
-                                        println!("Warning: include({}): failed to open stream: {}", path_str, e);
+                                        // TODO: Emit proper PHP warning instead of println
+                                        #[cfg(debug_assertions)]
+                                        eprintln!("Warning: include({}): failed to open stream: {}", path_str, e);
                                         let false_val = self.arena.alloc(Val::Bool(false));
                                         self.operand_stack.push(false_val);
                                     }
@@ -3749,7 +3797,9 @@ impl VM {
                     if let Some(handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(*handle);
                     } else {
-                        println!("Warning: Undefined variable");
+                        // TODO: Emit proper PHP warning for undefined variable
+                        #[cfg(debug_assertions)]
+                        eprintln!("Warning: Undefined variable");
                         let null = self.arena.alloc(Val::Null);
                         self.operand_stack.push(null);
                     }
@@ -3769,7 +3819,9 @@ impl VM {
                     if let Some(handle) = frame.locals.get(&sym) {
                         self.operand_stack.push(*handle);
                     } else {
-                        println!("Warning: Undefined variable");
+                        // TODO: Emit proper PHP warning for undefined variable
+                        #[cfg(debug_assertions)]
+                        eprintln!("Warning: Undefined variable");
                         let null = self.arena.alloc(Val::Null);
                         frame.locals.insert(sym, null);
                         self.operand_stack.push(null);
