@@ -6,7 +6,7 @@ use crate::core::value::{Symbol, Val, Handle, Visibility};
 use crate::core::interner::Interner;
 use crate::vm::engine::VM;
 use crate::compiler::chunk::UserFunc;
-use crate::builtins::{string, array, class, variable};
+use crate::builtins::{string, array, class, variable, function};
 
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 
@@ -72,6 +72,9 @@ impl EngineContext {
         functions.insert(b"get_called_class".to_vec(), class::php_get_called_class as NativeHandler);
         functions.insert(b"gettype".to_vec(), variable::php_gettype as NativeHandler);
         functions.insert(b"var_export".to_vec(), variable::php_var_export as NativeHandler);
+        functions.insert(b"func_get_args".to_vec(), function::php_func_get_args as NativeHandler);
+        functions.insert(b"func_num_args".to_vec(), function::php_func_num_args as NativeHandler);
+        functions.insert(b"func_get_arg".to_vec(), function::php_func_get_arg as NativeHandler);
 
         Self {
             functions,
