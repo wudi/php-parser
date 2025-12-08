@@ -1,12 +1,13 @@
-use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, CastKind};
+use php_parser::ast::{Expr, Stmt, BinaryOp, AssignOp, UnaryOp, StmtId, ClassMember, CastKind, MagicConstKind};
 use php_parser::lexer::token::{Token, TokenKind};
 use crate::compiler::chunk::{CodeChunk, UserFunc, CatchEntry, FuncParam};
 use crate::vm::opcode::OpCode;
-use crate::core::value::{Val, Visibility};
+use crate::core::value::{Val, Visibility, Symbol};
 use crate::core::interner::Interner;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 
 struct LoopInfo {
     break_jumps: Vec<usize>,
@@ -19,6 +20,12 @@ pub struct Emitter<'src> {
     interner: &'src mut Interner,
     loop_stack: Vec<LoopInfo>,
     is_generator: bool,
+    // Context for magic constants
+    file_path: Option<String>,
+    current_class: Option<Symbol>,
+    current_trait: Option<Symbol>,
+    current_function: Option<Symbol>,
+    current_namespace: Option<Symbol>,
 }
 
 impl<'src> Emitter<'src> {
@@ -29,7 +36,18 @@ impl<'src> Emitter<'src> {
             interner,
             loop_stack: Vec::new(),
             is_generator: false,
+            file_path: None,
+            current_class: None,
+            current_trait: None,
+            current_function: None,
+            current_namespace: None,
         }
+    }
+    
+    /// Create an emitter with a file path for accurate __FILE__ and __DIR__
+    pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
+        self.file_path = Some(path.into());
+        self
     }
 
     fn get_visibility(&self, modifiers: &[Token]) -> Visibility {
@@ -81,8 +99,21 @@ impl<'src> Emitter<'src> {
                         });
                     }
 
-                    // 2. Create emitter
+                    // 2. Create emitter with inherited context
                     let mut method_emitter = Emitter::new(self.source, self.interner);
+                    method_emitter.file_path = self.file_path.clone();
+                    method_emitter.current_class = Some(class_sym);
+                    method_emitter.current_namespace = self.current_namespace;
+                    
+                    // Build method name after creating method_emitter to avoid borrow issues
+                    let method_name_full = {
+                        let class_name = method_emitter.interner.lookup(class_sym).unwrap_or(b"");
+                        let mut full = class_name.to_vec();
+                        full.extend_from_slice(b"::");
+                        full.extend_from_slice(method_name_str);
+                        method_emitter.interner.intern(&full)
+                    };
+                    method_emitter.current_function = Some(method_name_full);
                     
                     // 3. Process params
                     let mut param_syms = Vec::new();
@@ -397,8 +428,11 @@ impl<'src> Emitter<'src> {
                     });
                 }
 
-                // 2. Create emitter
+                // 2. Create emitter with inherited context
                 let mut func_emitter = Emitter::new(self.source, self.interner);
+                func_emitter.file_path = self.file_path.clone();
+                func_emitter.current_function = Some(func_sym);
+                func_emitter.current_namespace = self.current_namespace;
                 
                 // 3. Process params using func_emitter
                 let mut param_syms = Vec::new();
@@ -469,7 +503,11 @@ impl<'src> Emitter<'src> {
                     }
                 }
                 
+                // Track class context while emitting members
+                let prev_class = self.current_class;
+                self.current_class = Some(class_sym);
                 self.emit_members(class_sym, members);
+                self.current_class = prev_class;
             }
             Stmt::Interface { name, members, extends, .. } => {
                 let name_str = self.get_text(name.span);
@@ -483,7 +521,10 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::AddInterface(sym, interface_sym));
                 }
                 
+                let prev_class = self.current_class;
+                self.current_class = Some(sym);
                 self.emit_members(sym, members);
+                self.current_class = prev_class;
             }
             Stmt::Trait { name, members, .. } => {
                 let name_str = self.get_text(name.span);
@@ -491,7 +532,10 @@ impl<'src> Emitter<'src> {
                 
                 self.chunk.code.push(OpCode::DefTrait(sym));
                 
+                let prev_trait = self.current_trait;
+                self.current_trait = Some(sym);
                 self.emit_members(sym, members);
+                self.current_trait = prev_trait;
             }
 
             Stmt::While { condition, body, .. } => {
@@ -1378,8 +1422,13 @@ impl<'src> Emitter<'src> {
                     });
                 }
 
-                // 2. Create emitter
+                // 2. Create emitter with inherited context (closures inherit context)
+                let closure_sym = self.interner.intern(b"{closure}");
                 let mut func_emitter = Emitter::new(self.source, self.interner);
+                func_emitter.file_path = self.file_path.clone();
+                func_emitter.current_class = self.current_class;
+                func_emitter.current_function = Some(closure_sym);
+                func_emitter.current_namespace = self.current_namespace;
                 
                 // 3. Process params
                 let mut param_syms = Vec::new();
@@ -2114,6 +2163,117 @@ impl<'src> Emitter<'src> {
                     _ => {} // TODO: Other targets
                 }
             }
+            Expr::MagicConst { kind, span, .. } => {
+                // Handle magic constants like __DIR__, __FILE__, etc.
+                let value = match kind {
+                    MagicConstKind::Dir => {
+                        // __DIR__ returns the directory of the current file
+                        if let Some(ref path) = self.file_path {
+                            if let Some(parent) = Path::new(path).parent() {
+                                let dir_str = parent.to_string_lossy();
+                                Val::String(Rc::new(dir_str.as_bytes().to_vec()))
+                            } else {
+                                Val::String(Rc::new(b".".to_vec()))
+                            }
+                        } else {
+                            // No file path tracked, return current directory
+                            Val::String(Rc::new(b".".to_vec()))
+                        }
+                    }
+                    MagicConstKind::File => {
+                        // __FILE__ returns the full path of the current file
+                        if let Some(ref path) = self.file_path {
+                            Val::String(Rc::new(path.as_bytes().to_vec()))
+                        } else {
+                            // No file path tracked, return empty string
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Line => {
+                        // __LINE__ returns the current line number
+                        let line = self.get_line_number(span.start);
+                        Val::Int(line)
+                    }
+                    MagicConstKind::Class => {
+                        // __CLASS__ returns the class name (or empty if not in a class)
+                        if let Some(class_sym) = self.current_class {
+                            if let Some(class_name) = self.interner.lookup(class_sym) {
+                                Val::String(Rc::new(class_name.to_vec()))
+                            } else {
+                                Val::String(Rc::new(Vec::new()))
+                            }
+                        } else {
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Trait => {
+                        // __TRAIT__ returns the trait name
+                        if let Some(trait_sym) = self.current_trait {
+                            if let Some(trait_name) = self.interner.lookup(trait_sym) {
+                                Val::String(Rc::new(trait_name.to_vec()))
+                            } else {
+                                Val::String(Rc::new(Vec::new()))
+                            }
+                        } else {
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Method => {
+                        // __METHOD__ returns Class::method or just method
+                        if let Some(func_sym) = self.current_function {
+                            if let Some(func_name) = self.interner.lookup(func_sym) {
+                                Val::String(Rc::new(func_name.to_vec()))
+                            } else {
+                                Val::String(Rc::new(Vec::new()))
+                            }
+                        } else {
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Function => {
+                        // __FUNCTION__ returns the function name (without class)
+                        if let Some(func_sym) = self.current_function {
+                            if let Some(func_name) = self.interner.lookup(func_sym) {
+                                // Strip class prefix if present (Class::method -> method)
+                                let name_str = func_name;
+                                if let Some(pos) = name_str.iter().position(|&b| b == b':') {
+                                    if pos + 1 < name_str.len() && name_str[pos + 1] == b':' {
+                                        // Found ::, return part after it
+                                        Val::String(Rc::new(name_str[pos + 2..].to_vec()))
+                                    } else {
+                                        Val::String(Rc::new(name_str.to_vec()))
+                                    }
+                                } else {
+                                    Val::String(Rc::new(name_str.to_vec()))
+                                }
+                            } else {
+                                Val::String(Rc::new(Vec::new()))
+                            }
+                        } else {
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Namespace => {
+                        // __NAMESPACE__ returns the namespace name
+                        if let Some(ns_sym) = self.current_namespace {
+                            if let Some(ns_name) = self.interner.lookup(ns_sym) {
+                                Val::String(Rc::new(ns_name.to_vec()))
+                            } else {
+                                Val::String(Rc::new(Vec::new()))
+                            }
+                        } else {
+                            Val::String(Rc::new(Vec::new()))
+                        }
+                    }
+                    MagicConstKind::Property => {
+                        // __PROPERTY__ (PHP 8.3+) - not commonly used yet
+                        // Would need property context tracking
+                        Val::String(Rc::new(Vec::new()))
+                    }
+                };
+                let idx = self.add_constant(value);
+                self.chunk.code.push(OpCode::Const(idx as u16));
+            }
             _ => {}
         }
     }
@@ -2167,5 +2327,19 @@ impl<'src> Emitter<'src> {
     
     fn get_text(&self, span: php_parser::span::Span) -> &'src [u8] {
         &self.source[span.start..span.end]
+    }
+    
+    /// Calculate line number from byte offset (1-indexed)
+    fn get_line_number(&self, offset: usize) -> i64 {
+        let mut line = 1i64;
+        for (i, &byte) in self.source.iter().enumerate() {
+            if i >= offset {
+                break;
+            }
+            if byte == b'\n' {
+                line += 1;
+            }
+        }
+        line
     }
 }
