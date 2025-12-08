@@ -74,16 +74,28 @@ pub trait OutputWriter {
     }
 }
 
-#[derive(Default)]
-pub struct StdoutWriter;
+/// Buffered stdout writer to avoid excessive syscalls
+pub struct StdoutWriter {
+    stdout: io::Stdout,
+}
+
+impl Default for StdoutWriter {
+    fn default() -> Self {
+        Self {
+            stdout: io::stdout(),
+        }
+    }
+}
 
 impl OutputWriter for StdoutWriter {
     fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        let mut stdout = io::stdout();
-        stdout
+        self.stdout
             .write_all(bytes)
-            .map_err(|e| VmError::RuntimeError(format!("Failed to write output: {}", e)))?;
-        stdout
+            .map_err(|e| VmError::RuntimeError(format!("Failed to write output: {}", e)))
+    }
+    
+    fn flush(&mut self) -> Result<(), VmError> {
+        self.stdout
             .flush()
             .map_err(|e| VmError::RuntimeError(format!("Failed to flush output: {}", e)))
     }
@@ -123,6 +135,12 @@ impl VM {
             output_writer: Box::new(StdoutWriter::default()),
             error_handler: Box::new(StderrErrorHandler::default()),
         }
+    }
+
+    /// Convert bytes to lowercase for case-insensitive lookups
+    #[inline]
+    fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
+        bytes.iter().map(|b| b.to_ascii_lowercase()).collect()
     }
 
     pub fn new_with_context(context: RequestContext) -> Self {
@@ -192,8 +210,16 @@ impl VM {
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         if let Some(def) = self.context.classes.get(&class_name) {
-            if let Some((func, vis, is_static, declaring_class)) = def.methods.get(&method_name) {
-                return Some((func.clone(), *vis, *is_static, *declaring_class));
+            // PHP method names are case-insensitive
+            let search_name = self.context.interner.lookup(method_name)?;
+            let search_lower = Self::to_lowercase_bytes(search_name);
+            
+            for (stored_name, (func, vis, is_static, declaring_class)) in &def.methods {
+                let stored_bytes = self.context.interner.lookup(*stored_name)?;
+                let stored_lower = Self::to_lowercase_bytes(stored_bytes);
+                if search_lower == stored_lower {
+                    return Some((func.clone(), *vis, *is_static, *declaring_class));
+                }
             }
         }
         None
@@ -372,7 +398,6 @@ impl VM {
                 }
             }
             Visibility::Protected => {
-                // Mirrors zendi_check_protected in $PHP_SRC_PATH/Zend/zend_inheritance.c
                 if let Some(scope) = current_scope {
                     if scope == defining_class || self.is_subclass_of(scope, defining_class) {
                         Ok(())
@@ -543,7 +568,8 @@ impl VM {
             } else {
                 // Function call
                 let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
-                if let Some(handler) = self.context.engine.functions.get(name_bytes) {
+                let lower_name = Self::to_lowercase_bytes(name_bytes);
+                if let Some(handler) = self.context.engine.functions.get(&lower_name) {
                     let res = handler(self, &args).map_err(VmError::RuntimeError)?;
                     self.operand_stack.push(res);
                 } else if let Some(func) = self.context.user_functions.get(&name) {
@@ -610,7 +636,7 @@ impl VM {
                         
                         let mut frame = CallFrame::new(magic_func.chunk.clone());
                         frame.func = Some(magic_func.clone());
-                        frame.this = Some(h);
+                        frame.this = Some(handle);  // Pass the object handle, not payload
                         frame.class_scope = Some(magic_class);
                         frame.called_scope = Some(obj_data.class);
                         
@@ -741,6 +767,10 @@ impl VM {
                 }
             }
         }
+        // Flush output when script completes normally
+        if target_depth == 0 {
+            self.output_writer.flush()?;
+        }
         Ok(())
     }
 
@@ -790,13 +820,8 @@ impl VM {
             }
             OpCode::BoolNot => {
                 let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle);
-                let b = match val.value {
-                    Val::Bool(v) => v,
-                    Val::Int(v) => v != 0,
-                    Val::Null => false,
-                    _ => true, 
-                };
+                let val = &self.arena.get(handle).value;
+                let b = val.to_bool();
                 let res_handle = self.arena.alloc(Val::Bool(!b));
                 self.operand_stack.push(res_handle);
             }
@@ -813,13 +838,8 @@ impl VM {
             }
             OpCode::JmpIfFalse(target) => {
                 let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle);
-                let b = match val.value {
-                    Val::Bool(v) => v,
-                    Val::Int(v) => v != 0,
-                    Val::Null => false,
-                    _ => true, 
-                };
+                let val = &self.arena.get(handle).value;
+                let b = val.to_bool();
                 if !b {
                     let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
@@ -827,13 +847,8 @@ impl VM {
             }
             OpCode::JmpIfTrue(target) => {
                 let handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle);
-                let b = match val.value {
-                    Val::Bool(v) => v,
-                    Val::Int(v) => v != 0,
-                    Val::Null => false,
-                    _ => true, 
-                };
+                let val = &self.arena.get(handle).value;
+                let b = val.to_bool();
                 if b {
                     let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
@@ -841,13 +856,8 @@ impl VM {
             }
             OpCode::JmpZEx(target) => {
                 let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle);
-                let b = match val.value {
-                    Val::Bool(v) => v,
-                    Val::Int(v) => v != 0,
-                    Val::Null => false,
-                    _ => true, 
-                };
+                let val = &self.arena.get(handle).value;
+                let b = val.to_bool();
                 if !b {
                     let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
@@ -857,13 +867,8 @@ impl VM {
             }
             OpCode::JmpNzEx(target) => {
                 let handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle);
-                let b = match val.value {
-                    Val::Bool(v) => v,
-                    Val::Int(v) => v != 0,
-                    Val::Null => false,
-                    _ => true, 
-                };
+                let val = &self.arena.get(handle).value;
+                let b = val.to_bool();
                 if b {
                     let frame = self.current_frame_mut()?;
                     frame.ip = target as usize;
@@ -1298,6 +1303,7 @@ impl VM {
                         let s = self.convert_to_string(handle)?;
                         self.write_output(&s)?;
                     }
+                    self.output_writer.flush()?;
                     self.frames.clear();
                     return Ok(());
                 }
@@ -1347,12 +1353,7 @@ impl VM {
                             Val::Null => Val::Int(0),
                             _ => Val::Int(0),
                         },
-                        1 => match val { // Bool
-                            Val::Bool(b) => Val::Bool(b),
-                            Val::Int(i) => Val::Bool(i != 0),
-                            Val::Null => Val::Bool(false),
-                            _ => Val::Bool(true),
-                        },
+                        1 => Val::Bool(val.to_bool()), // Bool
                         2 => match val { // Float
                             Val::Float(f) => Val::Float(f),
                             Val::Int(i) => Val::Float(i as f64),
@@ -1618,14 +1619,15 @@ impl VM {
                 }
 
                 OpCode::Call(arg_count) => {
-                    let mut args = self.collect_call_args(arg_count)?;
+                    let args = self.collect_call_args(arg_count)?;
                     
                     let func_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let func_val = self.arena.get(func_handle);
                     
                     match &func_val.value {
                         Val::String(s) => {
-                            let handler = self.context.engine.functions.get(s.as_slice()).copied();
+                            let lower_name = Self::to_lowercase_bytes(s.as_slice());
+                            let handler = self.context.engine.functions.get(&lower_name).copied();
                             
                             if let Some(handler) = handler {
                                 let result_handle = handler(self, &args).map_err(VmError::RuntimeError)?;
@@ -1705,7 +1707,7 @@ impl VM {
                                 if let Some((method, _, _, _)) = method_lookup {
                                     let mut frame = CallFrame::new(method.chunk.clone());
                                     frame.func = Some(method.clone());
-                                    frame.this = Some(*payload_handle);
+                                    frame.this = Some(func_handle);  // Pass the object handle, not payload
                                     frame.class_scope = Some(class_name);
                                     frame.args = args;
                                     
@@ -1715,6 +1717,79 @@ impl VM {
                                 }
                             } else {
                                 return Err(VmError::RuntimeError("Invalid object payload".into()));
+                            }
+                        }
+                        Val::Array(map) => {
+                            // Array callable: [$obj, 'method'] or ['ClassName', 'method']
+                            if map.len() != 2 {
+                                return Err(VmError::RuntimeError("Callable array must have exactly 2 elements".into()));
+                            }
+                            
+                            let class_or_obj = map.get_index(0).map(|(_, v)| *v)
+                                .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
+                            let method_handle = map.get_index(1).map(|(_, v)| *v)
+                                .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
+                            
+                            let method_name_bytes = self.convert_to_string(method_handle)?;
+                            let method_sym = self.context.interner.intern(&method_name_bytes);
+                            
+                            let class_or_obj_val = &self.arena.get(class_or_obj).value;
+                            
+                            match class_or_obj_val {
+                                Val::String(class_name_bytes) => {
+                                    // Static method call: ['ClassName', 'method']
+                                    let class_sym = self.context.interner.intern(class_name_bytes);
+                                    let class_sym = self.resolve_class_name(class_sym)?;
+                                    
+                                    if let Some((method, visibility, is_static, defining_class)) = self.find_method(class_sym, method_sym) {
+                                        self.check_method_visibility(defining_class, visibility)?;
+                                        
+                                        let mut frame = CallFrame::new(method.chunk.clone());
+                                        frame.func = Some(method.clone());
+                                        frame.class_scope = Some(defining_class);
+                                        frame.called_scope = Some(class_sym);
+                                        frame.args = args;
+                                        
+                                        // Note: Static call with no $this
+                                        if !is_static {
+                                            // PHP allows non-static method call statically in some cases
+                                            // We'll allow it but not set $this
+                                        }
+                                        
+                                        self.frames.push(frame);
+                                    } else {
+                                        let class_str = String::from_utf8_lossy(class_name_bytes);
+                                        let method_str = String::from_utf8_lossy(&method_name_bytes);
+                                        return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, method_str)));
+                                    }
+                                }
+                                Val::Object(payload_handle) => {
+                                    // Instance method call: [$obj, 'method']
+                                    let payload_val = self.arena.get(*payload_handle);
+                                    if let Val::ObjPayload(obj_data) = &payload_val.value {
+                                        let class_name = obj_data.class;
+                                        
+                                        if let Some((method, visibility, _, defining_class)) = self.find_method(class_name, method_sym) {
+                                            self.check_method_visibility(defining_class, visibility)?;
+                                            
+                                            let mut frame = CallFrame::new(method.chunk.clone());
+                                            frame.func = Some(method.clone());
+                                            frame.this = Some(class_or_obj);
+                                            frame.class_scope = Some(defining_class);
+                                            frame.called_scope = Some(class_name);
+                                            frame.args = args;
+                                            
+                                            self.frames.push(frame);
+                                        } else {
+                                            let class_str = String::from_utf8_lossy(self.context.interner.lookup(class_name).unwrap_or(b"?"));
+                                            let method_str = String::from_utf8_lossy(&method_name_bytes);
+                                            return Err(VmError::RuntimeError(format!("Call to undefined method {}::{}", class_str, method_str)));
+                                        }
+                                    } else {
+                                        return Err(VmError::RuntimeError("Invalid object in callable array".into()));
+                                    }
+                                }
+                                _ => return Err(VmError::RuntimeError("First element of callable array must be object or class name".into())),
                             }
                         }
                         _ => return Err(VmError::RuntimeError("Call expects function name or closure".into())),
@@ -3317,7 +3392,7 @@ impl VM {
                 }
                 OpCode::NewDynamic(arg_count) => {
                     // Collect args first
-                    let mut args = self.collect_call_args(arg_count)?;
+                    let args = self.collect_call_args(arg_count)?;
 
                     let class_handle = self.operand_stack.pop().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let class_name = match &self.arena.get(class_handle).value {
@@ -3562,7 +3637,7 @@ impl VM {
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
                         self.check_method_visibility(defined_class, visibility)?;
 
-                        let mut args = self.collect_call_args(arg_count)?;
+                        let args = self.collect_call_args(arg_count)?;
 
                         let obj_handle = self.operand_stack.pop().unwrap();
 
@@ -3583,7 +3658,7 @@ impl VM {
                             // Found __call.
                             
                             // Pop args
-                            let mut args = self.collect_call_args(arg_count)?;
+                            let args = self.collect_call_args(arg_count)?;
                             
                             let obj_handle = self.operand_stack.pop().unwrap();
                             
@@ -5399,7 +5474,7 @@ impl VM {
                         
                         self.check_method_visibility(defined_class, visibility)?;
                         
-                        let mut args = self.collect_call_args(arg_count)?;
+                        let args = self.collect_call_args(arg_count)?;
 
                         let mut frame = CallFrame::new(user_func.chunk.clone());
                         frame.func = Some(user_func.clone());
@@ -5418,7 +5493,7 @@ impl VM {
                             }
                             
                             // Pop args
-                            let mut args = self.collect_call_args(arg_count)?;
+                            let args = self.collect_call_args(arg_count)?;
                             
                             // Create array from args
                             let mut array_map = IndexMap::new();

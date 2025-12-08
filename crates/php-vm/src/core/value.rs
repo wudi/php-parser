@@ -48,6 +48,32 @@ impl PartialEq for Val {
     }
 }
 
+impl Val {
+    /// Convert to boolean following PHP's zend_is_true semantics
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - zend_is_true
+    pub fn to_bool(&self) -> bool {
+        match self {
+            Val::Null => false,
+            Val::Bool(b) => *b,
+            Val::Int(i) => *i != 0,
+            Val::Float(f) => *f != 0.0 && !f.is_nan(),
+            Val::String(s) => {
+                // Empty string or "0" is false
+                if s.is_empty() {
+                    false
+                } else if s.len() == 1 && s[0] == b'0' {
+                    false
+                } else {
+                    true
+                }
+            }
+            Val::Array(arr) => !arr.is_empty(),
+            Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => true,
+            Val::AppendPlaceholder => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ObjectData {
     // Placeholder for object data
