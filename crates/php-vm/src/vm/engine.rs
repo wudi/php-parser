@@ -501,7 +501,8 @@ impl VM {
                 if let Val::ObjPayload(obj_data) = &obj_zval.value {
                     let to_string_magic = self.context.interner.intern(b"__toString");
                     if let Some((magic_func, _, _, magic_class)) = self.find_method(obj_data.class, to_string_magic) {
-                        // Save caller's return value to avoid corruption (Zend allocates per-call zval)
+                        // Save caller's return value ONLY if we're actually calling __toString
+                        // (Zend allocates per-call zval to avoid corruption)
                         let saved_return_value = self.last_return_value.take();
                         
                         let mut frame = CallFrame::new(magic_func.chunk.clone());
@@ -525,6 +526,7 @@ impl VM {
                             _ => Err(VmError::RuntimeError("__toString must return a string".into())),
                         }
                     } else {
+                        // No __toString method - cannot convert
                         let class_name = String::from_utf8_lossy(self.context.interner.lookup(obj_data.class).unwrap_or(b"Unknown"));
                         Err(VmError::RuntimeError(format!("Object of class {} could not be converted to string", class_name)))
                     }
@@ -2070,8 +2072,6 @@ impl VM {
                         _ => return Err(VmError::RuntimeError("Include expects string".into())),
                     };
                     
-                    self.context.included_files.insert(filename.clone());
-                    
                     let source = std::fs::read(&filename).map_err(|e| VmError::RuntimeError(format!("Could not read file {}: {}", filename, e)))?;
                     
                     let arena = bumpalo::Bump::new();
@@ -2086,22 +2086,88 @@ impl VM {
                     let emitter = crate::compiler::emitter::Emitter::new(&source, &mut self.context.interner);
                     let (chunk, _) = emitter.compile(program.statements);
                     
+                    // PHP shares the same symbol_table between caller and included code (Zend VM ref).
+                    // We clone locals, run the include, then copy them back to persist changes.
                     let caller_frame_idx = self.frames.len() - 1;
                     let mut frame = CallFrame::new(Rc::new(chunk));
-                    if caller_frame_idx < self.frames.len() {
-                        frame.locals = self.frames[caller_frame_idx].locals.clone();
+                    
+                    // Include inherits full scope (this, class_scope, called_scope) and symbol table
+                    if let Some(caller) = self.frames.get(caller_frame_idx) {
+                        frame.locals = caller.locals.clone();
+                        frame.this = caller.this;
+                        frame.class_scope = caller.class_scope;
+                        frame.called_scope = caller.called_scope;
                     }
                     
-                    let depth = self.frames.len();
                     self.frames.push(frame);
-                    self.run_loop(depth)?;
+                    let depth = self.frames.len();
                     
-                    // Copy modified locals back to caller (Include shares caller's symbol table)
-                    if let Some(included_frame) = self.frames.pop() {
-                        if caller_frame_idx < self.frames.len() {
-                            self.frames[caller_frame_idx].locals = included_frame.locals;
+                    // Execute the included file (inlining run_loop to capture locals before pop)
+                    let mut include_error = None;
+                    loop {
+                        if self.frames.len() < depth {
+                            break; // Frame was popped by return
+                        }
+                        if self.frames.len() == depth {
+                            let frame = &self.frames[depth - 1];
+                            if frame.ip >= frame.chunk.code.len() {
+                                break; // Frame execution complete
+                            }
+                        }
+                        
+                        // Execute one opcode (mimicking run_loop)
+                        let op = {
+                            let frame = self.current_frame_mut()?;
+                            if frame.ip >= frame.chunk.code.len() {
+                                self.frames.pop();
+                                break;
+                            }
+                            let op = frame.chunk.code[frame.ip].clone();
+                            frame.ip += 1;
+                            op
+                        };
+                        
+                        if let Err(e) = self.execute_opcode(op, depth) {
+                            include_error = Some(e);
+                            break;
                         }
                     }
+                    
+                    // Capture the included frame's final locals before popping
+                    let final_locals = if self.frames.len() >= depth {
+                        Some(self.frames[depth - 1].locals.clone())
+                    } else {
+                        None
+                    };
+                    
+                    // Pop the include frame if it's still on the stack
+                    if self.frames.len() >= depth {
+                        self.frames.pop();
+                    }
+                    
+                    // Copy modified locals back to caller (PHP's shared symbol_table behavior)
+                    if let Some(locals) = final_locals {
+                        if let Some(caller) = self.frames.get_mut(caller_frame_idx) {
+                            caller.locals = locals;
+                        }
+                    }
+                    
+                    // Handle errors
+                    if let Some(err) = include_error {
+                        // On error, return false and DON'T mark as included
+                        self.operand_stack.push(self.arena.alloc(Val::Bool(false)));
+                        return Err(err);
+                    }
+                    
+                    // Mark file as successfully included ONLY after successful execution
+                    self.context.included_files.insert(filename.clone());
+                    
+                    // Push return value: include uses last_return_value if available, else Int(1)
+                    let return_val = self.last_return_value.unwrap_or_else(|| {
+                        self.arena.alloc(Val::Int(1))
+                    });
+                    self.last_return_value = None; // Clear it for next operation
+                    self.operand_stack.push(return_val);
                 }
                 
                 OpCode::InitArray(_size) => {
@@ -3677,7 +3743,7 @@ impl VM {
                         _ => return Err(VmError::RuntimeError("Include type must be int".into())),
                     };
 
-                    // 1 = eval, 2 = include, 8 = require, 16 = include_once, 64 = require_once
+                    // Zend constants (enum, not bit flags): ZEND_EVAL=1, ZEND_INCLUDE=2, ZEND_INCLUDE_ONCE=3, ZEND_REQUIRE=4, ZEND_REQUIRE_ONCE=5
                     
                     if include_type == 1 {
                         // Eval
@@ -3688,8 +3754,7 @@ impl VM {
                         let program = parser.parse_program();
                         
                         if !program.errors.is_empty() {
-                            // Eval error
-                            // In PHP eval returns false on parse error, or throws ParseError in PHP 7+
+                            // Eval error: in PHP 7+ throws ParseError
                             return Err(VmError::RuntimeError(format!("Eval parse errors: {:?}", program.errors)));
                         }
                         
@@ -3698,42 +3763,88 @@ impl VM {
                         
                         let caller_frame_idx = self.frames.len() - 1;
                         let mut frame = CallFrame::new(Rc::new(chunk));
-                        if caller_frame_idx < self.frames.len() {
-                            frame.locals = self.frames[caller_frame_idx].locals.clone();
-                            frame.this = self.frames[caller_frame_idx].this;
-                            frame.class_scope = self.frames[caller_frame_idx].class_scope;
-                            frame.called_scope = self.frames[caller_frame_idx].called_scope;
+                        if let Some(caller) = self.frames.get(caller_frame_idx) {
+                            frame.locals = caller.locals.clone();
+                            frame.this = caller.this;
+                            frame.class_scope = caller.class_scope;
+                            frame.called_scope = caller.called_scope;
                         }
                         
-                        let depth = self.frames.len();
                         self.frames.push(frame);
-                        self.run_loop(depth)?;
+                        let depth = self.frames.len();
                         
-                        // Copy modified locals back to caller (eval shares caller's symbol table)
-                        if let Some(eval_frame) = self.frames.pop() {
-                            if caller_frame_idx < self.frames.len() {
-                                self.frames[caller_frame_idx].locals = eval_frame.locals;
+                        // Execute eval'd code (inline run_loop to capture locals before pop)
+                        let mut eval_error = None;
+                        loop {
+                            if self.frames.len() < depth {
+                                break;
+                            }
+                            if self.frames.len() == depth {
+                                let frame = &self.frames[depth - 1];
+                                if frame.ip >= frame.chunk.code.len() {
+                                    break;
+                                }
+                            }
+                            
+                            let op = {
+                                let frame = self.current_frame_mut()?;
+                                if frame.ip >= frame.chunk.code.len() {
+                                    self.frames.pop();
+                                    break;
+                                }
+                                let op = frame.chunk.code[frame.ip].clone();
+                                frame.ip += 1;
+                                op
+                            };
+                            
+                            if let Err(e) = self.execute_opcode(op, depth) {
+                                eval_error = Some(e);
+                                break;
                             }
                         }
                         
-                        if let Some(ret) = self.last_return_value {
-                            self.operand_stack.push(ret);
+                        // Capture eval frame's final locals before popping
+                        let final_locals = if self.frames.len() >= depth {
+                            Some(self.frames[depth - 1].locals.clone())
                         } else {
-                            let null = self.arena.alloc(Val::Null);
-                            self.operand_stack.push(null);
+                            None
+                        };
+                        
+                        // Pop eval frame if still on stack
+                        if self.frames.len() >= depth {
+                            self.frames.pop();
                         }
                         
+                        // Copy modified locals back to caller (eval shares caller's symbol table)
+                        if let Some(locals) = final_locals {
+                            if let Some(caller) = self.frames.get_mut(caller_frame_idx) {
+                                caller.locals = locals;
+                            }
+                        }
+                        
+                        if let Some(err) = eval_error {
+                            return Err(err);
+                        }
+                        
+                        // Eval returns its explicit return value or null
+                        let return_val = self.last_return_value.unwrap_or_else(|| {
+                            self.arena.alloc(Val::Null)
+                        });
+                        self.last_return_value = None;
+                        self.operand_stack.push(return_val);
+                        
                     } else {
-                        // File include
+                        // File include/require (types 2, 3, 4, 5)
+                        let is_once = include_type == 3 || include_type == 5; // include_once/require_once
+                        let is_require = include_type == 4 || include_type == 5; // require/require_once
+                        
                         let already_included = self.context.included_files.contains(&path_str);
                         
-                        if (include_type == 16 || include_type == 64) && already_included {
-                            // include_once / require_once
+                        if is_once && already_included {
+                            // _once variant already included: return true
                             let true_val = self.arena.alloc(Val::Bool(true));
                             self.operand_stack.push(true_val);
                         } else {
-                            self.context.included_files.insert(path_str.clone());
-                            
                             let source_res = std::fs::read(&path_str);
                             match source_res {
                                 Ok(source) => {
@@ -3751,37 +3862,87 @@ impl VM {
                                     
                                     let caller_frame_idx = self.frames.len() - 1;
                                     let mut frame = CallFrame::new(Rc::new(chunk));
-                                    // Include inherits scope
-                                    if caller_frame_idx < self.frames.len() {
-                                        frame.locals = self.frames[caller_frame_idx].locals.clone();
-                                        frame.this = self.frames[caller_frame_idx].this;
-                                        frame.class_scope = self.frames[caller_frame_idx].class_scope;
-                                        frame.called_scope = self.frames[caller_frame_idx].called_scope;
+                                    // Include inherits full scope
+                                    if let Some(caller) = self.frames.get(caller_frame_idx) {
+                                        frame.locals = caller.locals.clone();
+                                        frame.this = caller.this;
+                                        frame.class_scope = caller.class_scope;
+                                        frame.called_scope = caller.called_scope;
                                     }
                                     
-                                    let depth = self.frames.len();
                                     self.frames.push(frame);
-                                    self.run_loop(depth)?;
+                                    let depth = self.frames.len();
                                     
-                                    // Copy modified locals back to caller (include shares caller's symbol table)
-                                    if let Some(included_frame) = self.frames.pop() {
-                                        if caller_frame_idx < self.frames.len() {
-                                            self.frames[caller_frame_idx].locals = included_frame.locals;
+                                    // Execute included file (inline run_loop to capture locals before pop)
+                                    let mut include_error = None;
+                                    loop {
+                                        if self.frames.len() < depth {
+                                            break;
+                                        }
+                                        if self.frames.len() == depth {
+                                            let frame = &self.frames[depth - 1];
+                                            if frame.ip >= frame.chunk.code.len() {
+                                                break;
+                                            }
+                                        }
+                                        
+                                        let op = {
+                                            let frame = self.current_frame_mut()?;
+                                            if frame.ip >= frame.chunk.code.len() {
+                                                self.frames.pop();
+                                                break;
+                                            }
+                                            let op = frame.chunk.code[frame.ip].clone();
+                                            frame.ip += 1;
+                                            op
+                                        };
+                                        
+                                        if let Err(e) = self.execute_opcode(op, depth) {
+                                            include_error = Some(e);
+                                            break;
                                         }
                                     }
                                     
-                                    if let Some(ret) = self.last_return_value {
-                                        self.operand_stack.push(ret);
+                                    // Capture included frame's final locals before popping
+                                    let final_locals = if self.frames.len() >= depth {
+                                        Some(self.frames[depth - 1].locals.clone())
                                     } else {
-                                        let val = self.arena.alloc(Val::Int(1)); // include returns 1 by default
-                                        self.operand_stack.push(val);
+                                        None
+                                    };
+                                    
+                                    // Pop include frame if still on stack
+                                    if self.frames.len() >= depth {
+                                        self.frames.pop();
                                     }
+                                    
+                                    // Copy modified locals back to caller
+                                    if let Some(locals) = final_locals {
+                                        if let Some(caller) = self.frames.get_mut(caller_frame_idx) {
+                                            caller.locals = locals;
+                                        }
+                                    }
+                                    
+                                    if let Some(err) = include_error {
+                                        return Err(err);
+                                    }
+                                    
+                                    // Mark as successfully included ONLY after execution succeeds (Issue #8 fix)
+                                    if is_once {
+                                        self.context.included_files.insert(path_str.clone());
+                                    }
+                                    
+                                    // Include returns explicit return value or 1
+                                    let return_val = self.last_return_value.unwrap_or_else(|| {
+                                        self.arena.alloc(Val::Int(1))
+                                    });
+                                    self.last_return_value = None;
+                                    self.operand_stack.push(return_val);
                                 },
                                 Err(e) => {
-                                    if include_type == 8 || include_type == 64 {
+                                    if is_require {
                                         return Err(VmError::RuntimeError(format!("Require failed: {}", e)));
                                     } else {
-                                        // TODO: Emit proper PHP warning instead of println
+                                        // TODO: Emit proper PHP warning instead of debug println (Issue #7)
                                         #[cfg(debug_assertions)]
                                         eprintln!("Warning: include({}): failed to open stream: {}", path_str, e);
                                         let false_val = self.arena.alloc(Val::Bool(false));
