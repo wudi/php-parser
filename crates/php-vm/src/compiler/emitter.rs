@@ -438,7 +438,7 @@ impl<'src> Emitter<'src> {
                 
                 self.chunk.code.push(OpCode::DefFunc(func_sym, const_idx as u32));
             }
-            Stmt::Class { name, members, extends, implements, .. } => {
+            Stmt::Class { name, members, extends, implements, attributes, .. } => {
                 let class_name_str = self.get_text(name.span);
                 let class_sym = self.interner.intern(class_name_str);
                 
@@ -455,6 +455,18 @@ impl<'src> Emitter<'src> {
                     let interface_str = self.get_text(interface.span);
                     let interface_sym = self.interner.intern(interface_str);
                     self.chunk.code.push(OpCode::AddInterface(class_sym, interface_sym));
+                }
+                
+                // Check for #[AllowDynamicProperties] attribute
+                for attr_group in *attributes {
+                    for attr in attr_group.attributes {
+                        let attr_name = self.get_text(attr.name.span);
+                        // Check for both fully qualified and simple name
+                        if attr_name == b"AllowDynamicProperties" || attr_name.ends_with(b"\\AllowDynamicProperties") {
+                            self.chunk.code.push(OpCode::AllowDynamicProperties(class_sym));
+                            break;
+                        }
+                    }
                 }
                 
                 self.emit_members(class_sym, members);

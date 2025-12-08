@@ -28,6 +28,7 @@ pub enum ErrorLevel {
     UserNotice,  // E_USER_NOTICE
     UserWarning, // E_USER_WARNING
     UserError,   // E_USER_ERROR
+    Deprecated,  // E_DEPRECATED
 }
 
 pub trait ErrorHandler {
@@ -58,6 +59,7 @@ impl ErrorHandler for StderrErrorHandler {
             ErrorLevel::UserNotice => "User notice",
             ErrorLevel::UserWarning => "User warning",
             ErrorLevel::UserError => "User error",
+            ErrorLevel::Deprecated => "Deprecated",
         };
         // Follow the same pattern as OutputWriter - write to stderr and handle errors gracefully
         let _ = writeln!(self.stderr, "{}: {}", level_str, message);
@@ -489,6 +491,46 @@ impl VM {
         self.frames.last().and_then(|f| f.class_scope)
     }
 
+    /// Check if a class allows dynamic properties
+    /// 
+    /// A class allows dynamic properties if:
+    /// 1. It has the #[AllowDynamicProperties] attribute
+    /// 2. It has __get or __set magic methods
+    /// 3. It's stdClass or __PHP_Incomplete_Class (special cases)
+    fn class_allows_dynamic_properties(&self, class_name: Symbol) -> bool {
+        // Check for #[AllowDynamicProperties] attribute
+        if let Some(class_def) = self.context.classes.get(&class_name) {
+            if class_def.allows_dynamic_properties {
+                return true;
+            }
+        }
+        
+        // Check for magic methods
+        let get_sym = self.context.interner.find(b"__get");
+        let set_sym = self.context.interner.find(b"__set");
+        
+        if let Some(get_sym) = get_sym {
+            if self.find_method(class_name, get_sym).is_some() {
+                return true;
+            }
+        }
+        
+        if let Some(set_sym) = set_sym {
+            if self.find_method(class_name, set_sym).is_some() {
+                return true;
+            }
+        }
+        
+        // Check for special classes
+        if let Some(class_bytes) = self.context.interner.lookup(class_name) {
+            if class_bytes == b"stdClass" || class_bytes == b"__PHP_Incomplete_Class" {
+                return true;
+            }
+        }
+        
+        false
+    }
+
     pub(crate) fn check_prop_visibility(&self, class_name: Symbol, prop_name: Symbol, current_scope: Option<Symbol>) -> Result<(), VmError> {
         let mut current = Some(class_name);
         let mut defined_vis = None;
@@ -532,8 +574,44 @@ impl VM {
                 }
             }
         } else {
-            // Dynamic property, public by default
+            // Dynamic property - check if allowed in PHP 8.2+
+            // Reference: PHP 8.2 deprecated dynamic properties by default
             Ok(())
+        }
+    }
+
+    /// Check if writing a dynamic property should emit a deprecation warning
+    /// Reference: $PHP_SRC_PATH/Zend/zend_object_handlers.c - zend_std_write_property
+    pub(crate) fn check_dynamic_property_write(&mut self, class_name: Symbol, prop_name: Symbol) {
+        // Check if this is truly a dynamic property (not declared in class hierarchy)
+        let mut is_declared = false;
+        let mut current = Some(class_name);
+        
+        while let Some(name) = current {
+            if let Some(def) = self.context.classes.get(&name) {
+                if def.properties.contains_key(&prop_name) {
+                    is_declared = true;
+                    break;
+                }
+                current = def.parent;
+            } else {
+                break;
+            }
+        }
+        
+        if !is_declared && !self.class_allows_dynamic_properties(class_name) {
+            // Emit deprecation warning for dynamic property creation
+            let class_str = self.context.interner.lookup(class_name)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let prop_str = self.context.interner.lookup(prop_name)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            
+            self.error_handler.report(
+                ErrorLevel::Deprecated,
+                &format!("Creation of dynamic property {}::${} is deprecated", class_str, prop_str)
+            );
         }
     }
 
@@ -1748,6 +1826,7 @@ impl VM {
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
+                        allows_dynamic_properties: false,
                     };
                     self.context.classes.insert(name_sym, class_def);
                 }
@@ -3202,6 +3281,7 @@ impl VM {
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
+                        allows_dynamic_properties: false,
                     };
                     self.context.classes.insert(name, class_def);
                 }
@@ -3217,6 +3297,7 @@ impl VM {
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
+                        allows_dynamic_properties: false,
                     };
                     self.context.classes.insert(name, class_def);
                 }
@@ -3232,12 +3313,18 @@ impl VM {
                         properties: IndexMap::new(),
                         constants: HashMap::new(),
                         static_properties: HashMap::new(),
+                        allows_dynamic_properties: false,
                     };
                     self.context.classes.insert(name, class_def);
                 }
                 OpCode::AddInterface(class_name, interface_name) => {
                     if let Some(class_def) = self.context.classes.get_mut(&class_name) {
                         class_def.interfaces.push(interface_name);
+                    }
+                }
+                OpCode::AllowDynamicProperties(class_name) => {
+                    if let Some(class_def) = self.context.classes.get_mut(&class_name) {
+                        class_def.allows_dynamic_properties = true;
                     }
                 }
                 OpCode::UseTrait(class_name, trait_name) => {
@@ -3711,6 +3798,11 @@ impl VM {
                                 return Err(e);
                             }
                             
+                            // Check for dynamic property deprecation (PHP 8.2+)
+                            if !prop_exists {
+                                self.check_dynamic_property_write(class_name, prop_name);
+                            }
+                            
                             let payload_zval = self.arena.get_mut(payload_handle);
                             if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                                 obj_data.properties.insert(prop_name, val_handle);
@@ -3718,6 +3810,11 @@ impl VM {
                             self.operand_stack.push(val_handle);
                         }
                     } else {
+                         // Check for dynamic property deprecation (PHP 8.2+)
+                         if !prop_exists {
+                             self.check_dynamic_property_write(class_name, prop_name);
+                         }
+                         
                          let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                             obj_data.properties.insert(prop_name, val_handle);

@@ -31,6 +31,7 @@ pub struct ClassDef {
     pub properties: IndexMap<Symbol, (Val, Visibility)>, // Default values
     pub constants: HashMap<Symbol, (Val, Visibility)>,
     pub static_properties: HashMap<Symbol, (Val, Visibility)>,
+    pub allows_dynamic_properties: bool, // Set by #[AllowDynamicProperties] attribute
 }
 
 pub struct EngineContext {
