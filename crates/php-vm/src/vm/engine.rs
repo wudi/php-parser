@@ -339,7 +339,9 @@ impl VM {
                         if is_static {
                             // PHP allows calling static non-statically with notices; we allow.
                         } else {
-                            return Err(VmError::RuntimeError("Non-static method called statically".into()));
+                            if call.this_handle.is_none() {
+                                return Err(VmError::RuntimeError("Non-static method called statically".into()));
+                            }
                         }
                     }
 
@@ -5117,8 +5119,18 @@ impl VM {
                     }
 
                     if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
+                        let mut this_handle = None;
                         if !is_static {
-                             return Err(VmError::RuntimeError("Non-static method called statically".into()));
+                             if let Some(current_frame) = self.frames.last() {
+                                 if let Some(th) = current_frame.this {
+                                     if self.is_instance_of(th, defined_class) {
+                                         this_handle = Some(th);
+                                     }
+                                 }
+                             }
+                             if this_handle.is_none() {
+                                 return Err(VmError::RuntimeError("Non-static method called statically".into()));
+                             }
                         }
                         
                         self.check_const_visibility(defined_class, visibility)?;
@@ -5131,7 +5143,7 @@ impl VM {
                         
                         let mut frame = CallFrame::new(user_func.chunk.clone());
                         frame.func = Some(user_func.clone());
-                        frame.this = None;
+                        frame.this = this_handle;
                         frame.class_scope = Some(defined_class);
                         frame.called_scope = Some(resolved_class);
                         
