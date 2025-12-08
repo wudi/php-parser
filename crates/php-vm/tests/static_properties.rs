@@ -64,17 +64,17 @@ fn test_static_properties_basic() {
     let (result, vm) = run_code(src).unwrap();
     
     if let Val::Array(map) = result {
-        assert_eq!(map.len(), 8);
-        assert_eq!(vm.arena.get(*map.get_index(0).unwrap().1).value, Val::Int(10)); // A::$x
-        assert_eq!(vm.arena.get(*map.get_index(1).unwrap().1).value, Val::Int(20)); // A::$y
-        assert_eq!(vm.arena.get(*map.get_index(2).unwrap().1).value, Val::Int(11)); // B::$x
-        assert_eq!(vm.arena.get(*map.get_index(3).unwrap().1).value, Val::Int(20)); // B::$y
+        assert_eq!(map.map.len(), 8);
+        assert_eq!(vm.arena.get(*map.map.get_index(0).unwrap().1).value, Val::Int(10)); // A::$x
+        assert_eq!(vm.arena.get(*map.map.get_index(1).unwrap().1).value, Val::Int(20)); // A::$y
+        assert_eq!(vm.arena.get(*map.map.get_index(2).unwrap().1).value, Val::Int(11)); // B::$x
+        assert_eq!(vm.arena.get(*map.map.get_index(3).unwrap().1).value, Val::Int(20)); // B::$y
         
-        assert_eq!(vm.arena.get(*map.get_index(4).unwrap().1).value, Val::Int(100)); // A::$x = 100
-        assert_eq!(vm.arena.get(*map.get_index(5).unwrap().1).value, Val::Int(11)); // B::$x (unchanged)
+        assert_eq!(vm.arena.get(*map.map.get_index(4).unwrap().1).value, Val::Int(100)); // A::$x = 100
+        assert_eq!(vm.arena.get(*map.map.get_index(5).unwrap().1).value, Val::Int(11)); // B::$x (unchanged)
         
-        assert_eq!(vm.arena.get(*map.get_index(6).unwrap().1).value, Val::Int(200)); // A::$y = 200
-        assert_eq!(vm.arena.get(*map.get_index(7).unwrap().1).value, Val::Int(200)); // B::$y (inherited, so changed)
+        assert_eq!(vm.arena.get(*map.map.get_index(6).unwrap().1).value, Val::Int(200)); // A::$y = 200
+        assert_eq!(vm.arena.get(*map.map.get_index(7).unwrap().1).value, Val::Int(200)); // B::$y (inherited, so changed)
     } else {
         panic!("Expected array");
     }
@@ -113,10 +113,10 @@ fn test_static_properties_visibility() {
     let (result, vm) = run_code(src).unwrap();
     
     if let Val::Array(map) = result {
-        assert_eq!(map.len(), 3);
-        assert_eq!(vm.arena.get(*map.get_index(0).unwrap().1).value, Val::Int(1));
-        assert_eq!(vm.arena.get(*map.get_index(1).unwrap().1).value, Val::Int(2));
-        assert_eq!(vm.arena.get(*map.get_index(2).unwrap().1).value, Val::Int(2));
+        assert_eq!(map.map.len(), 3);
+        assert_eq!(vm.arena.get(*map.map.get_index(0).unwrap().1).value, Val::Int(1));
+        assert_eq!(vm.arena.get(*map.map.get_index(1).unwrap().1).value, Val::Int(2));
+        assert_eq!(vm.arena.get(*map.map.get_index(2).unwrap().1).value, Val::Int(2));
     } else {
         panic!("Expected array");
     }

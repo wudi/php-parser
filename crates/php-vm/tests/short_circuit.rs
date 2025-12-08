@@ -35,7 +35,7 @@ fn get_return_value(vm: &VM) -> Val {
 fn get_array_idx(vm: &VM, val: &Val, idx: i64) -> Val {
     if let Val::Array(arr) = val {
         let key = ArrayKey::Int(idx);
-        let handle = arr.get(&key).expect("Array index not found");
+        let handle = arr.map.get(&key).expect("Array index not found");
         vm.arena.get(*handle).value.clone()
     } else {
         panic!("Not an array");

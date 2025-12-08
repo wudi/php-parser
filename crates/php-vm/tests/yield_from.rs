@@ -46,20 +46,20 @@ fn test_yield_from_array() {
     let val = vm.arena.get(handle).value.clone();
     
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 4);
-        let val_handle = arr.get_index(0).unwrap().1;
+        assert_eq!(arr.map.len(), 4);
+        let val_handle = arr.map.get_index(0).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 1); } else { panic!("Expected Int(1)"); }
         
-        let val_handle = arr.get_index(1).unwrap().1;
+        let val_handle = arr.map.get_index(1).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 2); } else { panic!("Expected Int(2)"); }
         
-        let val_handle = arr.get_index(2).unwrap().1;
+        let val_handle = arr.map.get_index(2).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 3); } else { panic!("Expected Int(3)"); }
         
-        let val_handle = arr.get_index(3).unwrap().1;
+        let val_handle = arr.map.get_index(3).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 4); } else { panic!("Expected Int(4)"); }
     } else {
@@ -113,20 +113,20 @@ fn test_yield_from_generator() {
     let val = vm.arena.get(handle).value.clone();
     
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 4);
-        let val_handle = arr.get_index(0).unwrap().1;
+        assert_eq!(arr.map.len(), 4);
+        let val_handle = arr.map.get_index(0).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 1); } else { panic!("Expected Int(1)"); }
 
-        let val_handle = arr.get_index(1).unwrap().1;
+        let val_handle = arr.map.get_index(1).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 2); } else { panic!("Expected Int(2)"); }
 
-        let val_handle = arr.get_index(2).unwrap().1;
+        let val_handle = arr.map.get_index(2).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 3); } else { panic!("Expected Int(3)"); }
 
-        let val_handle = arr.get_index(3).unwrap().1;
+        let val_handle = arr.map.get_index(3).unwrap().1;
         let val = &vm.arena.get(*val_handle).value;
         if let Val::Int(i) = val { assert_eq!(*i, 42); } else { panic!("Expected Int(42), got {:?}", val); }
     } else {

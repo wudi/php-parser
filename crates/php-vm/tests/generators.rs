@@ -46,7 +46,7 @@ fn test_simple_generator() {
     let val = vm.arena.get(handle).value.clone();
     
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 3);
+        assert_eq!(arr.map.len(), 3);
     } else {
         panic!("Expected array, got {:?}", val);
     }

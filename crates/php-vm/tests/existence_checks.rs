@@ -331,7 +331,7 @@ fn test_get_class_methods() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 2);
+        assert_eq!(arr.map.len(), 2);
     } else {
         panic!("Expected array, got {:?}", val);
     }

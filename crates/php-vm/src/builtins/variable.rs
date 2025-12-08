@@ -26,8 +26,8 @@ pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 if let Ok(res_handle) = res {
                     let res_val = vm.arena.get(res_handle);
                     if let Val::Array(arr) = &res_val.value {
-                        println!("object({}) ({}) {{", String::from_utf8_lossy(vm.context.interner.lookup(class).unwrap_or(b"")), arr.len());
-                        for (key, val_handle) in arr.iter() {
+                        println!("object({}) ({}) {{", String::from_utf8_lossy(vm.context.interner.lookup(class).unwrap_or(b"")), arr.map.len());
+                        for (key, val_handle) in arr.map.iter() {
                             match key {
                                 crate::core::value::ArrayKey::Int(i) => print!("  [{}]=>\n", i),
                                 crate::core::value::ArrayKey::Str(s) => print!("  [\"{}\"]=>\n", String::from_utf8_lossy(s)),
@@ -67,8 +67,8 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
             println!("{}NULL", indent);
         }
         Val::Array(arr) => {
-            println!("{}array({}) {{", indent, arr.len());
-            for (key, val_handle) in arr.iter() {
+            println!("{}array({}) {{", indent, arr.map.len());
+            for (key, val_handle) in arr.map.iter() {
                 match key {
                     crate::core::value::ArrayKey::Int(i) => print!("{}  [{}]=>\n", indent, i),
                     crate::core::value::ArrayKey::Str(s) => print!("{}  [\"{}\"]=>\n", indent, String::from_utf8_lossy(s)),
@@ -156,7 +156,7 @@ fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
         }
         Val::Array(arr) => {
             output.push_str("array (\n");
-            for (key, val_handle) in arr.iter() {
+            for (key, val_handle) in arr.map.iter() {
                 output.push_str(&indent);
                 output.push_str("  ");
                 match key {

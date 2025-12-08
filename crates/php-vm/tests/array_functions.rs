@@ -68,10 +68,10 @@ fn test_array_merge() {
         // So keys order: 'a', 0, 1, 'b'.
         
         // Let's verify count is 4.
-        // Wait, I said assert_eq!(arr.len(), 5) above.
+        // Wait, I said assert_eq!(arr.map.len(), 5) above.
         // 'a' is overwritten, so it's the same key.
         // So count should be 4.
-        assert_eq!(arr.len(), 4);
+        assert_eq!(arr.map.len(), 4);
     } else {
         panic!("Expected array, got {:?}", val);
     }
@@ -86,7 +86,7 @@ fn test_array_keys() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 2);
+        assert_eq!(arr.map.len(), 2);
         // 0 => 'a'
         // 1 => 2
     } else {
@@ -103,7 +103,7 @@ fn test_array_values() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 2);
+        assert_eq!(arr.map.len(), 2);
         // 0 => 1
         // 1 => 3
     } else {

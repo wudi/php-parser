@@ -45,10 +45,10 @@ fn test_foreach_ref_modify() {
     // Expect [11, 12, 13]
     match result {
         Val::Array(map) => {
-            assert_eq!(map.len(), 3);
-            assert_eq!(vm.arena.get(*map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(11));
-            assert_eq!(vm.arena.get(*map.get(&ArrayKey::Int(1)).unwrap()).value, Val::Int(12));
-            assert_eq!(vm.arena.get(*map.get(&ArrayKey::Int(2)).unwrap()).value, Val::Int(13));
+            assert_eq!(map.map.len(), 3);
+            assert_eq!(vm.arena.get(*map.map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(11));
+            assert_eq!(vm.arena.get(*map.map.get(&ArrayKey::Int(1)).unwrap()).value, Val::Int(12));
+            assert_eq!(vm.arena.get(*map.map.get(&ArrayKey::Int(2)).unwrap()).value, Val::Int(13));
         },
         _ => panic!("Expected array, got {:?}", result),
     }
@@ -69,18 +69,18 @@ fn test_foreach_ref_separation() {
     
     match result {
         Val::Array(map) => {
-            let a_handle = *map.get(&ArrayKey::Int(0)).unwrap();
-            let b_handle = *map.get(&ArrayKey::Int(1)).unwrap();
+            let a_handle = *map.map.get(&ArrayKey::Int(0)).unwrap();
+            let b_handle = *map.map.get(&ArrayKey::Int(1)).unwrap();
             
             let a_val = &vm.arena.get(a_handle).value;
             let b_val = &vm.arena.get(b_handle).value;
             
             if let Val::Array(a_map) = a_val {
-                assert_eq!(vm.arena.get(*a_map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(11));
+                assert_eq!(vm.arena.get(*a_map.map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(11));
             } else { panic!("Expected array for $a"); }
             
             if let Val::Array(b_map) = b_val {
-                assert_eq!(vm.arena.get(*b_map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(1));
+                assert_eq!(vm.arena.get(*b_map.map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(1));
             } else { panic!("Expected array for $b"); }
         },
         _ => panic!("Expected array of arrays"),
@@ -100,7 +100,7 @@ fn test_foreach_val_no_modify() {
     // Expect [1, 2]
     match result {
         Val::Array(map) => {
-            assert_eq!(vm.arena.get(*map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(1));
+            assert_eq!(vm.arena.get(*map.map.get(&ArrayKey::Int(0)).unwrap()).value, Val::Int(1));
         },
         _ => panic!("Expected array"),
     }

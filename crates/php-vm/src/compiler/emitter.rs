@@ -840,7 +840,7 @@ impl<'src> Emitter<'src> {
             Expr::Null { .. } => Some(Val::Null),
             Expr::Array { items, .. } => {
                 if items.is_empty() {
-                    Some(Val::Array(indexmap::IndexMap::new().into()))
+                    Some(Val::Array(Rc::new(crate::core::value::ArrayData::new())))
                 } else {
                     None
                 }

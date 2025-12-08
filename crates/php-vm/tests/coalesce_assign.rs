@@ -75,19 +75,19 @@ fn test_coalesce_assign_var() {
     if let Val::Array(arr) = val {
         // Helper to get int value
         let get_int = |idx: usize| -> i64 {
-            let h = *arr.get_index(idx).unwrap().1;
+            let h = *arr.map.get_index(idx).unwrap().1;
             if let Val::Int(i) = vm.arena.get(h).value { i } else { panic!("Expected int at {}", idx) }
         };
         
         // Helper to get bool value
         let get_bool = |idx: usize| -> bool {
-            let h = *arr.get_index(idx).unwrap().1;
+            let h = *arr.map.get_index(idx).unwrap().1;
             if let Val::Bool(b) = vm.arena.get(h).value { b } else { panic!("Expected bool at {}", idx) }
         };
 
         // Helper to get string value
         let get_str = |idx: usize| -> String {
-            let h = *arr.get_index(idx).unwrap().1;
+            let h = *arr.map.get_index(idx).unwrap().1;
             if let Val::String(s) = &vm.arena.get(h).value { String::from_utf8_lossy(s).to_string() } else { panic!("Expected string at {}", idx) }
         };
 

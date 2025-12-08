@@ -42,7 +42,7 @@ fn test_array_assign_cow() {
     let (result, vm) = run_code(src).unwrap();
     match result {
         Val::Array(map) => {
-            let handle = *map.get(&ArrayKey::Int(0)).unwrap();
+            let handle = *map.map.get(&ArrayKey::Int(0)).unwrap();
             let val = vm.arena.get(handle).value.clone();
             assert_eq!(val, Val::Int(2));
         },

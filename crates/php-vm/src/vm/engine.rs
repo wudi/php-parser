@@ -231,45 +231,80 @@ impl VM {
     }
 
     pub fn find_method(&self, class_name: Symbol, method_name: Symbol) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
-        if let Some(def) = self.context.classes.get(&class_name) {
-            if let Some(key) = self.method_lookup_key(method_name) {
-                if let Some(entry) = def.methods.get(&key) {
-                    return Some((
-                        entry.func.clone(),
-                        entry.visibility,
-                        entry.is_static,
-                        entry.declaring_class,
-                    ));
+        // Walk the inheritance chain (class -> parent -> parent -> ...)
+        // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_std_get_method
+        let mut current_class = Some(class_name);
+        
+        while let Some(cls) = current_class {
+            if let Some(def) = self.context.classes.get(&cls) {
+                // Try direct lookup with case-insensitive key
+                if let Some(key) = self.method_lookup_key(method_name) {
+                    if let Some(entry) = def.methods.get(&key) {
+                        return Some((
+                            entry.func.clone(),
+                            entry.visibility,
+                            entry.is_static,
+                            entry.declaring_class,
+                        ));
+                    }
                 }
-            }
 
-            if let Some(search_name) = self.context.interner.lookup(method_name) {
-                let search_lower = Self::to_lowercase_bytes(search_name);
-                for entry in def.methods.values() {
-                    if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
-                        if Self::to_lowercase_bytes(stored_bytes) == search_lower {
-                            return Some((
-                                entry.func.clone(),
-                                entry.visibility,
-                                entry.is_static,
-                                entry.declaring_class,
-                            ));
+                // Fallback: scan all methods with case-insensitive comparison
+                if let Some(search_name) = self.context.interner.lookup(method_name) {
+                    let search_lower = Self::to_lowercase_bytes(search_name);
+                    for entry in def.methods.values() {
+                        if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
+                            if Self::to_lowercase_bytes(stored_bytes) == search_lower {
+                                return Some((
+                                    entry.func.clone(),
+                                    entry.visibility,
+                                    entry.is_static,
+                                    entry.declaring_class,
+                                ));
+                            }
                         }
                     }
                 }
+                
+                // Move up the inheritance chain
+                current_class = def.parent;
+            } else {
+                break;
             }
         }
+        
         None
     }
 
     pub fn collect_methods(&self, class_name: Symbol, caller_scope: Option<Symbol>) -> Vec<Symbol> {
+        // Collect methods from entire inheritance chain
+        // Reference: $PHP_SRC_PATH/Zend/zend_API.c - reflection functions
+        let mut seen = std::collections::HashSet::new();
         let mut visible = Vec::new();
+        let mut current_class = Some(class_name);
 
-        if let Some(def) = self.context.classes.get(&class_name) {
-            for entry in def.methods.values() {
-                if self.method_visible_to(entry.declaring_class, entry.visibility, caller_scope) {
-                    visible.push(entry.name);
+        // Walk from child to parent, tracking which methods we've seen
+        // Child methods override parent methods
+        while let Some(cls) = current_class {
+            if let Some(def) = self.context.classes.get(&cls) {
+                for entry in def.methods.values() {
+                    // Only add if we haven't seen this method name yet (respect overrides)
+                    let lower_name = if let Some(name_bytes) = self.context.interner.lookup(entry.name) {
+                        Self::to_lowercase_bytes(name_bytes)
+                    } else {
+                        continue;
+                    };
+                    
+                    if !seen.contains(&lower_name) {
+                        if self.method_visible_to(entry.declaring_class, entry.visibility, caller_scope) {
+                            visible.push(entry.name);
+                            seen.insert(lower_name);
+                        }
+                    }
                 }
+                current_class = def.parent;
+            } else {
+                break;
             }
         }
 
@@ -367,15 +402,16 @@ impl VM {
     }
 
     fn find_class_constant(&self, start_class: Symbol, const_name: Symbol) -> Result<(Val, Visibility, Symbol), VmError> {
+        // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - constant access
+        // First pass: find the constant anywhere in hierarchy (ignoring visibility)
         let mut current_class = start_class;
+        let mut found: Option<(Val, Visibility, Symbol)> = None;
+        
         loop {
             if let Some(class_def) = self.context.classes.get(&current_class) {
                 if let Some((val, vis)) = class_def.constants.get(&const_name) {
-                    if *vis == Visibility::Private && current_class != start_class {
-                         let const_str = String::from_utf8_lossy(self.context.interner.lookup(const_name).unwrap_or(b"???"));
-                         return Err(VmError::RuntimeError(format!("Undefined class constant {}", const_str)));
-                    }
-                    return Ok((val.clone(), *vis, current_class));
+                    found = Some((val.clone(), *vis, current_class));
+                    break;
                 }
                 if let Some(parent) = class_def.parent {
                     current_class = parent;
@@ -387,20 +423,29 @@ impl VM {
                 return Err(VmError::RuntimeError(format!("Class {} not found", class_str)));
             }
         }
-        let const_str = String::from_utf8_lossy(self.context.interner.lookup(const_name).unwrap_or(b"???"));
-        Err(VmError::RuntimeError(format!("Undefined class constant {}", const_str)))
+        
+        // Second pass: check visibility if found
+        if let Some((val, vis, defining_class)) = found {
+            self.check_const_visibility(defining_class, vis)?;
+            Ok((val, vis, defining_class))
+        } else {
+            let const_str = String::from_utf8_lossy(self.context.interner.lookup(const_name).unwrap_or(b"???"));
+            let class_str = String::from_utf8_lossy(self.context.interner.lookup(start_class).unwrap_or(b"???"));
+            Err(VmError::RuntimeError(format!("Undefined class constant {}::{}", class_str, const_str)))
+        }
     }
 
     fn find_static_prop(&self, start_class: Symbol, prop_name: Symbol) -> Result<(Val, Visibility, Symbol), VmError> {
+        // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - static property access
+        // First pass: find the property anywhere in hierarchy (ignoring visibility)
         let mut current_class = start_class;
+        let mut found: Option<(Val, Visibility, Symbol)> = None;
+        
         loop {
             if let Some(class_def) = self.context.classes.get(&current_class) {
                 if let Some((val, vis)) = class_def.static_properties.get(&prop_name) {
-                    if *vis == Visibility::Private && current_class != start_class {
-                         let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
-                         return Err(VmError::RuntimeError(format!("Undefined static property ${}", prop_str)));
-                    }
-                    return Ok((val.clone(), *vis, current_class));
+                    found = Some((val.clone(), *vis, current_class));
+                    break;
                 }
                 if let Some(parent) = class_def.parent {
                     current_class = parent;
@@ -412,8 +457,41 @@ impl VM {
                 return Err(VmError::RuntimeError(format!("Class {} not found", class_str)));
             }
         }
-        let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
-        Err(VmError::RuntimeError(format!("Undefined static property ${}", prop_str)))
+        
+        // Second pass: check visibility if found
+        if let Some((val, vis, defining_class)) = found {
+            // Check visibility using same logic as instance properties
+            let caller_scope = self.get_current_class();
+            if !self.property_visible_to(defining_class, vis, caller_scope) {
+                let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+                let class_str = String::from_utf8_lossy(self.context.interner.lookup(defining_class).unwrap_or(b"???"));
+                let vis_str = match vis {
+                    Visibility::Private => "private",
+                    Visibility::Protected => "protected",
+                    Visibility::Public => unreachable!(),
+                };
+                return Err(VmError::RuntimeError(format!("Cannot access {} property {}::${}", vis_str, class_str, prop_str)));
+            }
+            Ok((val, vis, defining_class))
+        } else {
+            let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+            let class_str = String::from_utf8_lossy(self.context.interner.lookup(start_class).unwrap_or(b"???"));
+            Err(VmError::RuntimeError(format!("Undefined static property {}::${}", class_str, prop_str)))
+        }
+    }
+    
+    fn property_visible_to(&self, defining_class: Symbol, visibility: Visibility, caller_scope: Option<Symbol>) -> bool {
+        match visibility {
+            Visibility::Public => true,
+            Visibility::Private => caller_scope == Some(defining_class),
+            Visibility::Protected => {
+                if let Some(scope) = caller_scope {
+                    scope == defining_class || self.is_subclass_of(scope, defining_class)
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     fn check_const_visibility(&self, defining_class: Symbol, visibility: Visibility) -> Result<(), VmError> {
@@ -421,21 +499,29 @@ impl VM {
             Visibility::Public => Ok(()),
             Visibility::Private => {
                 let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
-                let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access private constant".into()))?;
+                let scope = frame.class_scope.ok_or_else(|| {
+                    let class_str = String::from_utf8_lossy(self.context.interner.lookup(defining_class).unwrap_or(b"???"));
+                    VmError::RuntimeError(format!("Cannot access private constant from {}::", class_str))
+                })?;
                 if scope == defining_class {
                     Ok(())
                 } else {
-                    Err(VmError::RuntimeError("Cannot access private constant".into()))
+                    let class_str = String::from_utf8_lossy(self.context.interner.lookup(defining_class).unwrap_or(b"???"));
+                    Err(VmError::RuntimeError(format!("Cannot access private constant from {}::", class_str)))
                 }
             }
             Visibility::Protected => {
                 let frame = self.frames.last().ok_or(VmError::RuntimeError("No active frame".into()))?;
-                let scope = frame.class_scope.ok_or(VmError::RuntimeError("Cannot access protected constant".into()))?;
+                let scope = frame.class_scope.ok_or_else(|| {
+                    let class_str = String::from_utf8_lossy(self.context.interner.lookup(defining_class).unwrap_or(b"???"));
+                    VmError::RuntimeError(format!("Cannot access protected constant from {}::", class_str))
+                })?;
                 // Protected members accessible only from defining class or subclasses (one-directional)
                 if scope == defining_class || self.is_subclass_of(scope, defining_class) {
                     Ok(())
                 } else {
-                    Err(VmError::RuntimeError("Cannot access protected constant".into()))
+                    let class_str = String::from_utf8_lossy(self.context.interner.lookup(defining_class).unwrap_or(b"???"));
+                    Err(VmError::RuntimeError(format!("Cannot access protected constant from {}::", class_str)))
                 }
             }
         }
@@ -550,26 +636,32 @@ impl VM {
         }
         
         if let Some(vis) = defined_vis {
+            let defined = defined_class.ok_or_else(|| VmError::RuntimeError("Missing defined class".into()))?;
             match vis {
                 Visibility::Public => Ok(()),
                 Visibility::Private => {
-                    if current_scope == defined_class {
+                    if current_scope == Some(defined) {
                         Ok(())
                     } else {
-                        Err(VmError::RuntimeError(format!("Cannot access private property")))
+                        let class_str = String::from_utf8_lossy(self.context.interner.lookup(defined).unwrap_or(b"???"));
+                        let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+                        Err(VmError::RuntimeError(format!("Cannot access private property {}::${}", class_str, prop_str)))
                     }
                 },
                 Visibility::Protected => {
                     if let Some(scope) = current_scope {
-                        let defined = defined_class.ok_or_else(|| VmError::RuntimeError("Missing defined class".into()))?;
                         // Protected members accessible only from defining class or subclasses (one-directional)
                         if scope == defined || self.is_subclass_of(scope, defined) {
                              Ok(())
                         } else {
-                             Err(VmError::RuntimeError(format!("Cannot access protected property")))
+                             let class_str = String::from_utf8_lossy(self.context.interner.lookup(defined).unwrap_or(b"???"));
+                             let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+                             Err(VmError::RuntimeError(format!("Cannot access protected property {}::${}", class_str, prop_str)))
                         }
                     } else {
-                        Err(VmError::RuntimeError(format!("Cannot access protected property")))
+                        let class_str = String::from_utf8_lossy(self.context.interner.lookup(defined).unwrap_or(b"???"));
+                        let prop_str = String::from_utf8_lossy(self.context.interner.lookup(prop_name).unwrap_or(b"???"));
+                        Err(VmError::RuntimeError(format!("Cannot access protected property {}::${}", class_str, prop_str)))
                     }
                 }
             }
@@ -582,8 +674,30 @@ impl VM {
 
     /// Check if writing a dynamic property should emit a deprecation warning
     /// Reference: $PHP_SRC_PATH/Zend/zend_object_handlers.c - zend_std_write_property
-    pub(crate) fn check_dynamic_property_write(&mut self, class_name: Symbol, prop_name: Symbol) {
-        // Check if this is truly a dynamic property (not declared in class hierarchy)
+    pub(crate) fn check_dynamic_property_write(&mut self, obj_handle: Handle, prop_name: Symbol) -> bool {
+        // Get object data
+        let obj_val = self.arena.get(obj_handle);
+        let payload_handle = if let Val::Object(h) = obj_val.value {
+            h
+        } else {
+            return false; // Not an object
+        };
+        
+        let payload_val = self.arena.get(payload_handle);
+        let obj_data = if let Val::ObjPayload(data) = &payload_val.value {
+            data
+        } else {
+            return false;
+        };
+        
+        let class_name = obj_data.class;
+        
+        // Check if this property is already tracked as dynamic in this instance
+        if obj_data.dynamic_properties.contains(&prop_name) {
+            return false; // Already created, no warning needed
+        }
+        
+        // Check if this is a declared property in the class hierarchy
         let mut is_declared = false;
         let mut current = Some(class_name);
         
@@ -600,7 +714,7 @@ impl VM {
         }
         
         if !is_declared && !self.class_allows_dynamic_properties(class_name) {
-            // Emit deprecation warning for dynamic property creation
+            // This is a new dynamic property creation - emit warning
             let class_str = self.context.interner.lookup(class_name)
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
@@ -612,7 +726,17 @@ impl VM {
                 ErrorLevel::Deprecated,
                 &format!("Creation of dynamic property {}::${} is deprecated", class_str, prop_str)
             );
+            
+            // Mark this property as dynamic in the object instance
+            let payload_val_mut = self.arena.get_mut(payload_handle);
+            if let Val::ObjPayload(ref mut data) = payload_val_mut.value {
+                data.dynamic_properties.insert(prop_name);
+            }
+            
+            return true; // Warning was emitted
         }
+        
+        false
     }
 
     fn is_instance_of(&self, obj_handle: Handle, class_sym: Symbol) -> bool {
@@ -756,6 +880,7 @@ impl VM {
                     class: self.context.interner.intern(b"Generator"),
                     properties: IndexMap::new(),
                     internal: Some(Rc::new(RefCell::new(gen_data))),
+                    dynamic_properties: std::collections::HashSet::new(),
                 };
                 let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
                 let obj_handle = self.arena.alloc(Val::Object(payload_handle));
@@ -836,15 +961,15 @@ impl VM {
                 }
             }
             Val::Array(map) => {
-                if map.len() != 2 {
+                if map.map.len() != 2 {
                     return Err(VmError::RuntimeError("Callable array must have exactly 2 elements".into()));
                 }
 
-                let class_or_obj = map
+                let class_or_obj = map.map
                     .get_index(0)
                     .map(|(_, v)| *v)
                     .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
-                let method_handle = map
+                let method_handle = map.map
                     .get_index(1)
                     .map(|(_, v)| *v)
                     .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
@@ -1716,18 +1841,18 @@ impl VM {
                         },
                         4 => match val { // Array
                             Val::Array(a) => Val::Array(a),
-                            Val::Null => Val::Array(IndexMap::new().into()),
+                            Val::Null => Val::Array(crate::core::value::ArrayData::new().into()),
                             _ => {
                                 let mut map = IndexMap::new();
                                 map.insert(ArrayKey::Int(0), self.arena.alloc(val));
-                                Val::Array(map.into())
+                                Val::Array(crate::core::value::ArrayData::from(map).into())
                             }
                         },
                         5 => match val { // Object
                             Val::Object(h) => Val::Object(h),
                             Val::Array(a) => {
                                 let mut props = IndexMap::new();
-                                for (k, v) in a.iter() {
+                                for (k, v) in a.map.iter() {
                                     let key_sym = match k {
                                         ArrayKey::Int(i) => self.context.interner.intern(i.to_string().as_bytes()),
                                         ArrayKey::Str(s) => self.context.interner.intern(&s),
@@ -1738,6 +1863,7 @@ impl VM {
                                     class: self.context.interner.intern(b"stdClass"),
                                     properties: props,
                                     internal: None,
+                                    dynamic_properties: std::collections::HashSet::new(),
                                 };
                                 let payload = self.arena.alloc(Val::ObjPayload(obj_data));
                                 Val::Object(payload)
@@ -1747,6 +1873,7 @@ impl VM {
                                     class: self.context.interner.intern(b"stdClass"),
                                     properties: IndexMap::new(),
                                     internal: None,
+                                    dynamic_properties: std::collections::HashSet::new(),
                                 };
                                 let payload = self.arena.alloc(Val::ObjPayload(obj_data));
                                 Val::Object(payload)
@@ -1759,6 +1886,7 @@ impl VM {
                                     class: self.context.interner.intern(b"stdClass"),
                                     properties: props,
                                     internal: None,
+                                    dynamic_properties: std::collections::HashSet::new(),
                                 };
                                 let payload = self.arena.alloc(Val::ObjPayload(obj_data));
                                 Val::Object(payload)
@@ -1778,7 +1906,7 @@ impl VM {
                     match val {
                         Val::String(_) => {}
                         Val::Array(map) => {
-                            if map.len() != 2 {
+                            if map.map.len() != 2 {
                                 return Err(VmError::RuntimeError("Callable expects array(class, method)".into()));
                             }
                         }
@@ -1954,6 +2082,7 @@ impl VM {
                         class: closure_class_sym,
                         properties: IndexMap::new(),
                         internal: Some(Rc::new(closure_data)),
+                        dynamic_properties: std::collections::HashSet::new(),
                     };
                     
                     let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
@@ -2043,7 +2172,7 @@ impl VM {
                                     }
                                 }
                             }
-                            let arr_handle = self.arena.alloc(Val::Array(arr.into()));
+                            let arr_handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::from(arr).into()));
                             frame.locals.insert(param.name, arr_handle);
                         }
                     }
@@ -2172,7 +2301,7 @@ impl VM {
                             }
                             
                             if let Val::Array(map) = &self.arena.get(*handle).value {
-                                if let Some((k, v)) = map.get_index(*index) {
+                                if let Some((k, v)) = map.map.get_index(*index) {
                                     let val_handle = *v;
                                     let key_handle = match k {
                                         ArrayKey::Int(i) => self.arena.alloc(Val::Int(*i)),
@@ -2523,7 +2652,7 @@ impl VM {
                 }
                 
                 OpCode::InitArray(_size) => {
-                    let handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
+                    let handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()));
                     self.operand_stack.push(handle);
                 }
 
@@ -2541,7 +2670,7 @@ impl VM {
                     let array_val = &self.arena.get(array_handle).value;
                     match array_val {
                         Val::Array(map) => {
-                            if let Some(val_handle) = map.get(&key) {
+                            if let Some(val_handle) = map.map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
                                 // Emit notice for undefined array key
@@ -2614,7 +2743,7 @@ impl VM {
                         let array_val = &self.arena.get(array_handle).value;
                         match array_val {
                             Val::Array(map) => {
-                                if let Some(val_handle) = map.get(&key) {
+                                if let Some(val_handle) = map.map.get(&key) {
                                     self.arena.get(*val_handle).value.clone()
                                 } else {
                                     Val::Null
@@ -2679,7 +2808,7 @@ impl VM {
 
                     let array_zval = self.arena.get_mut(array_handle);
                     if let Val::Array(map) = &mut array_zval.value {
-                        Rc::make_mut(map).insert(key, val_handle);
+                        Rc::make_mut(map).map.insert(key, val_handle);
                     } else {
                         return Err(VmError::RuntimeError("AddArrayElement expects array".into()));
                     }
@@ -2703,7 +2832,7 @@ impl VM {
                     {
                         let dest_zval = self.arena.get_mut(dest_handle);
                         if matches!(dest_zval.value, Val::Null | Val::Bool(false)) {
-                            dest_zval.value = Val::Array(IndexMap::new().into());
+                            dest_zval.value = Val::Array(crate::core::value::ArrayData::new().into());
                         } else if !matches!(dest_zval.value, Val::Array(_)) {
                             return Err(VmError::RuntimeError("Cannot unpack into non-array".into()));
                         }
@@ -2725,21 +2854,21 @@ impl VM {
                         }
                     };
 
-                    let mut next_key = dest_map
+                    let mut next_key = dest_map.map
                         .keys()
                         .filter_map(|k| if let ArrayKey::Int(i) = k { Some(i) } else { None })
                         .max()
                         .map(|i| i + 1)
                         .unwrap_or(0);
 
-                    for (key, val_handle) in src_map.iter() {
+                    for (key, val_handle) in src_map.map.iter() {
                         match key {
                             ArrayKey::Int(_) => {
-                                Rc::make_mut(dest_map).insert(ArrayKey::Int(next_key), *val_handle);
+                                Rc::make_mut(dest_map).map.insert(ArrayKey::Int(next_key), *val_handle);
                                 next_key += 1;
                             }
                             ArrayKey::Str(s) => {
-                                Rc::make_mut(dest_map).insert(ArrayKey::Str(s.clone()), *val_handle);
+                                Rc::make_mut(dest_map).map.insert(ArrayKey::Str(s.clone()), *val_handle);
                             }
                         }
                     }
@@ -2765,7 +2894,7 @@ impl VM {
                     
                     let array_zval_mut = self.arena.get_mut(array_handle);
                     if let Val::Array(map) = &mut array_zval_mut.value {
-                        Rc::make_mut(map).shift_remove(&key);
+                        Rc::make_mut(map).map.shift_remove(&key);
                     }
                 }
                 OpCode::InArray => {
@@ -2776,7 +2905,7 @@ impl VM {
                     let needle_val = &self.arena.get(needle_handle).value;
                     
                     let found = if let Val::Array(map) = array_val {
-                        map.values().any(|h| {
+                        map.map.values().any(|h| {
                             let v = &self.arena.get(*h).value;
                             v == needle_val 
                         })
@@ -2800,7 +2929,7 @@ impl VM {
                     
                     let array_val = &self.arena.get(array_handle).value;
                     let found = if let Val::Array(map) = array_val {
-                        map.contains_key(&key)
+                        map.map.contains_key(&key)
                     } else {
                         false
                     };
@@ -2866,7 +2995,7 @@ impl VM {
                     
                     match iterable_val {
                         Val::Array(map) => {
-                            let len = map.len();
+                            let len = map.map.len();
                             if len == 0 {
                                 self.operand_stack.pop(); // Pop array
                                 let frame = self.frames.last_mut().unwrap();
@@ -2941,7 +3070,7 @@ impl VM {
                                 Val::Int(i) => i as usize,
                                 _ => return Err(VmError::RuntimeError("Iterator index must be int".into())),
                             };
-                            if idx >= map.len() {
+                            if idx >= map.map.len() {
                                 self.operand_stack.pop(); // Pop Index
                                 self.operand_stack.pop(); // Pop Array
                                 let frame = self.frames.last_mut().unwrap();
@@ -3043,7 +3172,7 @@ impl VM {
                                 Val::Int(i) => i as usize,
                                 _ => return Err(VmError::RuntimeError("Iterator index must be int".into())),
                             };
-                            if let Some((_, val_handle)) = map.get_index(idx) {
+                            if let Some((_, val_handle)) = map.map.get_index(idx) {
                                 let val_h = *val_handle;
                                 let final_handle = if self.arena.get(val_h).is_ref {
                                     let val = self.arena.get(val_h).value.clone();
@@ -3097,7 +3226,7 @@ impl VM {
                     let (needs_upgrade, val_handle) = {
                         let array_zval = self.arena.get(array_handle);
                         if let Val::Array(map) = &array_zval.value {
-                            if let Some((_, h)) = map.get_index(idx) {
+                            if let Some((_, h)) = map.map.get_index(idx) {
                                 let is_ref = self.arena.get(*h).is_ref;
                                 (!is_ref, *h)
                             } else {
@@ -3117,7 +3246,7 @@ impl VM {
                         // Update array
                         let array_zval_mut = self.arena.get_mut(array_handle);
                         if let Val::Array(map) = &mut array_zval_mut.value {
-                             if let Some((_, h_ref)) = Rc::make_mut(map).get_index_mut(idx) {
+                             if let Some((_, h_ref)) = Rc::make_mut(map).map.get_index_mut(idx) {
                                  *h_ref = new_handle;
                              }
                         }
@@ -3142,7 +3271,7 @@ impl VM {
                     
                     let array_val = &self.arena.get(array_handle).value;
                     if let Val::Array(map) = array_val {
-                        if let Some((key, _)) = map.get_index(idx) {
+                        if let Some((key, _)) = map.map.get_index(idx) {
                             let key_val = match key {
                                 ArrayKey::Int(i) => Val::Int(*i),
                                 ArrayKey::Str(s) => Val::String(s.as_ref().clone().into()),
@@ -3161,7 +3290,7 @@ impl VM {
                     let array_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let array_val = &self.arena.get(array_handle).value;
                     let len = match array_val {
-                        Val::Array(map) => map.len(),
+                        Val::Array(map) => map.map.len(),
                         _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
                     };
                     if len == 0 {
@@ -3184,7 +3313,7 @@ impl VM {
                     
                     let array_val = &self.arena.get(array_handle).value;
                     let len = match array_val {
-                        Val::Array(map) => map.len(),
+                        Val::Array(map) => map.map.len(),
                         _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
                     };
                     
@@ -3195,7 +3324,7 @@ impl VM {
                         frame.ip = target as usize;
                     } else {
                         if let Val::Array(map) = array_val {
-                            if let Some((_, val_handle)) = map.get_index(idx) {
+                            if let Some((_, val_handle)) = map.map.get_index(idx) {
                                 self.operand_stack.push(*val_handle);
                             }
                         }
@@ -3207,7 +3336,7 @@ impl VM {
                     let array_handle = self.operand_stack.peek().ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                     let array_val = &self.arena.get(array_handle).value;
                     let len = match array_val {
-                        Val::Array(map) => map.len(),
+                        Val::Array(map) => map.map.len(),
                         _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
                     };
                     if len == 0 {
@@ -3231,7 +3360,7 @@ impl VM {
                     
                     let array_val = &self.arena.get(array_handle).value;
                     let len = match array_val {
-                        Val::Array(map) => map.len(),
+                        Val::Array(map) => map.map.len(),
                         _ => return Err(VmError::RuntimeError("Foreach expects array".into())),
                     };
                     
@@ -3242,7 +3371,7 @@ impl VM {
                         frame.ip = target as usize;
                     } else {
                         if let Val::Array(map) = array_val {
-                            if let Some((_, val_handle)) = map.get_index(idx) {
+                            if let Some((_, val_handle)) = map.map.get_index(idx) {
                                 self.operand_stack.push(*val_handle);
                             }
                         }
@@ -3538,6 +3667,7 @@ impl VM {
                             class: class_name,
                             properties,
                             internal: None,
+                            dynamic_properties: std::collections::HashSet::new(),
                         };
                         
                         let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
@@ -3617,6 +3747,7 @@ impl VM {
                             class: class_name,
                             properties,
                             internal: None,
+                            dynamic_properties: std::collections::HashSet::new(),
                         };
                         
                         let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
@@ -3800,7 +3931,7 @@ impl VM {
                             
                             // Check for dynamic property deprecation (PHP 8.2+)
                             if !prop_exists {
-                                self.check_dynamic_property_write(class_name, prop_name);
+                                self.check_dynamic_property_write(obj_handle, prop_name);
                             }
                             
                             let payload_zval = self.arena.get_mut(payload_handle);
@@ -3812,7 +3943,7 @@ impl VM {
                     } else {
                          // Check for dynamic property deprecation (PHP 8.2+)
                          if !prop_exists {
-                             self.check_dynamic_property_write(class_name, prop_name);
+                             self.check_dynamic_property_write(obj_handle, prop_name);
                          }
                          
                          let payload_zval = self.arena.get_mut(payload_handle);
@@ -3883,7 +4014,7 @@ impl VM {
                             for (i, arg) in args.into_iter().enumerate() {
                                 array_map.insert(ArrayKey::Int(i as i64), arg);
                             }
-                            let args_array_handle = self.arena.alloc(Val::Array(array_map.into()));
+                            let args_array_handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::from(array_map).into()));
                             
                             // Create method name string
                             let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
@@ -4030,7 +4161,7 @@ impl VM {
                         let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"").to_vec();
                         map.insert(ArrayKey::Str(Rc::new(key_bytes)), *handle);
                     }
-                    let arr_handle = self.arena.alloc(Val::Array(map.into()));
+                    let arr_handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::from(map).into()));
                     self.operand_stack.push(arr_handle);
                 }
                 OpCode::IncludeOrEval => {
@@ -4394,7 +4525,7 @@ impl VM {
                     let call = self.pending_calls.last_mut().ok_or(VmError::RuntimeError("No pending call".into()))?;
                     let arr_val = self.arena.get(array_handle);
                     if let Val::Array(map) = &arr_val.value {
-                        for (_, handle) in map.iter() {
+                        for (_, handle) in map.map.iter() {
                             call.args.push(*handle);
                         }
                     } else {
@@ -4431,7 +4562,7 @@ impl VM {
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
-                            if let Some(val_handle) = map.get(&key) {
+                            if let Some(val_handle) = map.map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
                                 let null = self.arena.alloc(Val::Null);
@@ -4458,7 +4589,7 @@ impl VM {
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
                             
-                            if let Some(val_handle) = map.get(&key) {
+                            if let Some(val_handle) = map.map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
                                 let null = self.arena.alloc(Val::Null);
@@ -4486,7 +4617,7 @@ impl VM {
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())), // TODO: proper key conversion
                             };
                             
-                            if let Some(val_handle) = map.get(&key) {
+                            if let Some(val_handle) = map.map.get(&key) {
                                 self.operand_stack.push(*val_handle);
                             } else {
                                 // Emit notice for FetchDimR, but not for isset/empty (FetchDimIs)
@@ -4560,7 +4691,7 @@ impl VM {
                         let container = &self.arena.get(container_handle).value;
                         match container {
                             Val::Null => true,
-                            Val::Array(map) => !map.contains_key(&key),
+                            Val::Array(map) => !map.map.contains_key(&key),
                             _ => return Err(VmError::RuntimeError("Cannot use [] for reading/writing on non-array".into())),
                         }
                     };
@@ -4572,11 +4703,11 @@ impl VM {
                         // 4. Modify container
                         let container = &mut self.arena.get_mut(container_handle).value;
                         if let Val::Null = container {
-                            *container = Val::Array(IndexMap::new().into());
+                            *container = Val::Array(crate::core::value::ArrayData::new().into());
                         }
                         
                         if let Val::Array(map) = container {
-                            Rc::make_mut(map).insert(key, val_handle);
+                            Rc::make_mut(map).map.insert(key, val_handle);
                             self.operand_stack.push(val_handle);
                         } else {
                             // Should not happen due to check above
@@ -4586,7 +4717,7 @@ impl VM {
                         // 5. Get existing value
                         let container = &self.arena.get(container_handle).value;
                         if let Val::Array(map) = container {
-                            let val_handle = map.get(&key).unwrap();
+                            let val_handle = map.map.get(&key).unwrap();
                             self.operand_stack.push(*val_handle);
                         } else {
                              return Err(VmError::RuntimeError("Container is not an array".into()));
@@ -4675,7 +4806,7 @@ impl VM {
                     for (i, handle) in frame.args.iter().enumerate() {
                         map.insert(ArrayKey::Int(i as i64), *handle);
                     }
-                    let handle = self.arena.alloc(Val::Array(map.into()));
+                    let handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::from(map).into()));
                     self.operand_stack.push(handle);
                 }
                 OpCode::InitMethodCall => {
@@ -4775,7 +4906,7 @@ impl VM {
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
                                 Val::String(s) => s.is_empty() || s.as_slice() == b"0",
-                                Val::Array(a) => a.is_empty(),
+                                Val::Array(a) => a.map.is_empty(),
                                 _ => false,
                             }
                         } else {
@@ -4804,7 +4935,7 @@ impl VM {
                                 Val::String(s) => ArrayKey::Str(s.clone()),
                                 _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                             };
-                            map.get(&key).cloned()
+                            map.map.get(&key).cloned()
                         }
                         Val::Object(obj_handle) => {
                             // Property check
@@ -4842,7 +4973,7 @@ impl VM {
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
                                 Val::String(s) => s.is_empty() || s.as_slice() == b"0",
-                                Val::Array(a) => a.is_empty(),
+                                Val::Array(a) => a.map.is_empty(),
                                 _ => false,
                             }
                         } else {
@@ -4907,7 +5038,7 @@ impl VM {
                                 Val::Int(i) => *i == 0,
                                 Val::Float(f) => *f == 0.0,
                                 Val::String(s) => s.is_empty() || s.as_slice() == b"0",
-                                Val::Array(a) => a.is_empty(),
+                                Val::Array(a) => a.map.is_empty(),
                                 _ => false,
                             }
                         } else {
@@ -4962,7 +5093,7 @@ impl VM {
                                 Val::Int(i) => i == 0,
                                 Val::Float(f) => f == 0.0,
                                 Val::String(s) => s.is_empty() || s.as_slice() == b"0",
-                                Val::Array(a) => a.is_empty(),
+                                Val::Array(a) => a.map.is_empty(),
                                 _ => false,
                             }
                         } else {
@@ -5595,7 +5726,7 @@ impl VM {
                     
                     let array_zval = self.arena.get(array_handle);
                     let is_set = if let Val::Array(map) = &array_zval.value {
-                        if let Some(val_handle) = map.get(&key) {
+                        if let Some(val_handle) = map.map.get(&key) {
                             !matches!(self.arena.get(*val_handle).value, Val::Null)
                         } else {
                             false
@@ -5742,7 +5873,7 @@ impl VM {
                             for (i, arg) in args.into_iter().enumerate() {
                                 array_map.insert(ArrayKey::Int(i as i64), arg);
                             }
-                            let args_array_handle = self.arena.alloc(Val::Array(array_map.into()));
+                            let args_array_handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::from(array_map).into()));
                             
                             // Create method name string
                             let method_name_str = self.context.interner.lookup(method_name).expect("Method name should be interned").to_vec();
@@ -6057,8 +6188,8 @@ impl VM {
         // Array + Array = union
         if let (Val::Array(a_arr), Val::Array(b_arr)) = (a_val, b_val) {
             let mut result = (**a_arr).clone();
-            for (k, v) in b_arr.iter() {
-                result.entry(k.clone()).or_insert(*v);
+            for (k, v) in b_arr.map.iter() {
+                result.map.entry(k.clone()).or_insert(*v);
             }
             let res_handle = self.arena.alloc(Val::Array(Rc::new(result)));
             self.operand_stack.push(res_handle);
@@ -6255,7 +6386,7 @@ impl VM {
 
         let array_zval = self.arena.get(array_handle);
         if let Val::Array(map) = &array_zval.value {
-            if let Some(existing_handle) = map.get(&key) {
+            if let Some(existing_handle) = map.map.get(&key) {
                 if self.arena.get(*existing_handle).is_ref {
                     // Update the value pointed to by the reference
                     let new_val = self.arena.get(val_handle).value.clone();
@@ -6284,11 +6415,11 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
             
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(indexmap::IndexMap::new().into());
+                array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
-                Rc::make_mut(map).insert(key, val_handle);
+                Rc::make_mut(map).map.insert(key, val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -6298,11 +6429,11 @@ impl VM {
             let mut new_val = array_zval.value.clone();
             
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(indexmap::IndexMap::new().into());
+                new_val = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
-                Rc::make_mut(map).insert(key, val_handle);
+                Rc::make_mut(map).map.insert(key, val_handle);
             } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -6347,12 +6478,12 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
             
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(indexmap::IndexMap::new().into());
+                array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
-                let map_mut = Rc::make_mut(map);
-                let next_key = Self::compute_next_array_index(map_mut);
+                let map_mut = &mut Rc::make_mut(map).map;
+                let next_key = Self::compute_next_array_index(&map_mut);
                 
                 map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
@@ -6364,12 +6495,12 @@ impl VM {
             let mut new_val = array_zval.value.clone();
             
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(indexmap::IndexMap::new().into());
+                new_val = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
-                let map_mut = Rc::make_mut(map);
-                let next_key = Self::compute_next_array_index(map_mut);
+                let map_mut = &mut Rc::make_mut(map).map;
+                let next_key = Self::compute_next_array_index(&map_mut);
                 
                 map_mut.insert(ArrayKey::Int(next_key), val_handle);
             } else {
@@ -6406,7 +6537,7 @@ impl VM {
                         _ => return Err(VmError::RuntimeError("Invalid array key".into())),
                     };
                     
-                    if let Some(val) = map.get(&key) {
+                    if let Some(val) = map.map.get(&key) {
                         current_handle = *val;
                     } else {
                         // Undefined index: emit notice and return NULL
@@ -6421,15 +6552,34 @@ impl VM {
                         return Ok(self.arena.alloc(Val::Null));
                     }
                 }
-                Val::String(_) => {
-                    // Trying to access string offset
-                    // PHP allows this but we need proper implementation
-                    // For now, treat as undefined and emit notice
-                    self.error_handler.report(
-                        ErrorLevel::Notice,
-                        "Trying to access array offset on value of type string"
-                    );
-                    return Ok(self.arena.alloc(Val::Null));
+                Val::String(s) => {
+                    // String offset access
+                    // Reference: $PHP_SRC_PATH/Zend/zend_operators.c - string offset handlers
+                    let key_val = &self.arena.get(*key_handle).value;
+                    let offset = key_val.to_int();
+                    
+                    let len = s.len() as i64;
+                    
+                    // Handle negative offsets (count from end, PHP 7.1+)
+                    let actual_offset = if offset < 0 {
+                        len + offset
+                    } else {
+                        offset
+                    };
+                    
+                    if actual_offset < 0 || actual_offset >= len {
+                        // Out of bounds
+                        self.error_handler.report(
+                            ErrorLevel::Warning,
+                            &format!("Uninitialized string offset {}", offset)
+                        );
+                        return Ok(self.arena.alloc(Val::String(Rc::new(vec![]))));
+                    }
+                    
+                    // Return single-byte string
+                    let byte = s[actual_offset as usize];
+                    let result = self.arena.alloc(Val::String(Rc::new(vec![byte])));
+                    return Ok(result);
                 }
                 _ => {
                     // Trying to access dim on scalar (non-array, non-string)
@@ -6488,7 +6638,7 @@ impl VM {
             
             // Auto-vivify if needed
             if needs_autovivify {
-                self.arena.get_mut(current_handle).value = Val::Array(indexmap::IndexMap::new().into());
+                self.arena.get_mut(current_handle).value = Val::Array(crate::core::value::ArrayData::new().into());
             }
             
             // Now compute the actual key if it was AppendPlaceholder
@@ -6498,7 +6648,7 @@ impl VM {
                 // Compute next auto-index
                 let current_zval = self.arena.get(current_handle);
                 if let Val::Array(map) = &current_zval.value {
-                    let next_key = Self::compute_next_array_index(map);
+                    let next_key = Self::compute_next_array_index(&map.map);
                     ArrayKey::Int(next_key)
                 } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
@@ -6507,20 +6657,22 @@ impl VM {
             
             if remaining_keys.is_empty() {
                 // We are at the last key - check for existing ref
-                let (existing_handle, is_existing_ref) = {
+                let existing_ref: Option<Handle> = {
                     let current_zval = self.arena.get(current_handle);
                     if let Val::Array(map) = &current_zval.value {
-                        if let Some(h) = map.get(&key) {
-                            (*h, self.arena.get(*h).is_ref)
-                        } else {
-                            (Handle(0), false) // dummy
-                        }
+                        map.map.get(&key).and_then(|&h| {
+                            if self.arena.get(h).is_ref {
+                                Some(h)
+                            } else {
+                                None
+                            }
+                        })
                     } else {
                         return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
                     }
                 };
                 
-                if is_existing_ref && existing_handle.0 != 0 {
+                if let Some(existing_handle) = existing_ref {
                     // Update the ref value
                     let new_val = self.arena.get(val_handle).value.clone();
                     self.arena.get_mut(existing_handle).value = new_val;
@@ -6528,35 +6680,30 @@ impl VM {
                     // Insert new value
                     let current_zval = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval.value {
-                        Rc::make_mut(map).insert(key, val_handle);
+                        Rc::make_mut(map).map.insert(key, val_handle);
                     }
                 }
             } else {
                 // Go deeper - get or create next level
-                let (next_handle, was_created) = {
+                let next_handle_opt: Option<Handle> = {
                     let current_zval = self.arena.get(current_handle);
                     if let Val::Array(map) = &current_zval.value {
-                        if let Some(h) = map.get(&key) {
-                            (*h, false)
-                        } else {
-                            // Mark that we need to create
-                            (Handle(0), true) // dummy handle
-                        }
+                        map.map.get(&key).copied()
                     } else {
                         return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
                     }
                 };
                 
-                let next_handle = if was_created {
+                let next_handle = if let Some(h) = next_handle_opt {
+                    h
+                } else {
                     // Create empty array and insert it
-                    let empty_handle = self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
+                    let empty_handle = self.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()));
                     let current_zval_mut = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval_mut.value {
-                        Rc::make_mut(map).insert(key.clone(), empty_handle);
+                        Rc::make_mut(map).map.insert(key.clone(), empty_handle);
                     }
                     empty_handle
-                } else {
-                    next_handle
                 };
                 
                 let new_next_handle = self.assign_nested_recursive(next_handle, remaining_keys, val_handle)?;
@@ -6565,7 +6712,7 @@ impl VM {
                 if new_next_handle != next_handle {
                     let current_zval = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval.value {
-                        Rc::make_mut(map).insert(key, new_next_handle);
+                        Rc::make_mut(map).map.insert(key, new_next_handle);
                     }
                 }
             }
@@ -6578,15 +6725,15 @@ impl VM {
         let mut new_val = current_zval.value.clone();
         
         if let Val::Null | Val::Bool(false) = new_val {
-            new_val = Val::Array(indexmap::IndexMap::new().into());
+            new_val = Val::Array(crate::core::value::ArrayData::new().into());
         }
         
         if let Val::Array(ref mut map) = new_val {
-            let map_mut = Rc::make_mut(map);
+            let map_mut = &mut Rc::make_mut(map).map;
             // Resolve key
             let key_val = &self.arena.get(key_handle).value;
             let key = if let Val::AppendPlaceholder = key_val {
-                let next_key = Self::compute_next_array_index(map_mut);
+                let next_key = Self::compute_next_array_index(&map_mut);
                 ArrayKey::Int(next_key)
             } else {
                 match key_val {
@@ -6617,7 +6764,7 @@ impl VM {
                     *h
                 } else {
                     // Create empty array
-                    self.arena.alloc(Val::Array(indexmap::IndexMap::new().into()))
+                    self.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()))
                 };
                 
                 let new_next_handle = self.assign_nested_recursive(next_handle, remaining_keys, val_handle)?;
@@ -6704,7 +6851,7 @@ mod tests {
         
         // Let's manually construct stack in VM.
         let mut vm = create_vm();
-        let array_handle = vm.arena.alloc(Val::Array(indexmap::IndexMap::new().into()));
+        let array_handle = vm.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()));
         let key_handle = vm.arena.alloc(Val::Int(0));
         let val_handle = vm.arena.alloc(Val::Int(99));
         
@@ -6724,7 +6871,7 @@ mod tests {
         
         if let Val::Array(map) = &result.value {
             let key = ArrayKey::Int(0);
-            let val = map.get(&key).unwrap();
+            let val = map.map.get(&key).unwrap();
             let val_val = vm.arena.get(*val);
             if let Val::Int(i) = val_val.value {
                 assert_eq!(i, 99);

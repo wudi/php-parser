@@ -32,10 +32,10 @@ fn run_code(src: &str) -> VM {
 
 fn check_array_ints(vm: &VM, val: Val, expected: &[i64]) {
     if let Val::Array(map) = val {
-        assert_eq!(map.len(), expected.len());
+        assert_eq!(map.map.len(), expected.len());
         for (i, &exp) in expected.iter().enumerate() {
             let key = php_vm::core::value::ArrayKey::Int(i as i64);
-            let handle = map.get(&key).expect("Missing key");
+            let handle = map.map.get(&key).expect("Missing key");
             let v = &vm.arena.get(*handle).value;
             assert_eq!(v, &Val::Int(exp), "Index {}", i);
         }

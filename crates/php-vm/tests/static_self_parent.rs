@@ -74,10 +74,10 @@ fn test_static_self_parent() {
     let (result, vm) = run_code(source).unwrap();
 
     if let Val::Array(map) = result {
-        assert_eq!(map.len(), 4);
+        assert_eq!(map.map.len(), 4);
         
         // B::testSelf() -> self::$prop -> B::$prop -> "B_prop"
-        let v0 = vm.arena.get(*map.get_index(0).unwrap().1).value.clone();
+        let v0 = vm.arena.get(*map.map.get_index(0).unwrap().1).value.clone();
         if let Val::String(s) = v0 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "B_prop");
         } else {
@@ -85,7 +85,7 @@ fn test_static_self_parent() {
         }
 
         // B::testParent() -> parent::$prop -> A::$prop -> "A_prop"
-        let v1 = vm.arena.get(*map.get_index(1).unwrap().1).value.clone();
+        let v1 = vm.arena.get(*map.map.get_index(1).unwrap().1).value.clone();
         if let Val::String(s) = v1 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "A_prop");
         } else {
@@ -93,7 +93,7 @@ fn test_static_self_parent() {
         }
 
         // B::testSelfMethod() -> self::getProp() -> A::getProp() -> "A_method"
-        let v2 = vm.arena.get(*map.get_index(2).unwrap().1).value.clone();
+        let v2 = vm.arena.get(*map.map.get_index(2).unwrap().1).value.clone();
         if let Val::String(s) = v2 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "A_method");
         } else {
@@ -101,7 +101,7 @@ fn test_static_self_parent() {
         }
 
         // B::testParentMethod() -> parent::getProp() -> A::getProp() -> "A_method"
-        let v3 = vm.arena.get(*map.get_index(3).unwrap().1).value.clone();
+        let v3 = vm.arena.get(*map.map.get_index(3).unwrap().1).value.clone();
         if let Val::String(s) = v3 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "A_method");
         } else {
@@ -147,10 +147,10 @@ fn test_static_lsb() {
     let (result, vm) = run_code(source).unwrap();
 
     if let Val::Array(map) = result {
-        assert_eq!(map.len(), 4);
+        assert_eq!(map.map.len(), 4);
         
         // A::testStatic() -> static::$prop (A) -> "A_prop"
-        let v0 = vm.arena.get(*map.get_index(0).unwrap().1).value.clone();
+        let v0 = vm.arena.get(*map.map.get_index(0).unwrap().1).value.clone();
         if let Val::String(s) = v0 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "A_prop");
         } else {
@@ -158,7 +158,7 @@ fn test_static_lsb() {
         }
 
         // B::testStatic() -> static::$prop (B) -> "B_prop"
-        let v1 = vm.arena.get(*map.get_index(1).unwrap().1).value.clone();
+        let v1 = vm.arena.get(*map.map.get_index(1).unwrap().1).value.clone();
         if let Val::String(s) = v1 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "B_prop");
         } else {
@@ -166,7 +166,7 @@ fn test_static_lsb() {
         }
 
         // A::testStaticMethod() -> static::getProp() (A) -> "A_method"
-        let v2 = vm.arena.get(*map.get_index(2).unwrap().1).value.clone();
+        let v2 = vm.arena.get(*map.map.get_index(2).unwrap().1).value.clone();
         if let Val::String(s) = v2 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "A_method");
         } else {
@@ -174,7 +174,7 @@ fn test_static_lsb() {
         }
 
         // B::testStaticMethod() -> static::getProp() (B) -> "B_method"
-        let v3 = vm.arena.get(*map.get_index(3).unwrap().1).value.clone();
+        let v3 = vm.arena.get(*map.map.get_index(3).unwrap().1).value.clone();
         if let Val::String(s) = v3 {
             assert_eq!(std::str::from_utf8(&s).unwrap(), "B_method");
         } else {

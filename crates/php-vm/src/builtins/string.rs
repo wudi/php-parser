@@ -66,7 +66,7 @@ pub fn php_implode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     let mut result = Vec::new();
-    for (i, (_, val_handle)) in arr.iter().enumerate() {
+    for (i, (_, val_handle)) in arr.map.iter().enumerate() {
         if i > 0 {
             result.extend_from_slice(&sep);
         }
@@ -129,7 +129,7 @@ pub fn php_explode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let val = vm.arena.alloc(Val::String(current_slice.to_vec().into()));
     result_arr.insert(crate::core::value::ArrayKey::Int(idx), val);
 
-    Ok(vm.arena.alloc(Val::Array(result_arr.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(result_arr).into())))
 }
 
 pub fn php_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {

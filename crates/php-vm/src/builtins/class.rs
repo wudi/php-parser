@@ -28,7 +28,7 @@ pub fn php_get_object_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
                 }
             }
             
-            return Ok(vm.arena.alloc(Val::Array(result_map.into())));
+            return Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(result_map).into())));
         }
     }
     
@@ -342,7 +342,7 @@ pub fn php_get_class_methods(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
             if let Val::ObjPayload(obj_data) = &obj_zval.value {
                 obj_data.class
             } else {
-                return Ok(vm.arena.alloc(Val::Array(IndexMap::new().into())));
+                return Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into())));
             }
         }
         Val::String(s) => {
@@ -365,7 +365,7 @@ pub fn php_get_class_methods(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
         array.insert(ArrayKey::Int(i as i64), val_handle);
     }
     
-    Ok(vm.arena.alloc(Val::Array(array.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(array).into())))
 }
 
 pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -395,7 +395,7 @@ pub fn php_get_class_vars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         array.insert(key, val_handle);
     }
     
-    Ok(vm.arena.alloc(Val::Array(array.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(array).into())))
 }
 
 pub fn php_get_called_class(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {

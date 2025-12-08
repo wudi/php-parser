@@ -44,9 +44,9 @@ fn test_is_functions() {
     let val = vm.arena.get(ret);
     match &val.value {
         php_vm::core::value::Val::Array(arr) => {
-            assert_eq!(arr.len(), 5);
+            assert_eq!(arr.map.len(), 5);
             // Check all are true
-            for (_, handle) in arr.iter() {
+            for (_, handle) in arr.map.iter() {
                 let v = vm.arena.get(*handle);
                 match v.value {
                     php_vm::core::value::Val::Bool(b) => assert!(b),
@@ -76,7 +76,7 @@ fn test_explode() {
     let val = vm.arena.get(ret);
     match &val.value {
         php_vm::core::value::Val::Array(arr) => {
-            assert_eq!(arr.len(), 3);
+            assert_eq!(arr.map.len(), 3);
             // Check elements
             // ...
         },

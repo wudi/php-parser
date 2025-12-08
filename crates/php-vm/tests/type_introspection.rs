@@ -55,7 +55,7 @@ fn test_gettype() {
         // Check values
         // I can't easily check values without iterating and resolving handles.
         // But I can check count.
-        assert_eq!(arr.len(), 7);
+        assert_eq!(arr.map.len(), 7);
     } else {
         panic!("Expected array, got {:?}", val);
     }
@@ -157,7 +157,7 @@ fn test_is_checks() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 26);
+        assert_eq!(arr.map.len(), 26);
     } else {
         panic!("Expected array, got {:?}", val);
     }

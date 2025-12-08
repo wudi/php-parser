@@ -2,6 +2,85 @@ use indexmap::IndexMap;
 use std::rc::Rc;
 use std::any::Any;
 use std::fmt::Debug;
+use std::collections::HashSet;
+
+/// Array metadata for efficient operations
+/// Reference: $PHP_SRC_PATH/Zend/zend_hash.h - HashTable::nNextFreeElement
+#[derive(Debug, Clone)]
+pub struct ArrayData {
+    pub map: IndexMap<ArrayKey, Handle>,
+    pub next_free: i64,  // Cached next auto-increment index (like HashTable::nNextFreeElement)
+}
+
+impl ArrayData {
+    pub fn new() -> Self {
+        Self {
+            map: IndexMap::new(),
+            next_free: 0,
+        }
+    }
+    
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            map: IndexMap::with_capacity(capacity),
+            next_free: 0,
+        }
+    }
+    
+    /// Insert a key-value pair and update next_free if needed
+    /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - _zend_hash_index_add_or_update_i
+    pub fn insert(&mut self, key: ArrayKey, value: Handle) -> Option<Handle> {
+        if let ArrayKey::Int(i) = &key {
+            if *i >= self.next_free {
+                self.next_free = i + 1;
+            }
+        }
+        self.map.insert(key, value)
+    }
+    
+    /// Get the next auto-increment index (O(1))
+    /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
+    pub fn next_index(&self) -> i64 {
+        self.next_free
+    }
+    
+    /// Append a value with auto-incremented key
+    pub fn push(&mut self, value: Handle) {
+        let key = ArrayKey::Int(self.next_free);
+        self.next_free += 1;
+        self.map.insert(key, value);
+    }
+}
+
+impl From<IndexMap<ArrayKey, Handle>> for ArrayData {
+    fn from(map: IndexMap<ArrayKey, Handle>) -> Self {
+        // Compute next_free from existing keys
+        let next_free = map.keys()
+            .filter_map(|k| match k {
+                ArrayKey::Int(i) => Some(*i),
+                ArrayKey::Str(s) => {
+                    // PHP also considers numeric string keys
+                    if let Ok(s_str) = std::str::from_utf8(s) {
+                        s_str.parse::<i64>().ok()
+                    } else {
+                        None
+                    }
+                }
+            })
+            .max()
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        
+        Self { map, next_free }
+    }
+}
+
+impl PartialEq for ArrayData {
+    fn eq(&self, other: &Self) -> bool {
+        self.map == other.map
+        // Don't compare next_free as it's cached metadata
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Handle(pub u32);
@@ -23,7 +102,7 @@ pub enum Val {
     Int(i64),
     Float(f64),
     String(Rc<Vec<u8>>), // PHP strings are byte arrays (COW)
-    Array(Rc<IndexMap<ArrayKey, Handle>>), // Recursive handles (COW)
+    Array(Rc<ArrayData>), // Array with cached metadata (COW)
     Object(Handle),
     ObjPayload(ObjectData),
     Resource(Rc<dyn Any>), // Changed to Rc to support Clone
@@ -67,7 +146,7 @@ impl Val {
                     true
                 }
             }
-            Val::Array(arr) => !arr.is_empty(),
+            Val::Array(arr) => !arr.map.is_empty(),
             Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => true,
             Val::AppendPlaceholder => false,
         }
@@ -85,7 +164,7 @@ impl Val {
                 // Parse numeric string
                 Self::parse_numeric_string(s).0
             }
-            Val::Array(arr) => if arr.is_empty() { 0 } else { 1 },
+            Val::Array(arr) => if arr.map.is_empty() { 0 } else { 1 },
             Val::Object(_) | Val::ObjPayload(_) => 1,
             Val::Resource(_) => 0, // Resources typically convert to their ID
             Val::AppendPlaceholder => 0,
@@ -114,7 +193,7 @@ impl Val {
                     int_val as f64
                 }
             }
-            Val::Array(arr) => if arr.is_empty() { 0.0 } else { 1.0 },
+            Val::Array(arr) => if arr.map.is_empty() { 0.0 } else { 1.0 },
             Val::Object(_) | Val::ObjPayload(_) => 1.0,
             Val::Resource(_) => 0.0,
             Val::AppendPlaceholder => 0.0,
@@ -160,6 +239,7 @@ pub struct ObjectData {
     pub class: Symbol,
     pub properties: IndexMap<Symbol, Handle>,
     pub internal: Option<Rc<dyn Any>>, // For internal classes like Closure
+    pub dynamic_properties: HashSet<Symbol>, // Track which properties are dynamic (created at runtime)
 }
 
 impl PartialEq for ObjectData {

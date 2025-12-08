@@ -24,7 +24,7 @@ pub fn php_func_get_args(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String
         result_array.insert(key, val_handle);
     }
     
-    Ok(vm.arena.alloc(Val::Array(Rc::new(result_array))))
+    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData::from(result_array)))))
 }
 
 /// func_num_args() - Returns the number of arguments passed to the function

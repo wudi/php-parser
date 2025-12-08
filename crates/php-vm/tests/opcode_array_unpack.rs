@@ -55,22 +55,22 @@ fn val_to_json(vm: &VM, handle: Handle) -> String {
         }
         Val::Array(map) => {
             let is_list = map
-                .iter()
+                .map.iter()
                 .enumerate()
-                .all(|(idx, (k, _))| matches!(k, ArrayKey::Int(i) if *i == idx as i64));
+                .all(|(idx, (k, _))| matches!(k, ArrayKey::Int(i) if i == &(idx as i64)));
 
             if is_list {
                 let mut parts = Vec::new();
-                for (_, h) in map.iter() {
+                for (_, h) in map.map.iter() {
                     parts.push(val_to_json(vm, *h));
                 }
                 format!("[{}]", parts.join(","))
             } else {
                 let mut parts = Vec::new();
-                for (k, h) in map.iter() {
+                for (k, h) in map.map.iter() {
                     let key = match k {
                         ArrayKey::Int(i) => i.to_string(),
-                        ArrayKey::Str(s) => format!("\"{}\"", String::from_utf8_lossy(s)),
+                        ArrayKey::Str(s) => format!("\"{}\"", String::from_utf8_lossy(&s)),
                     };
                     parts.push(format!("{}:{}", key, val_to_json(vm, *h)));
                 }

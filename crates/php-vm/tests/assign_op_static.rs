@@ -50,7 +50,7 @@ fn test_assign_op_static_prop() {
     
     if let Val::Array(arr) = val {
         let get_int = |idx: usize| -> i64 {
-            let h = *arr.get_index(idx).unwrap().1;
+            let h = *arr.map.get_index(idx).unwrap().1;
             if let Val::Int(i) = vm.arena.get(h).value { i } else { panic!("Expected int at {}", idx) }
         };
 

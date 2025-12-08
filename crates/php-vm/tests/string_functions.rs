@@ -43,7 +43,7 @@ fn test_substr() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 7);
+        assert_eq!(arr.map.len(), 7);
         // "bcdef"
         // "bcd"
         // "abcd"
@@ -70,7 +70,7 @@ fn test_strpos() {
     
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
-        assert_eq!(arr.len(), 5);
+        assert_eq!(arr.map.len(), 5);
         // 0
         // 3
         // false

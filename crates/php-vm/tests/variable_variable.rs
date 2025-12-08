@@ -46,7 +46,7 @@ fn test_variable_variable() {
     
     if let Val::Array(arr) = val {
         let get_val = |idx: usize| -> Val {
-            let h = *arr.get_index(idx).unwrap().1;
+            let h = *arr.map.get_index(idx).unwrap().1;
             vm.arena.get(h).value.clone()
         };
 

@@ -9,7 +9,7 @@ pub fn php_count(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     
     let val = vm.arena.get(args[0]);
     let count = match &val.value {
-        Val::Array(arr) => arr.len(),
+        Val::Array(arr) => arr.map.len(),
         Val::Null => 0,
         _ => 1,
     };
@@ -25,7 +25,7 @@ pub fn php_array_merge(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         let val = vm.arena.get(*arg_handle);
         match &val.value {
             Val::Array(arr) => {
-                for (key, value_handle) in arr.iter() {
+                for (key, value_handle) in arr.map.iter() {
                     match key {
                         ArrayKey::Int(_) => {
                             new_array.insert(ArrayKey::Int(next_int_key), *value_handle);
@@ -41,7 +41,7 @@ pub fn php_array_merge(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         }
     }
     
-    Ok(vm.arena.alloc(Val::Array(new_array.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(new_array).into())))
 }
 
 pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -55,7 +55,7 @@ pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             Val::Array(arr) => arr,
             _ => return Err("array_keys() expects parameter 1 to be array".into()),
         };
-        arr.keys().cloned().collect()
+        arr.map.keys().cloned().collect()
     };
     
     let mut keys_arr = IndexMap::new();
@@ -71,7 +71,7 @@ pub fn php_array_keys(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         idx += 1;
     }
     
-    Ok(vm.arena.alloc(Val::Array(keys_arr.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(keys_arr).into())))
 }
 
 pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -88,10 +88,10 @@ pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
     let mut values_arr = IndexMap::new();
     let mut idx = 0;
     
-    for (_, value_handle) in arr.iter() {
+    for (_, value_handle) in arr.map.iter() {
         values_arr.insert(ArrayKey::Int(idx), *value_handle);
         idx += 1;
     }
     
-    Ok(vm.arena.alloc(Val::Array(values_arr.into())))
+    Ok(vm.arena.alloc(Val::Array(crate::core::value::ArrayData::from(values_arr).into())))
 }

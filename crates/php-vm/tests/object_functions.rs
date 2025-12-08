@@ -39,7 +39,7 @@ fn test_get_object_vars() {
     
     let res = run_php(src);
     if let Val::Array(map) = res {
-        assert_eq!(map.len(), 2);
+        assert_eq!(map.map.len(), 2);
         // Check keys
         // Note: Keys are ArrayKey::Str(Vec<u8>)
         // We can't easily check exact content without iterating, but len 2 suggests private was filtered.
@@ -66,7 +66,7 @@ fn test_get_object_vars_inside() {
     
     let res = run_php(src);
     if let Val::Array(map) = res {
-        assert_eq!(map.len(), 2); // Should see private $c too?
+        assert_eq!(map.map.len(), 2); // Should see private $c too?
         // Wait, get_object_vars returns accessible properties from the scope where it is called.
         // If called inside getAll(), it is inside Foo, so it should see private $c.
         // Actually, Foo has $a, $b (implicit?), $c.
