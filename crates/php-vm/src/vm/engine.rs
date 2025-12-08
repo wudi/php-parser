@@ -486,31 +486,41 @@ impl VM {
     }
 
     fn execute_pending_call(&mut self, call: PendingCall) -> Result<(), VmError> {
-        if let Some(name) = call.func_name {
-            if let Some(class_name) = call.class_name {
+        let PendingCall {
+            func_name,
+            func_handle: _func_handle,
+            args,
+            is_static: call_is_static,
+            class_name,
+            this_handle: call_this,
+        } = call;
+        if let Some(name) = func_name {
+            if let Some(class_name) = class_name {
                 // Method call
                 let method_lookup = self.find_method(class_name, name);
-                if let Some((method, _vis, is_static, defining_class)) = method_lookup {
-                    if is_static != call.is_static {
+                if let Some((method, visibility, is_static, defining_class)) = method_lookup {
+                    if is_static != call_is_static {
                         if is_static {
                             // PHP allows calling static non-statically with notices; we allow.
                         } else {
-                            if call.this_handle.is_none() {
+                            if call_this.is_none() {
                                 return Err(VmError::RuntimeError("Non-static method called statically".into()));
                             }
                         }
                     }
 
+                    self.check_method_visibility(defining_class, visibility)?;
+
                     let mut frame = CallFrame::new(method.chunk.clone());
                     frame.func = Some(method.clone());
-                    frame.this = call.this_handle;
+                    frame.this = call_this;
                     frame.class_scope = Some(defining_class);
                     frame.called_scope = Some(class_name);
-                    frame.args = call.args.clone();
+                    frame.args = args;
 
                     for (i, param) in method.params.iter().enumerate() {
-                        if i < call.args.len() {
-                            let arg_handle = call.args[i];
+                        if i < frame.args.len() {
+                            let arg_handle = frame.args[i];
                             if param.by_ref {
                                 if !self.arena.get(arg_handle).is_ref {
                                     self.arena.get_mut(arg_handle).is_ref = true;
@@ -534,16 +544,16 @@ impl VM {
                 // Function call
                 let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
                 if let Some(handler) = self.context.engine.functions.get(name_bytes) {
-                    let res = handler(self, &call.args).map_err(VmError::RuntimeError)?;
+                    let res = handler(self, &args).map_err(VmError::RuntimeError)?;
                     self.operand_stack.push(res);
                 } else if let Some(func) = self.context.user_functions.get(&name) {
                     let mut frame = CallFrame::new(func.chunk.clone());
                     frame.func = Some(func.clone());
-                    frame.args = call.args.clone();
+                    frame.args = args;
 
                     for (i, param) in func.params.iter().enumerate() {
-                        if i < call.args.len() {
-                            let arg_handle = call.args[i];
+                        if i < frame.args.len() {
+                            let arg_handle = frame.args[i];
                             if param.by_ref {
                                 if !self.arena.get(arg_handle).is_ref {
                                     self.arena.get_mut(arg_handle).is_ref = true;
@@ -3594,15 +3604,19 @@ impl VM {
                             frame.this = Some(obj_handle);
                             frame.class_scope = Some(magic_class);
                             frame.called_scope = Some(class_name);
+                            let mut frame_args = ArgList::new();
+                            frame_args.push(name_handle);
+                            frame_args.push(args_array_handle);
+                            frame.args = frame_args;
                             
                             // Pass args: $name, $arguments
                             // Param 0: name
                             if let Some(param) = magic_func.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
+                                frame.locals.insert(param.name, frame.args[0]);
                             }
                             // Param 1: arguments
                             if let Some(param) = magic_func.params.get(1) {
-                                frame.locals.insert(param.name, args_array_handle);
+                                frame.locals.insert(param.name, frame.args[1]);
                             }
                             
                             self.frames.push(frame);
@@ -5423,15 +5437,19 @@ impl VM {
                             frame.this = None;
                             frame.class_scope = Some(magic_class);
                             frame.called_scope = Some(resolved_class);
+                            let mut frame_args = ArgList::new();
+                            frame_args.push(name_handle);
+                            frame_args.push(args_array_handle);
+                            frame.args = frame_args;
                             
                             // Pass args: $name, $arguments
                             // Param 0: name
                             if let Some(param) = magic_func.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
+                                frame.locals.insert(param.name, frame.args[0]);
                             }
                             // Param 1: arguments
                             if let Some(param) = magic_func.params.get(1) {
-                                frame.locals.insert(param.name, args_array_handle);
+                                frame.locals.insert(param.name, frame.args[1]);
                             }
                             
                             self.frames.push(frame);

@@ -164,3 +164,76 @@ fn test_static_method_argument_binding() {
         _ => panic!("Expected string result, got {:?}", res_val),
     }
 }
+
+#[test]
+fn test_magic_call_func_get_args_metadata() {
+    let src = b"<?php
+        class Demo {
+            public function __call($name, $arguments) {
+                $args = func_get_args();
+                return func_num_args() . '|' . $args[0] . '|' . count($args[1]) . '|' . $arguments[0] . ',' . $arguments[1];
+            }
+        }
+
+        $d = new Demo();
+        return $d->alpha(10, 20);
+    ";
+
+    let context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(context);
+
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(src);
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let (chunk, _) = emitter.compile(&program.statements);
+
+    let mut vm = VM::new_with_context(request_context);
+    vm.run(Rc::new(chunk)).unwrap();
+
+    let res_handle = vm.last_return_value.expect("Should return value");
+    let res_val = vm.arena.get(res_handle).value.clone();
+
+    match res_val {
+        Val::String(s) => assert_eq!(s.as_slice(), b"2|alpha|2|10,20"),
+        _ => panic!("Expected formatted string result, got {:?}", res_val),
+    }
+}
+
+#[test]
+fn test_magic_call_static_func_get_args_metadata() {
+    let src = b"<?php
+        class DemoStatic {
+            public static function __callStatic($name, $arguments) {
+                $args = func_get_args();
+                return func_num_args() . '|' . $args[0] . '|' . count($args[1]) . '|' . $arguments[0];
+            }
+        }
+
+        return DemoStatic::beta(42);
+    ";
+
+    let context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(context);
+
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(src);
+    let mut parser = Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let (chunk, _) = emitter.compile(&program.statements);
+
+    let mut vm = VM::new_with_context(request_context);
+    vm.run(Rc::new(chunk)).unwrap();
+
+    let res_handle = vm.last_return_value.expect("Should return value");
+    let res_val = vm.arena.get(res_handle).value.clone();
+
+    match res_val {
+        Val::String(s) => assert_eq!(s.as_slice(), b"2|beta|1|42"),
+        _ => panic!("Expected formatted string result, got {:?}", res_val),
+    }
+}
