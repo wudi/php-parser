@@ -8584,7 +8584,7 @@ impl VM {
 
 mod tests {
     use super::*;
-    use crate::builtins::string::{php_str_repeat, php_strlen};
+    use crate::builtins::string::php_strlen;
     use crate::compiler::chunk::{FuncParam, UserFunc};
     use crate::core::value::Symbol;
     use crate::runtime::context::EngineContext;

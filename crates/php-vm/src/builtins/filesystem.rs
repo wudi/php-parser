@@ -1,3 +1,4 @@
+use crate::builtins::exec::{PipeKind, PipeResource};
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use indexmap::IndexMap;
@@ -170,13 +171,19 @@ pub fn php_fclose(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Err("fclose() expects exactly 1 parameter".into());
     }
 
-    let val = vm.arena.get(args[0]);
-    match &val.value {
-        Val::Resource(_) => {
-            // Resource will be dropped when last reference goes away
-            Ok(vm.arena.alloc(Val::Bool(true)))
+    let is_resource = {
+        let val = vm.arena.get(args[0]);
+        match &val.value {
+            Val::Resource(rc) => rc.is::<FileHandle>() || rc.is::<PipeResource>(),
+            _ => false,
         }
-        _ => Err("fclose(): supplied argument is not a valid stream resource".into()),
+    };
+
+    if is_resource {
+        // Resource will be dropped when last reference goes away
+        Ok(vm.arena.alloc(Val::Bool(true)))
+    } else {
+        Err("fclose(): supplied argument is not a valid stream resource".into())
     }
 }
 
@@ -187,34 +194,69 @@ pub fn php_fread(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Err("fread() expects exactly 2 parameters".into());
     }
 
-    let resource_val = vm.arena.get(args[0]);
-    let len_val = vm.arena.get(args[1]);
-
-    let length = match &len_val.value {
-        Val::Int(i) => {
-            if *i < 0 {
-                return Err("fread(): Length must be greater than or equal to zero".into());
+    let length = {
+        let val = vm.arena.get(args[1]);
+        match &val.value {
+            Val::Int(i) => {
+                if *i < 0 {
+                    return Err("fread(): Length must be greater than or equal to zero".into());
+                }
+                *i as usize
             }
-            *i as usize
+            _ => return Err("fread(): Length must be integer".into()),
         }
-        _ => return Err("fread(): Length must be integer".into()),
     };
 
-    if let Val::Resource(rc) = &resource_val.value {
-        if let Some(fh) = rc.downcast_ref::<FileHandle>() {
-            let mut buffer = vec![0u8; length];
-            let bytes_read = fh
-                .file
-                .borrow_mut()
-                .read(&mut buffer)
-                .map_err(|e| format!("fread(): {}", e))?;
+    let resource_rc = {
+        let val = vm.arena.get(args[0]);
+        if let Val::Resource(rc) = &val.value {
+            rc.clone()
+        } else {
+            return Err("fread(): supplied argument is not a valid stream resource".into());
+        }
+    };
 
-            if bytes_read == 0 {
-                *fh.eof.borrow_mut() = true;
+    if let Some(fh) = resource_rc.downcast_ref::<FileHandle>() {
+        let mut buffer = vec![0u8; length];
+        let bytes_read = fh
+            .file
+            .borrow_mut()
+            .read(&mut buffer)
+            .map_err(|e| format!("fread(): {}", e))?;
+
+        if bytes_read == 0 {
+            *fh.eof.borrow_mut() = true;
+        }
+
+        buffer.truncate(bytes_read);
+        return Ok(vm.arena.alloc(Val::String(Rc::new(buffer))));
+    }
+
+    if let Some(pr) = resource_rc.downcast_ref::<PipeResource>() {
+        let mut pipe = pr.pipe.borrow_mut();
+        let result = match &mut *pipe {
+            PipeKind::Stdout(stdout) => {
+                let mut buffer = vec![0u8; length];
+                let bytes_read = stdout
+                    .read(&mut buffer)
+                    .map_err(|e| format!("fread(): {}", e))?;
+                buffer.truncate(bytes_read);
+                Ok(buffer)
             }
+            PipeKind::Stderr(stderr) => {
+                let mut buffer = vec![0u8; length];
+                let bytes_read = stderr
+                    .read(&mut buffer)
+                    .map_err(|e| format!("fread(): {}", e))?;
+                buffer.truncate(bytes_read);
+                Ok(buffer)
+            }
+            _ => Err("fread(): cannot read from this pipe".into()),
+        };
 
-            buffer.truncate(bytes_read);
-            return Ok(vm.arena.alloc(Val::String(Rc::new(buffer))));
+        match result {
+            Ok(buffer) => return Ok(vm.arena.alloc(Val::String(Rc::new(buffer)))),
+            Err(e) => return Err(e),
         }
     }
 
@@ -228,19 +270,20 @@ pub fn php_fwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Err("fwrite() expects at least 2 parameters".into());
     }
 
-    let resource_val = vm.arena.get(args[0]);
-    let data_val = vm.arena.get(args[1]);
-
-    let data = match &data_val.value {
-        Val::String(s) => s.to_vec(),
-        Val::Int(i) => i.to_string().into_bytes(),
-        Val::Float(f) => f.to_string().into_bytes(),
-        _ => return Err("fwrite(): Data must be string or scalar".into()),
+    // Capture arguments first
+    let data = {
+        let val = vm.arena.get(args[1]);
+        match &val.value {
+            Val::String(s) => s.to_vec(),
+            Val::Int(i) => i.to_string().into_bytes(),
+            Val::Float(f) => f.to_string().into_bytes(),
+            _ => return Err("fwrite(): Data must be string or scalar".into()),
+        }
     };
 
     let max_len = if args.len() > 2 {
-        let len_val = vm.arena.get(args[2]);
-        match &len_val.value {
+        let val = vm.arena.get(args[2]);
+        match &val.value {
             Val::Int(i) if *i >= 0 => Some(*i as usize),
             _ => return Err("fwrite(): Length must be non-negative integer".into()),
         }
@@ -248,21 +291,45 @@ pub fn php_fwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         None
     };
 
-    if let Val::Resource(rc) = &resource_val.value {
-        if let Some(fh) = rc.downcast_ref::<FileHandle>() {
+    let resource_rc = {
+        let val = vm.arena.get(args[0]);
+        if let Val::Resource(rc) = &val.value {
+            rc.clone()
+        } else {
+            return Err("fwrite(): supplied argument is not a valid stream resource".into());
+        }
+    };
+
+    if let Some(fh) = resource_rc.downcast_ref::<FileHandle>() {
+        let write_data = if let Some(max) = max_len {
+            &data[..data.len().min(max)]
+        } else {
+            &data
+        };
+
+        let bytes_written = fh
+            .file
+            .borrow_mut()
+            .write(write_data)
+            .map_err(|e| format!("fwrite(): {}", e))?;
+
+        return Ok(vm.arena.alloc(Val::Int(bytes_written as i64)));
+    }
+
+    if let Some(pr) = resource_rc.downcast_ref::<PipeResource>() {
+        let mut pipe = pr.pipe.borrow_mut();
+        if let PipeKind::Stdin(stdin) = &mut *pipe {
             let write_data = if let Some(max) = max_len {
                 &data[..data.len().min(max)]
             } else {
                 &data
             };
-
-            let bytes_written = fh
-                .file
-                .borrow_mut()
+            let bytes_written = stdin
                 .write(write_data)
                 .map_err(|e| format!("fwrite(): {}", e))?;
-
             return Ok(vm.arena.alloc(Val::Int(bytes_written as i64)));
+        } else {
+            return Err("fwrite(): cannot write to this pipe".into());
         }
     }
 

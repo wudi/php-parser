@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, filesystem, function, http, string, variable};
+use crate::builtins::{array, class, exec, filesystem, function, http, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -364,6 +364,37 @@ impl EngineContext {
         functions.insert(
             b"disk_total_space".to_vec(),
             filesystem::php_disk_total_space as NativeHandler,
+        );
+
+        // Execution functions
+        functions.insert(
+            b"escapeshellarg".to_vec(),
+            exec::php_escapeshellarg as NativeHandler,
+        );
+        functions.insert(
+            b"escapeshellcmd".to_vec(),
+            exec::php_escapeshellcmd as NativeHandler,
+        );
+        functions.insert(b"exec".to_vec(), exec::php_exec as NativeHandler);
+        functions.insert(b"passthru".to_vec(), exec::php_passthru as NativeHandler);
+        functions.insert(
+            b"shell_exec".to_vec(),
+            exec::php_shell_exec as NativeHandler,
+        );
+        functions.insert(b"system".to_vec(), exec::php_system as NativeHandler);
+        functions.insert(b"proc_open".to_vec(), exec::php_proc_open as NativeHandler);
+        functions.insert(
+            b"proc_close".to_vec(),
+            exec::php_proc_close as NativeHandler,
+        );
+        functions.insert(
+            b"proc_get_status".to_vec(),
+            exec::php_proc_get_status as NativeHandler,
+        );
+        functions.insert(b"proc_nice".to_vec(), exec::php_proc_nice as NativeHandler);
+        functions.insert(
+            b"proc_terminate".to_vec(),
+            exec::php_proc_terminate as NativeHandler,
         );
 
         Self {
