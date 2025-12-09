@@ -6,7 +6,7 @@ use crate::core::value::{Symbol, Val, Handle, Visibility};
 use crate::core::interner::Interner;
 use crate::vm::engine::VM;
 use crate::compiler::chunk::UserFunc;
-use crate::builtins::{string, array, class, variable, function};
+use crate::builtins::{string, array, class, variable, function, filesystem};
 
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 
@@ -85,6 +85,73 @@ impl EngineContext {
         functions.insert(b"func_get_args".to_vec(), function::php_func_get_args as NativeHandler);
         functions.insert(b"func_num_args".to_vec(), function::php_func_num_args as NativeHandler);
         functions.insert(b"func_get_arg".to_vec(), function::php_func_get_arg as NativeHandler);
+        
+        // Filesystem functions - File I/O
+        functions.insert(b"fopen".to_vec(), filesystem::php_fopen as NativeHandler);
+        functions.insert(b"fclose".to_vec(), filesystem::php_fclose as NativeHandler);
+        functions.insert(b"fread".to_vec(), filesystem::php_fread as NativeHandler);
+        functions.insert(b"fwrite".to_vec(), filesystem::php_fwrite as NativeHandler);
+        functions.insert(b"fputs".to_vec(), filesystem::php_fputs as NativeHandler);
+        functions.insert(b"fgets".to_vec(), filesystem::php_fgets as NativeHandler);
+        functions.insert(b"fgetc".to_vec(), filesystem::php_fgetc as NativeHandler);
+        functions.insert(b"fseek".to_vec(), filesystem::php_fseek as NativeHandler);
+        functions.insert(b"ftell".to_vec(), filesystem::php_ftell as NativeHandler);
+        functions.insert(b"rewind".to_vec(), filesystem::php_rewind as NativeHandler);
+        functions.insert(b"feof".to_vec(), filesystem::php_feof as NativeHandler);
+        functions.insert(b"fflush".to_vec(), filesystem::php_fflush as NativeHandler);
+        
+        // Filesystem functions - File content
+        functions.insert(b"file_get_contents".to_vec(), filesystem::php_file_get_contents as NativeHandler);
+        functions.insert(b"file_put_contents".to_vec(), filesystem::php_file_put_contents as NativeHandler);
+        functions.insert(b"file".to_vec(), filesystem::php_file as NativeHandler);
+        
+        // Filesystem functions - File information
+        functions.insert(b"file_exists".to_vec(), filesystem::php_file_exists as NativeHandler);
+        functions.insert(b"is_file".to_vec(), filesystem::php_is_file as NativeHandler);
+        functions.insert(b"is_dir".to_vec(), filesystem::php_is_dir as NativeHandler);
+        functions.insert(b"is_link".to_vec(), filesystem::php_is_link as NativeHandler);
+        functions.insert(b"filesize".to_vec(), filesystem::php_filesize as NativeHandler);
+        functions.insert(b"is_readable".to_vec(), filesystem::php_is_readable as NativeHandler);
+        functions.insert(b"is_writable".to_vec(), filesystem::php_is_writable as NativeHandler);
+        functions.insert(b"is_writeable".to_vec(), filesystem::php_is_writable as NativeHandler); // Alias
+        functions.insert(b"is_executable".to_vec(), filesystem::php_is_executable as NativeHandler);
+        
+        // Filesystem functions - File metadata
+        functions.insert(b"filemtime".to_vec(), filesystem::php_filemtime as NativeHandler);
+        functions.insert(b"fileatime".to_vec(), filesystem::php_fileatime as NativeHandler);
+        functions.insert(b"filectime".to_vec(), filesystem::php_filectime as NativeHandler);
+        functions.insert(b"fileperms".to_vec(), filesystem::php_fileperms as NativeHandler);
+        functions.insert(b"fileowner".to_vec(), filesystem::php_fileowner as NativeHandler);
+        functions.insert(b"filegroup".to_vec(), filesystem::php_filegroup as NativeHandler);
+        functions.insert(b"stat".to_vec(), filesystem::php_stat as NativeHandler);
+        functions.insert(b"lstat".to_vec(), filesystem::php_lstat as NativeHandler);
+        
+        // Filesystem functions - File operations
+        functions.insert(b"unlink".to_vec(), filesystem::php_unlink as NativeHandler);
+        functions.insert(b"rename".to_vec(), filesystem::php_rename as NativeHandler);
+        functions.insert(b"copy".to_vec(), filesystem::php_copy as NativeHandler);
+        functions.insert(b"touch".to_vec(), filesystem::php_touch as NativeHandler);
+        functions.insert(b"chmod".to_vec(), filesystem::php_chmod as NativeHandler);
+        functions.insert(b"readlink".to_vec(), filesystem::php_readlink as NativeHandler);
+        
+        // Filesystem functions - Directory operations
+        functions.insert(b"mkdir".to_vec(), filesystem::php_mkdir as NativeHandler);
+        functions.insert(b"rmdir".to_vec(), filesystem::php_rmdir as NativeHandler);
+        functions.insert(b"scandir".to_vec(), filesystem::php_scandir as NativeHandler);
+        functions.insert(b"getcwd".to_vec(), filesystem::php_getcwd as NativeHandler);
+        functions.insert(b"chdir".to_vec(), filesystem::php_chdir as NativeHandler);
+        
+        // Filesystem functions - Path operations
+        functions.insert(b"basename".to_vec(), filesystem::php_basename as NativeHandler);
+        functions.insert(b"dirname".to_vec(), filesystem::php_dirname as NativeHandler);
+        functions.insert(b"realpath".to_vec(), filesystem::php_realpath as NativeHandler);
+        
+        // Filesystem functions - Temporary files
+        functions.insert(b"tempnam".to_vec(), filesystem::php_tempnam as NativeHandler);
+        
+        // Filesystem functions - Disk space (stubs)
+        functions.insert(b"disk_free_space".to_vec(), filesystem::php_disk_free_space as NativeHandler);
+        functions.insert(b"disk_total_space".to_vec(), filesystem::php_disk_total_space as NativeHandler);
 
         Self {
             functions,
