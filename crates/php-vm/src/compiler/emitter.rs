@@ -3,7 +3,8 @@ use crate::core::interner::Interner;
 use crate::core::value::{Symbol, Val, Visibility};
 use crate::vm::opcode::OpCode;
 use php_parser::ast::{
-    AssignOp, BinaryOp, CastKind, ClassMember, Expr, MagicConstKind, Stmt, StmtId, UnaryOp,
+    AssignOp, BinaryOp, CastKind, ClassMember, Expr, IncludeKind, MagicConstKind, Stmt, StmtId,
+    UnaryOp,
 };
 use php_parser::lexer::token::{Token, TokenKind};
 use std::cell::RefCell;
@@ -1052,12 +1053,31 @@ impl<'src> Emitter<'src> {
             }
             Expr::String { value, .. } => {
                 let s = if value.len() >= 2 {
-                    &value[1..value.len() - 1]
+                    let first = value[0];
+                    let last = value[value.len() - 1];
+                    if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+                        &value[1..value.len() - 1]
+                    } else {
+                        value
+                    }
                 } else {
                     value
                 };
                 let idx = self.add_constant(Val::String(s.to_vec().into()));
                 self.chunk.code.push(OpCode::Const(idx as u16));
+            }
+            Expr::InterpolatedString { parts, .. } => {
+                if parts.is_empty() {
+                    let idx = self.add_constant(Val::String(Vec::<u8>::new().into()));
+                    self.chunk.code.push(OpCode::Const(idx as u16));
+                } else {
+                    for (i, part) in parts.iter().enumerate() {
+                        self.emit_expr(*part);
+                        if i > 0 {
+                            self.chunk.code.push(OpCode::Concat);
+                        }
+                    }
+                }
             }
             Expr::Boolean { value, .. } => {
                 let idx = self.add_constant(Val::Bool(*value));
@@ -1193,9 +1213,17 @@ impl<'src> Emitter<'src> {
                 let idx = self.add_constant(Val::Int(1));
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
-            Expr::Include { expr, .. } => {
+            Expr::Include { expr, kind, .. } => {
                 self.emit_expr(expr);
-                self.chunk.code.push(OpCode::Include);
+                let include_type = match kind {
+                    IncludeKind::Include => 2,
+                    IncludeKind::IncludeOnce => 3,
+                    IncludeKind::Require => 4,
+                    IncludeKind::RequireOnce => 5,
+                };
+                let idx = self.add_constant(Val::Int(include_type));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+                self.chunk.code.push(OpCode::IncludeOrEval);
             }
             Expr::Unary { op, expr, .. } => {
                 match op {

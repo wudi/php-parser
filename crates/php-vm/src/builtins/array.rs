@@ -106,3 +106,52 @@ pub fn php_array_values(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         crate::core::value::ArrayData::from(values_arr).into(),
     )))
 }
+
+pub fn php_in_array(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("in_array() expects 2 or 3 parameters".into());
+    }
+
+    let needle = vm.arena.get(args[0]).value.clone();
+
+    let haystack = match &vm.arena.get(args[1]).value {
+        Val::Array(arr) => arr,
+        _ => return Err("in_array(): Argument #2 ($haystack) must be of type array".into()),
+    };
+
+    let strict = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_bool()
+    } else {
+        false
+    };
+
+    for (_, value_handle) in haystack.map.iter() {
+        let candidate = vm.arena.get(*value_handle).value.clone();
+        if values_equal(&needle, &candidate, strict) {
+            return Ok(vm.arena.alloc(Val::Bool(true)));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+fn values_equal(a: &Val, b: &Val, strict: bool) -> bool {
+    if strict {
+        return a == b;
+    }
+
+    match (a, b) {
+        (Val::Bool(_), _) | (_, Val::Bool(_)) => a.to_bool() == b.to_bool(),
+        (Val::Int(_), Val::Int(_)) => a == b,
+        (Val::Float(_), Val::Float(_)) => a == b,
+        (Val::Int(_), Val::Float(_)) | (Val::Float(_), Val::Int(_)) => {
+            a.to_float() == b.to_float()
+        }
+        (Val::String(_), Val::String(_)) => a == b,
+        (Val::String(_), Val::Int(_))
+        | (Val::Int(_), Val::String(_))
+        | (Val::String(_), Val::Float(_))
+        | (Val::Float(_), Val::String(_)) => a.to_float() == b.to_float(),
+        _ => a == b,
+    }
+}

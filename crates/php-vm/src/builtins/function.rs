@@ -97,13 +97,49 @@ pub fn php_function_exists(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     }
 
     let name_val = vm.arena.get(args[0]);
-    let name_bytes = match &name_val.value {
-        Val::String(s) => s.as_slice(),
+    let exists = match &name_val.value {
+        Val::String(s) => function_exists_case_insensitive(vm, s.as_slice()),
         _ => {
             return Err("function_exists() expects parameter 1 to be string".to_string());
         }
     };
+    Ok(vm.arena.alloc(Val::Bool(exists)))
+}
 
+/// is_callable() - Verify that the contents of a variable can be called as a function
+pub fn php_is_callable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("is_callable() expects at least 1 parameter, 0 given".to_string());
+    }
+
+    if args.len() > 3 {
+        return Err(format!(
+            "is_callable() expects at most 3 parameters, {} given",
+            args.len()
+        ));
+    }
+
+    let syntax_only = args
+        .get(1)
+        .map(|handle| vm.arena.get(*handle).value.to_bool())
+        .unwrap_or(false);
+
+    let target = vm.arena.get(args[0]);
+    let callable = match &target.value {
+        Val::String(name) => {
+            if syntax_only {
+                !name.is_empty()
+            } else {
+                function_exists_case_insensitive(vm, name.as_slice())
+            }
+        }
+        _ => false,
+    };
+
+    Ok(vm.arena.alloc(Val::Bool(callable)))
+}
+
+fn function_exists_case_insensitive(vm: &VM, name_bytes: &[u8]) -> bool {
     let stripped = if name_bytes.starts_with(b"\\") {
         &name_bytes[1..]
     } else {
@@ -113,26 +149,23 @@ pub fn php_function_exists(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     let lower_name: Vec<u8> = stripped.iter().map(|b| b.to_ascii_lowercase()).collect();
 
     if vm.context.engine.functions.contains_key(&lower_name) {
-        return Ok(vm.arena.alloc(Val::Bool(true)));
+        return true;
     }
 
-    let exists =
-        vm.context
-            .user_functions
-            .keys()
-            .any(|sym| match vm.context.interner.lookup(*sym) {
-                Some(stored) => {
-                    let stored_stripped = if stored.starts_with(b"\\") {
-                        &stored[1..]
-                    } else {
-                        stored
-                    };
-                    stored_stripped.eq_ignore_ascii_case(stripped)
-                }
-                None => false,
-            });
-
-    Ok(vm.arena.alloc(Val::Bool(exists)))
+    vm.context
+        .user_functions
+        .keys()
+        .any(|sym| match vm.context.interner.lookup(*sym) {
+            Some(stored) => {
+                let stored_stripped = if stored.starts_with(b"\\") {
+                    &stored[1..]
+                } else {
+                    stored
+                };
+                stored_stripped.eq_ignore_ascii_case(stripped)
+            }
+            None => false,
+        })
 }
 
 /// extension_loaded() - Find out whether an extension is loaded

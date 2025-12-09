@@ -1,5 +1,7 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
+use std::cmp::Ordering;
+use std::str;
 
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
@@ -288,4 +290,174 @@ pub fn php_strtoupper(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .collect::<Vec<u8>>()
         .into();
     Ok(vm.arena.alloc(Val::String(upper)))
+}
+
+pub fn php_version_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("version_compare() expects 2 or 3 parameters".into());
+    }
+
+    let v1 = read_version_operand(vm, args[0], 1)?;
+    let v2 = read_version_operand(vm, args[1], 2)?;
+
+    let tokens_a = parse_version_tokens(&v1);
+    let tokens_b = parse_version_tokens(&v2);
+    let ordering = compare_version_tokens(&tokens_a, &tokens_b);
+
+    if args.len() == 3 {
+        let op_bytes = match &vm.arena.get(args[2]).value {
+            Val::String(s) => s.clone(),
+            _ => {
+                return Err(
+                    "version_compare(): Argument #3 must be a valid comparison operator".into(),
+                )
+            }
+        };
+
+        let result = evaluate_version_operator(ordering, &op_bytes)?;
+        return Ok(vm.arena.alloc(Val::Bool(result)));
+    }
+
+    let cmp_value = match ordering {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    Ok(vm.arena.alloc(Val::Int(cmp_value)))
+}
+
+#[derive(Clone, Debug)]
+enum VersionPart {
+    Num(i64),
+    Str(Vec<u8>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PartKind {
+    Num,
+    Str,
+}
+
+fn parse_version_tokens(input: &[u8]) -> Vec<VersionPart> {
+    let mut tokens = Vec::new();
+    let mut current = Vec::new();
+    let mut kind: Option<PartKind> = None;
+
+    for &byte in input {
+        if byte.is_ascii_digit() {
+            if !matches!(kind, Some(PartKind::Num)) {
+                flush_current_token(&mut tokens, &mut current, kind);
+                kind = Some(PartKind::Num);
+            }
+            current.push(byte);
+        } else if byte.is_ascii_alphabetic() {
+            if !matches!(kind, Some(PartKind::Str)) {
+                flush_current_token(&mut tokens, &mut current, kind);
+                kind = Some(PartKind::Str);
+            }
+            current.push(byte.to_ascii_lowercase());
+        } else {
+            flush_current_token(&mut tokens, &mut current, kind);
+            kind = None;
+        }
+    }
+
+    flush_current_token(&mut tokens, &mut current, kind);
+
+    if tokens.is_empty() {
+        tokens.push(VersionPart::Num(0));
+    }
+
+    tokens
+}
+
+fn flush_current_token(
+    tokens: &mut Vec<VersionPart>,
+    buffer: &mut Vec<u8>,
+    kind: Option<PartKind>,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+
+    match kind {
+        Some(PartKind::Num) => {
+            let parsed = str::from_utf8(buffer)
+                .ok()
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            tokens.push(VersionPart::Num(parsed));
+        }
+        Some(PartKind::Str) => tokens.push(VersionPart::Str(buffer.clone())),
+        None => {}
+    }
+
+    buffer.clear();
+}
+
+fn compare_version_tokens(a: &[VersionPart], b: &[VersionPart]) -> Ordering {
+    let max_len = a.len().max(b.len());
+    for i in 0..max_len {
+        let part_a = a.get(i).cloned().unwrap_or(VersionPart::Num(0));
+        let part_b = b.get(i).cloned().unwrap_or(VersionPart::Num(0));
+        let ord = compare_part_values(&part_a, &part_b);
+        if ord != Ordering::Equal {
+            return ord;
+        }
+    }
+    Ordering::Equal
+}
+
+fn compare_part_values(a: &VersionPart, b: &VersionPart) -> Ordering {
+    match (a, b) {
+        (VersionPart::Num(x), VersionPart::Num(y)) => x.cmp(y),
+        (VersionPart::Str(x), VersionPart::Str(y)) => x.cmp(y),
+        (VersionPart::Num(_), VersionPart::Str(_)) => Ordering::Greater,
+        (VersionPart::Str(_), VersionPart::Num(_)) => Ordering::Less,
+    }
+}
+
+fn evaluate_version_operator(ordering: Ordering, op_bytes: &[u8]) -> Result<bool, String> {
+    let normalized: Vec<u8> = op_bytes
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect();
+
+    let result = match normalized.as_slice() {
+        b"<" | b"lt" => ordering == Ordering::Less,
+        b"<=" | b"le" => ordering == Ordering::Less || ordering == Ordering::Equal,
+        b">" | b"gt" => ordering == Ordering::Greater,
+        b">=" | b"ge" => ordering == Ordering::Greater || ordering == Ordering::Equal,
+        b"==" | b"=" | b"eq" => ordering == Ordering::Equal,
+        b"!=" | b"<>" | b"ne" => ordering != Ordering::Equal,
+        _ => {
+            return Err("version_compare(): Unknown operator".into());
+        }
+    };
+
+    Ok(result)
+}
+
+fn read_version_operand(vm: &VM, handle: Handle, position: usize) -> Result<Vec<u8>, String> {
+    let val = vm.arena.get(handle);
+    let bytes = match &val.value {
+        Val::String(s) => s.to_vec(),
+        Val::Int(i) => i.to_string().into_bytes(),
+        Val::Float(f) => f.to_string().into_bytes(),
+        Val::Bool(b) => {
+            if *b {
+                b"1".to_vec()
+            } else {
+                Vec::new()
+            }
+        }
+        Val::Null => Vec::new(),
+        _ => {
+            return Err(format!(
+                "version_compare(): Argument #{} must be of type string",
+                position
+            ))
+        }
+    };
+    Ok(bytes)
 }

@@ -59,6 +59,10 @@ impl EngineContext {
             string::php_strtoupper as NativeHandler,
         );
         functions.insert(
+            b"version_compare".to_vec(),
+            string::php_version_compare as NativeHandler,
+        );
+        functions.insert(
             b"array_merge".to_vec(),
             array::php_array_merge as NativeHandler,
         );
@@ -70,6 +74,7 @@ impl EngineContext {
             b"array_values".to_vec(),
             array::php_array_values as NativeHandler,
         );
+        functions.insert(b"in_array".to_vec(), array::php_in_array as NativeHandler);
         functions.insert(
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,
@@ -176,6 +181,10 @@ impl EngineContext {
         functions.insert(
             b"function_exists".to_vec(),
             function::php_function_exists as NativeHandler,
+        );
+        functions.insert(
+            b"is_callable".to_vec(),
+            function::php_is_callable as NativeHandler,
         );
         functions.insert(
             b"extension_loaded".to_vec(),
