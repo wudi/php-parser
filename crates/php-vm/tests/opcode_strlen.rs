@@ -1,6 +1,6 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::EngineContext;
 use php_vm::core::value::Val;
+use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::VM;
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -21,7 +21,8 @@ fn eval_vm_expr(expr: &str) -> Val {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
+    let mut emitter =
+        php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     if let Err(e) = vm.run(Rc::new(chunk)) {
@@ -49,7 +50,10 @@ fn php_eval_int(expr: &str) -> i64 {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.trim().parse::<i64>().expect("php output was not an int")
+    stdout
+        .trim()
+        .parse::<i64>()
+        .expect("php output was not an int")
 }
 
 fn expect_int(val: Val) -> i64 {

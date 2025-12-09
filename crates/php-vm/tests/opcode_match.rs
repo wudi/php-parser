@@ -1,6 +1,6 @@
-use php_vm::vm::engine::{VM, VmError};
-use php_vm::runtime::context::EngineContext;
 use php_vm::core::value::{Handle, Val};
+use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::{VmError, VM};
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -14,10 +14,7 @@ fn php_out(code: &str) -> (String, bool) {
         .output()
         .expect("Failed to run php");
     let ok = output.status.success();
-    (
-        String::from_utf8_lossy(&output.stdout).to_string(),
-        ok,
-    )
+    (String::from_utf8_lossy(&output.stdout).to_string(), ok)
 }
 
 fn run_vm(expr: &str) -> Result<(VM, Handle), VmError> {
@@ -29,9 +26,14 @@ fn run_vm(expr: &str) -> Result<(VM, Handle), VmError> {
     let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    assert!(program.errors.is_empty(), "parse errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "parse errors: {:?}",
+        program.errors
+    );
 
-    let mut emitter = php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
+    let mut emitter =
+        php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     vm.run(Rc::new(chunk))?;
@@ -45,7 +47,13 @@ fn val_to_string(vm: &VM, handle: Handle) -> String {
     match &vm.arena.get(handle).value {
         Val::String(s) => String::from_utf8_lossy(s).to_string(),
         Val::Int(i) => i.to_string(),
-        Val::Bool(b) => if *b { "1".into() } else { "".into() },
+        Val::Bool(b) => {
+            if *b {
+                "1".into()
+            } else {
+                "".into()
+            }
+        }
         Val::Null => "".into(),
         other => format!("{:?}", other),
     }
@@ -66,7 +74,9 @@ fn match_unhandled_raises() {
     assert!(!php.1, "php unexpectedly succeeded for unhandled match");
     let res = run_vm("match (3) { 1 => 'a', 2 => 'b' }");
     match res {
-        Err(VmError::RuntimeError(msg)) => assert!(msg.contains("UnhandledMatchError"), "unexpected msg {msg}"),
+        Err(VmError::RuntimeError(msg)) => {
+            assert!(msg.contains("UnhandledMatchError"), "unexpected msg {msg}")
+        }
         Err(other) => panic!("unexpected error variant {other:?}"),
         Ok(_) => panic!("vm unexpectedly succeeded"),
     }

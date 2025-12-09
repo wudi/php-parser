@@ -1,15 +1,15 @@
 use indexmap::IndexMap;
-use std::rc::Rc;
 use std::any::Any;
-use std::fmt::Debug;
 use std::collections::HashSet;
+use std::fmt::Debug;
+use std::rc::Rc;
 
 /// Array metadata for efficient operations
 /// Reference: $PHP_SRC_PATH/Zend/zend_hash.h - HashTable::nNextFreeElement
 #[derive(Debug, Clone)]
 pub struct ArrayData {
     pub map: IndexMap<ArrayKey, Handle>,
-    pub next_free: i64,  // Cached next auto-increment index (like HashTable::nNextFreeElement)
+    pub next_free: i64, // Cached next auto-increment index (like HashTable::nNextFreeElement)
 }
 
 impl ArrayData {
@@ -19,14 +19,14 @@ impl ArrayData {
             next_free: 0,
         }
     }
-    
+
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: IndexMap::with_capacity(capacity),
             next_free: 0,
         }
     }
-    
+
     /// Insert a key-value pair and update next_free if needed
     /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - _zend_hash_index_add_or_update_i
     pub fn insert(&mut self, key: ArrayKey, value: Handle) -> Option<Handle> {
@@ -37,13 +37,13 @@ impl ArrayData {
         }
         self.map.insert(key, value)
     }
-    
+
     /// Get the next auto-increment index (O(1))
     /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
     pub fn next_index(&self) -> i64 {
         self.next_free
     }
-    
+
     /// Append a value with auto-incremented key
     pub fn push(&mut self, value: Handle) {
         let key = ArrayKey::Int(self.next_free);
@@ -55,7 +55,8 @@ impl ArrayData {
 impl From<IndexMap<ArrayKey, Handle>> for ArrayData {
     fn from(map: IndexMap<ArrayKey, Handle>) -> Self {
         // Compute next_free from existing keys
-        let next_free = map.keys()
+        let next_free = map
+            .keys()
             .filter_map(|k| match k {
                 ArrayKey::Int(i) => Some(*i),
                 ArrayKey::Str(s) => {
@@ -70,7 +71,7 @@ impl From<IndexMap<ArrayKey, Handle>> for ArrayData {
             .max()
             .map(|i| i + 1)
             .unwrap_or(0);
-        
+
         Self { map, next_free }
     }
 }
@@ -101,12 +102,12 @@ pub enum Val {
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(Rc<Vec<u8>>), // PHP strings are byte arrays (COW)
+    String(Rc<Vec<u8>>),  // PHP strings are byte arrays (COW)
     Array(Rc<ArrayData>), // Array with cached metadata (COW)
     Object(Handle),
     ObjPayload(ObjectData),
     Resource(Rc<dyn Any>), // Changed to Rc to support Clone
-    AppendPlaceholder, // Internal use for $a[]
+    AppendPlaceholder,     // Internal use for $a[]
 }
 
 impl PartialEq for Val {
@@ -157,14 +158,26 @@ impl Val {
     pub fn to_int(&self) -> i64 {
         match self {
             Val::Null => 0,
-            Val::Bool(b) => if *b { 1 } else { 0 },
+            Val::Bool(b) => {
+                if *b {
+                    1
+                } else {
+                    0
+                }
+            }
             Val::Int(i) => *i,
             Val::Float(f) => *f as i64,
             Val::String(s) => {
                 // Parse numeric string
                 Self::parse_numeric_string(s).0
             }
-            Val::Array(arr) => if arr.map.is_empty() { 0 } else { 1 },
+            Val::Array(arr) => {
+                if arr.map.is_empty() {
+                    0
+                } else {
+                    1
+                }
+            }
             Val::Object(_) | Val::ObjPayload(_) => 1,
             Val::Resource(_) => 0, // Resources typically convert to their ID
             Val::AppendPlaceholder => 0,
@@ -176,7 +189,13 @@ impl Val {
     pub fn to_float(&self) -> f64 {
         match self {
             Val::Null => 0.0,
-            Val::Bool(b) => if *b { 1.0 } else { 0.0 },
+            Val::Bool(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             Val::Int(i) => *i as f64,
             Val::Float(f) => *f,
             Val::String(s) => {
@@ -193,7 +212,13 @@ impl Val {
                     int_val as f64
                 }
             }
-            Val::Array(arr) => if arr.map.is_empty() { 0.0 } else { 1.0 },
+            Val::Array(arr) => {
+                if arr.map.is_empty() {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
             Val::Object(_) | Val::ObjPayload(_) => 1.0,
             Val::Resource(_) => 0.0,
             Val::AppendPlaceholder => 0.0,
@@ -208,11 +233,12 @@ impl Val {
         }
 
         // Trim leading whitespace
-        let trimmed = s.iter()
+        let trimmed = s
+            .iter()
             .skip_while(|&&b| b == b' ' || b == b'\t' || b == b'\n' || b == b'\r')
             .copied()
             .collect::<Vec<u8>>();
-        
+
         if trimmed.is_empty() {
             return (0, false);
         }
@@ -249,11 +275,10 @@ impl PartialEq for ObjectData {
     }
 }
 
-
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum ArrayKey {
     Int(i64),
-    Str(Rc<Vec<u8>>)
+    Str(Rc<Vec<u8>>),
 }
 
 // The Container (Zval equivalent)

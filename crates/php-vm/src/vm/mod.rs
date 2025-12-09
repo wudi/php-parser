@@ -1,4 +1,4 @@
 pub mod engine;
-pub mod stack;
-pub mod opcode;
 pub mod frame;
+pub mod opcode;
+pub mod stack;

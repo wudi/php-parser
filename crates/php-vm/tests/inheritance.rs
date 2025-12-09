@@ -1,29 +1,29 @@
-use php_vm::vm::engine::{VM, VmError};
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::core::value::Val;
 use php_vm::compiler::emitter::Emitter;
-use std::sync::Arc;
+use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::{VmError, VM};
 use std::rc::Rc;
+use std::sync::Arc;
 
 fn run_code(source: &str) -> Result<Val, VmError> {
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
     let mut emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk))?;
-    
+
     if let Some(handle) = vm.last_return_value {
         Ok(vm.arena.get(handle).value.clone())
     } else {

@@ -1,7 +1,7 @@
-use php_vm::vm::engine::VM;
 use php_vm::compiler::emitter::Emitter;
+use php_vm::core::value::{ArrayKey, Val};
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::core::value::{Val, ArrayKey};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -9,19 +9,19 @@ fn run_code(source: &str) -> VM {
     let full_source = format!("<?php {}", source);
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).expect("Execution failed");
     vm
@@ -53,10 +53,10 @@ fn test_while() {
         }
         return $sum;
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(ret, Val::Int(10)); // 0+1+2+3+4
 }
 
@@ -71,10 +71,10 @@ fn test_do_while() {
         } while ($i < 5);
         return $sum;
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(ret, Val::Int(10));
 }
 
@@ -87,10 +87,10 @@ fn test_for() {
         }
         return $sum;
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(ret, Val::Int(10));
 }
 
@@ -110,10 +110,10 @@ fn test_break_continue() {
         // 0 + 1 + (skip 2) + 3 + 4 + (break at 5) = 8
         return $sum;
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(ret, Val::Int(8));
 }
 
@@ -133,9 +133,9 @@ fn test_nested_loops() {
         // Total 6
         return $sum;
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(ret, Val::Int(6));
 }

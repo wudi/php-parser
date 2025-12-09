@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::core::value::Symbol;
+use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct Interner {

@@ -1,26 +1,26 @@
-use php_vm::vm::engine::{VM, VmError};
-use php_vm::core::value::Val;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{RequestContext, EngineContext};
+use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::{VmError, VM};
 use std::sync::Arc;
 
 fn run_code(source: &str) -> VM {
     let full_source = format!("<?php {}", source);
     let engine_context = std::sync::Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(std::rc::Rc::new(chunk)).expect("Execution failed");
     vm
@@ -39,7 +39,8 @@ fn test_count_return() {
 
 #[test]
 fn test_is_functions() {
-    let vm = run_code("return [is_string('s'), is_int(1), is_array([]), is_bool(true), is_null(null)];");
+    let vm =
+        run_code("return [is_string('s'), is_int(1), is_array([]), is_bool(true), is_null(null)];");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -53,7 +54,7 @@ fn test_is_functions() {
                     _ => panic!("Expected bool"),
                 }
             }
-        },
+        }
         _ => panic!("Expected array"),
     }
 }
@@ -79,7 +80,7 @@ fn test_explode() {
             assert_eq!(arr.map.len(), 3);
             // Check elements
             // ...
-        },
+        }
         _ => panic!("Expected array"),
     }
 }

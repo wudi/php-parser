@@ -1,7 +1,7 @@
-use php_vm::vm::engine::VM;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -9,22 +9,22 @@ fn run_code(source: &str) -> Val {
     let full_source = format!("<?php {}", source);
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).expect("Execution failed");
-    
+
     let handle = vm.last_return_value.expect("No return value");
     vm.arena.get(handle).value.clone()
 }
@@ -41,9 +41,9 @@ fn test_default_args() {
         
         return $a . ' ' . $b;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::String(s) => assert_eq!(String::from_utf8_lossy(&s), "Hello World Hello PHP"),
         _ => panic!("Expected String, got {:?}", result),
@@ -64,9 +64,9 @@ fn test_multiple_default_args() {
         
         return $p1 . '|' . $p2 . '|' . $p3 . '|' . $p4;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::String(s) => assert_eq!(String::from_utf8_lossy(&s), "0,0,0|10,0,0|10,20,0|10,20,30"),
         _ => panic!("Expected String, got {:?}", result),
@@ -86,9 +86,9 @@ fn test_pass_by_value_isolation() {
         
         return $a . ',' . $b;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::String(s) => assert_eq!(String::from_utf8_lossy(&s), "10,100"),
         _ => panic!("Expected String, got {:?}", result),
@@ -107,9 +107,9 @@ fn test_pass_by_ref() {
         
         return $a;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::Int(i) => assert_eq!(i, 100),
         _ => panic!("Expected Int(100), got {:?}", result),
@@ -129,9 +129,9 @@ fn test_pass_by_ref_default() {
         $res = modify();
         return $res;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::Int(i) => assert_eq!(i, 100),
         _ => panic!("Expected Int(100), got {:?}", result),
@@ -161,9 +161,9 @@ fn test_mixed_args() {
         
         return $res1 . ',' . $res2;
     ";
-    
+
     let result = run_code(src);
-    
+
     match result {
         Val::String(s) => assert_eq!(String::from_utf8_lossy(&s), "40,25"),
         _ => panic!("Expected String, got {:?}", result),

@@ -1,24 +1,24 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::compiler::emitter::Emitter;
-use std::sync::Arc;
-use std::rc::Rc;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
 use std::fs;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 fn compile_and_run(vm: &mut VM, code: &str) -> Result<(), php_vm::vm::engine::VmError> {
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(code.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let emitter = Emitter::new(code.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     vm.run(Rc::new(chunk))
 }
 
@@ -43,10 +43,10 @@ fn cleanup_temp(path: &PathBuf) {
 fn test_file_get_contents() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("file_get_contents.txt");
-    
+
     // Create test file
     fs::write(&temp_path, b"Hello, World!").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $content = file_get_contents("{}");
@@ -54,10 +54,9 @@ fn test_file_get_contents() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -65,7 +64,7 @@ fn test_file_get_contents() {
 fn test_file_put_contents() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("file_put_contents.txt");
-    
+
     let code = format!(
         r#"<?php
         $bytes = file_put_contents("{}", "Test data");
@@ -73,13 +72,12 @@ fn test_file_put_contents() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     let contents = fs::read(&temp_path).unwrap();
     assert_eq!(contents, b"Test data");
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -87,9 +85,9 @@ fn test_file_put_contents() {
 fn test_file_put_contents_append() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("file_put_contents_append.txt");
-    
+
     fs::write(&temp_path, b"First\n").unwrap();
-    
+
     let code = format!(
         r#"<?php
         file_put_contents("{}", "Second
@@ -97,17 +95,16 @@ fn test_file_put_contents_append() {
         "#,
         temp_path.display()
     );
-    
+
     // Define FILE_APPEND constant
     let define_code = "<?php define('FILE_APPEND', 8);";
     compile_and_run(&mut vm, define_code).unwrap();
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     let contents = fs::read(&temp_path).unwrap();
     assert_eq!(contents, b"First\nSecond\n");
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -115,9 +112,9 @@ fn test_file_put_contents_append() {
 fn test_file_exists() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("file_exists.txt");
-    
+
     fs::write(&temp_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $exists = file_exists("{}");
@@ -128,10 +125,9 @@ fn test_file_exists() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -140,10 +136,10 @@ fn test_is_file_is_dir() {
     let mut vm = create_test_vm();
     let file_path = get_temp_path("test_file.txt");
     let dir_path = get_temp_path("test_dir");
-    
+
     fs::write(&file_path, b"test").unwrap();
     fs::create_dir(&dir_path).unwrap();
-    
+
     let code = format!(
         r#"<?php
         $file_is_file = is_file("{}");
@@ -160,10 +156,9 @@ fn test_is_file_is_dir() {
         dir_path.display(),
         dir_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&file_path);
     cleanup_temp(&dir_path);
 }
@@ -172,9 +167,9 @@ fn test_is_file_is_dir() {
 fn test_filesize() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("filesize.txt");
-    
+
     fs::write(&temp_path, b"12345").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $size = filesize("{}");
@@ -182,10 +177,9 @@ fn test_filesize() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -193,9 +187,9 @@ fn test_filesize() {
 fn test_unlink() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("unlink.txt");
-    
+
     fs::write(&temp_path, b"delete me").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $result = unlink("{}");
@@ -207,10 +201,9 @@ fn test_unlink() {
         temp_path.display(),
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     assert!(!temp_path.exists());
 }
 
@@ -219,9 +212,9 @@ fn test_rename() {
     let mut vm = create_test_vm();
     let old_path = get_temp_path("rename_old.txt");
     let new_path = get_temp_path("rename_new.txt");
-    
+
     fs::write(&old_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         rename("{}", "{}");
@@ -236,10 +229,9 @@ fn test_rename() {
         old_path.display(),
         new_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&old_path);
     cleanup_temp(&new_path);
 }
@@ -248,7 +240,7 @@ fn test_rename() {
 fn test_mkdir_rmdir() {
     let mut vm = create_test_vm();
     let dir_path = get_temp_path("test_mkdir");
-    
+
     let code = format!(
         r#"<?php
         mkdir("{}");
@@ -264,10 +256,9 @@ fn test_mkdir_rmdir() {
         dir_path.display(),
         dir_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&dir_path);
 }
 
@@ -276,7 +267,7 @@ fn test_mkdir_recursive() {
     let mut vm = create_test_vm();
     let base = get_temp_path("mkdir_recursive");
     let nested = base.join("a").join("b").join("c");
-    
+
     let code = format!(
         r#"<?php
         mkdir("{}", 0777, true);
@@ -288,10 +279,9 @@ fn test_mkdir_recursive() {
         nested.display(),
         nested.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&base);
 }
 
@@ -299,12 +289,12 @@ fn test_mkdir_recursive() {
 fn test_scandir() {
     let mut vm = create_test_vm();
     let dir_path = get_temp_path("scandir_test");
-    
+
     fs::create_dir(&dir_path).unwrap();
     fs::write(dir_path.join("file1.txt"), b"a").unwrap();
     fs::write(dir_path.join("file2.txt"), b"b").unwrap();
     fs::write(dir_path.join("file3.txt"), b"c").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $files = scandir("{}");
@@ -312,40 +302,37 @@ fn test_scandir() {
         "#,
         dir_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&dir_path);
 }
 
 #[test]
 fn test_basename_dirname() {
     let mut vm = create_test_vm();
-    
+
     let code = r#"<?php
         $path = "/path/to/file.txt";
         $base = basename($path);
         $dir = dirname($path);
         echo $base . "," . $dir;
         "#;
-    
+
     compile_and_run(&mut vm, code).unwrap();
-    
 }
 
 #[test]
 fn test_basename_with_suffix() {
     let mut vm = create_test_vm();
-    
+
     let code = r#"<?php
         $path = "/path/to/file.php";
         $base = basename($path, ".php");
         echo $base;
         "#;
-    
+
     compile_and_run(&mut vm, code).unwrap();
-    
 }
 
 #[test]
@@ -353,9 +340,9 @@ fn test_copy() {
     let mut vm = create_test_vm();
     let src_path = get_temp_path("copy_src.txt");
     let dst_path = get_temp_path("copy_dst.txt");
-    
+
     fs::write(&src_path, b"copy me").unwrap();
-    
+
     let code = format!(
         r#"<?php
         copy("{}", "{}");
@@ -366,10 +353,9 @@ fn test_copy() {
         dst_path.display(),
         dst_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&src_path);
     cleanup_temp(&dst_path);
 }
@@ -378,9 +364,9 @@ fn test_copy() {
 fn test_file_reads_lines() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("file_lines.txt");
-    
+
     fs::write(&temp_path, b"Line 1\nLine 2\nLine 3\n").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $lines = file("{}");
@@ -388,10 +374,9 @@ fn test_file_reads_lines() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -399,9 +384,9 @@ fn test_file_reads_lines() {
 fn test_is_readable_writable() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("rw_test.txt");
-    
+
     fs::write(&temp_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $readable = is_readable("{}");
@@ -413,10 +398,9 @@ fn test_is_readable_writable() {
         temp_path.display(),
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -424,7 +408,7 @@ fn test_is_readable_writable() {
 fn test_touch_creates_file() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("touch_test.txt");
-    
+
     let code = format!(
         r#"<?php
         touch("{}");
@@ -436,35 +420,33 @@ fn test_touch_creates_file() {
         temp_path.display(),
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
 #[test]
 fn test_getcwd() {
     let mut vm = create_test_vm();
-    
+
     let code = r#"<?php
         $cwd = getcwd();
         if (is_string($cwd) && strlen($cwd) > 0) {
             echo "OK";
         }
         "#;
-    
+
     compile_and_run(&mut vm, code).unwrap();
-    
 }
 
 #[test]
 fn test_realpath() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("realpath_test.txt");
-    
+
     fs::write(&temp_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $real = realpath("{}");
@@ -474,23 +456,22 @@ fn test_realpath() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
-    
+
     cleanup_temp(&temp_path);
 }
 
 #[test]
 fn test_file_get_contents_missing_file() {
     let mut vm = create_test_vm();
-    
+
     let code = r#"<?php
         $result = file_get_contents("/nonexistent/file.txt");
         "#;
-    
+
     let result = compile_and_run(&mut vm, code);
-    
+
     // Should fail with error
     assert!(result.is_err());
 }
@@ -498,13 +479,13 @@ fn test_file_get_contents_missing_file() {
 #[test]
 fn test_filesize_missing_file() {
     let mut vm = create_test_vm();
-    
+
     let code = r#"<?php
         $size = filesize("/nonexistent/file.txt");
         "#;
-    
+
     let result = compile_and_run(&mut vm, code);
-    
+
     // Should fail with error
     assert!(result.is_err());
 }
@@ -513,7 +494,7 @@ fn test_filesize_missing_file() {
 fn test_fread_fwrite() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("fread_fwrite_test.txt");
-    
+
     let code = format!(
         r#"<?php
         $fp = fopen("{}", "w");
@@ -529,13 +510,13 @@ fn test_fread_fwrite() {
         temp_path.display(),
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     // Verify file contents
     let contents = fs::read(&temp_path).unwrap();
     assert_eq!(contents, b"Hello from fwrite!");
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -543,9 +524,9 @@ fn test_fread_fwrite() {
 fn test_fseek_ftell_rewind() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("fseek_test.txt");
-    
+
     fs::write(&temp_path, b"0123456789").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $fp = fopen("{}", "r");
@@ -571,9 +552,9 @@ fn test_fseek_ftell_rewind() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -581,9 +562,9 @@ fn test_fseek_ftell_rewind() {
 fn test_fgets() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("fgets_test.txt");
-    
+
     fs::write(&temp_path, b"Line 1\nLine 2\nLine 3\n").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $fp = fopen("{}", "r");
@@ -598,9 +579,9 @@ fn test_fgets() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -608,9 +589,9 @@ fn test_fgets() {
 fn test_feof() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("feof_test.txt");
-    
+
     fs::write(&temp_path, b"ab").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $fp = fopen("{}", "r");
@@ -637,9 +618,9 @@ fn test_feof() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -647,9 +628,9 @@ fn test_feof() {
 fn test_stat() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("stat_test.txt");
-    
+
     fs::write(&temp_path, b"test content").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $stats = stat("{}");
@@ -668,9 +649,9 @@ fn test_stat() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -678,9 +659,9 @@ fn test_stat() {
 fn test_filemtime() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("mtime_test.txt");
-    
+
     fs::write(&temp_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $mtime = filemtime("{}");
@@ -691,9 +672,9 @@ fn test_filemtime() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
@@ -701,9 +682,9 @@ fn test_filemtime() {
 fn test_fileperms() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("perms_test.txt");
-    
+
     fs::write(&temp_path, b"test").unwrap();
-    
+
     let code = format!(
         r#"<?php
         $perms = fileperms("{}");
@@ -714,19 +695,19 @@ fn test_fileperms() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     cleanup_temp(&temp_path);
 }
 
 #[test]
 fn test_tempnam() {
     let mut vm = create_test_vm();
-    
+
     // Use a direct path instead of sys_get_temp_dir()
     let temp_dir = std::env::temp_dir();
-    
+
     let code = format!(
         r#"<?php
         $temp = tempnam("{}", "php_vm_test_");
@@ -739,7 +720,7 @@ fn test_tempnam() {
         "#,
         temp_dir.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
 }
 
@@ -747,7 +728,7 @@ fn test_tempnam() {
 fn test_fputs_alias() {
     let mut vm = create_test_vm();
     let temp_path = get_temp_path("fputs_test.txt");
-    
+
     let code = format!(
         r#"<?php
         $fp = fopen("{}", "w");
@@ -756,13 +737,12 @@ fn test_fputs_alias() {
         "#,
         temp_path.display()
     );
-    
+
     compile_and_run(&mut vm, &code).unwrap();
-    
+
     // Verify file contents
     let contents = fs::read(&temp_path).unwrap();
     assert_eq!(contents, b"Test fputs");
-    
+
     cleanup_temp(&temp_path);
 }
-

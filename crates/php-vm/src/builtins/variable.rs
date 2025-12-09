@@ -1,5 +1,5 @@
+use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
-use crate::core::value::{Val, Handle};
 
 pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     for arg in args {
@@ -21,16 +21,24 @@ pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 frame.func = Some(method.clone());
                 frame.this = Some(obj_handle);
                 frame.class_scope = Some(class);
-                
+
                 let res = vm.run_frame(frame);
                 if let Ok(res_handle) = res {
                     let res_val = vm.arena.get(res_handle);
                     if let Val::Array(arr) = &res_val.value {
-                        println!("object({}) ({}) {{", String::from_utf8_lossy(vm.context.interner.lookup(class).unwrap_or(b"")), arr.map.len());
+                        println!(
+                            "object({}) ({}) {{",
+                            String::from_utf8_lossy(
+                                vm.context.interner.lookup(class).unwrap_or(b"")
+                            ),
+                            arr.map.len()
+                        );
                         for (key, val_handle) in arr.map.iter() {
                             match key {
                                 crate::core::value::ArrayKey::Int(i) => print!("  [{}]=>\n", i),
-                                crate::core::value::ArrayKey::Str(s) => print!("  [\"{}\"]=>\n", String::from_utf8_lossy(s)),
+                                crate::core::value::ArrayKey::Str(s) => {
+                                    print!("  [\"{}\"]=>\n", String::from_utf8_lossy(s))
+                                }
                             }
                             dump_value(vm, *val_handle, 1);
                         }
@@ -40,7 +48,7 @@ pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 }
             }
         }
-        
+
         dump_value(vm, *arg, 0);
     }
     Ok(vm.arena.alloc(Val::Null))
@@ -49,10 +57,15 @@ pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 fn dump_value(vm: &VM, handle: Handle, depth: usize) {
     let val = vm.arena.get(handle);
     let indent = "  ".repeat(depth);
-    
+
     match &val.value {
         Val::String(s) => {
-            println!("{}string({}) \"{}\"", indent, s.len(), String::from_utf8_lossy(s));
+            println!(
+                "{}string({}) \"{}\"",
+                indent,
+                s.len(),
+                String::from_utf8_lossy(s)
+            );
         }
         Val::Int(i) => {
             println!("{}int({})", indent, i);
@@ -71,7 +84,9 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
             for (key, val_handle) in arr.map.iter() {
                 match key {
                     crate::core::value::ArrayKey::Int(i) => print!("{}  [{}]=>\n", indent, i),
-                    crate::core::value::ArrayKey::Str(s) => print!("{}  [\"{}\"]=>\n", indent, String::from_utf8_lossy(s)),
+                    crate::core::value::ArrayKey::Str(s) => {
+                        print!("{}  [\"{}\"]=>\n", indent, String::from_utf8_lossy(s))
+                    }
                 }
                 dump_value(vm, *val_handle, depth + 1);
             }
@@ -81,12 +96,26 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
             // Dereference the object payload
             let payload_val = vm.arena.get(*handle);
             if let Val::ObjPayload(obj) = &payload_val.value {
-                let class_name = vm.context.interner.lookup(obj.class).unwrap_or(b"<unknown>");
-                println!("{}object({})#{} ({}) {{", indent, String::from_utf8_lossy(class_name), handle.0, obj.properties.len());
+                let class_name = vm
+                    .context
+                    .interner
+                    .lookup(obj.class)
+                    .unwrap_or(b"<unknown>");
+                println!(
+                    "{}object({})#{} ({}) {{",
+                    indent,
+                    String::from_utf8_lossy(class_name),
+                    handle.0,
+                    obj.properties.len()
+                );
                 for (prop_sym, prop_handle) in &obj.properties {
-                     let prop_name = vm.context.interner.lookup(*prop_sym).unwrap_or(b"<unknown>");
-                     println!("{}  [\"{}\"]=>", indent, String::from_utf8_lossy(prop_name));
-                     dump_value(vm, *prop_handle, depth + 1);
+                    let prop_name = vm
+                        .context
+                        .interner
+                        .lookup(*prop_sym)
+                        .unwrap_or(b"<unknown>");
+                    println!("{}  [\"{}\"]=>", indent, String::from_utf8_lossy(prop_name));
+                    dump_value(vm, *prop_handle, depth + 1);
                 }
                 println!("{}}}", indent);
             } else {
@@ -94,7 +123,7 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
             }
         }
         Val::ObjPayload(_) => {
-             println!("{}ObjPayload(Internal)", indent);
+            println!("{}ObjPayload(Internal)", indent);
         }
         Val::Resource(_) => {
             println!("{}resource", indent);
@@ -109,7 +138,7 @@ pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 1 {
         return Err("var_export() expects at least 1 parameter".into());
     }
-    
+
     let val_handle = args[0];
     let return_res = if args.len() > 1 {
         let ret_val = vm.arena.get(args[1]);
@@ -120,10 +149,10 @@ pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         false
     };
-    
+
     let mut output = String::new();
     export_value(vm, val_handle, 0, &mut output);
-    
+
     if return_res {
         Ok(vm.arena.alloc(Val::String(output.into_bytes().into())))
     } else {
@@ -135,11 +164,15 @@ pub fn php_var_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
     let val = vm.arena.get(handle);
     let indent = "  ".repeat(depth);
-    
+
     match &val.value {
         Val::String(s) => {
             output.push('\'');
-            output.push_str(&String::from_utf8_lossy(s).replace("\\", "\\\\").replace("'", "\\'"));
+            output.push_str(
+                &String::from_utf8_lossy(s)
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'"),
+            );
             output.push('\'');
         }
         Val::Int(i) => {
@@ -163,7 +196,11 @@ fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
                     crate::core::value::ArrayKey::Int(i) => output.push_str(&i.to_string()),
                     crate::core::value::ArrayKey::Str(s) => {
                         output.push('\'');
-                        output.push_str(&String::from_utf8_lossy(s).replace("\\", "\\\\").replace("'", "\\'"));
+                        output.push_str(
+                            &String::from_utf8_lossy(s)
+                                .replace("\\", "\\\\")
+                                .replace("'", "\\'"),
+                        );
                         output.push('\'');
                     }
                 }
@@ -177,23 +214,31 @@ fn export_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
         Val::Object(handle) => {
             let payload_val = vm.arena.get(*handle);
             if let Val::ObjPayload(obj) = &payload_val.value {
-                let class_name = vm.context.interner.lookup(obj.class).unwrap_or(b"<unknown>");
+                let class_name = vm
+                    .context
+                    .interner
+                    .lookup(obj.class)
+                    .unwrap_or(b"<unknown>");
                 output.push('\\');
                 output.push_str(&String::from_utf8_lossy(class_name));
                 output.push_str("::__set_state(array(\n");
-                
+
                 for (prop_sym, val_handle) in &obj.properties {
                     output.push_str(&indent);
                     output.push_str("  ");
                     let prop_name = vm.context.interner.lookup(*prop_sym).unwrap_or(b"");
                     output.push('\'');
-                    output.push_str(&String::from_utf8_lossy(prop_name).replace("\\", "\\\\").replace("'", "\\'"));
+                    output.push_str(
+                        &String::from_utf8_lossy(prop_name)
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'"),
+                    );
                     output.push('\'');
                     output.push_str(" => ");
                     export_value(vm, *val_handle, depth + 1, output);
                     output.push_str(",\n");
                 }
-                
+
                 output.push_str(&indent);
                 output.push_str("))");
             } else {
@@ -208,7 +253,7 @@ pub fn php_gettype(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("gettype() expects exactly 1 parameter".into());
     }
-    
+
     let val = vm.arena.get(args[0]);
     let type_str = match &val.value {
         Val::Null => "NULL",
@@ -222,24 +267,26 @@ pub fn php_gettype(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Val::Resource(_) => "resource",
         _ => "unknown type",
     };
-    
-    Ok(vm.arena.alloc(Val::String(type_str.as_bytes().to_vec().into())))
+
+    Ok(vm
+        .arena
+        .alloc(Val::String(type_str.as_bytes().to_vec().into())))
 }
 
 pub fn php_define(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("define() expects at least 2 parameters".into());
     }
-    
+
     let name_val = vm.arena.get(args[0]);
     let name = match &name_val.value {
         Val::String(s) => s.clone(),
         _ => return Err("define(): Parameter 1 must be string".into()),
     };
-    
+
     let value_handle = args[1];
     let value = vm.arena.get(value_handle).value.clone();
-    
+
     // Case insensitive? Third arg.
     let _case_insensitive = if args.len() > 2 {
         let ci_val = vm.arena.get(args[2]);
@@ -250,16 +297,16 @@ pub fn php_define(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         false
     };
-    
+
     let sym = vm.context.interner.intern(&name);
-    
+
     if vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym) {
         // Notice: Constant already defined
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     vm.context.constants.insert(sym, value);
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -267,17 +314,18 @@ pub fn php_defined(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("defined() expects exactly 1 parameter".into());
     }
-    
+
     let name_val = vm.arena.get(args[0]);
     let name = match &name_val.value {
         Val::String(s) => s.clone(),
         _ => return Err("defined(): Parameter 1 must be string".into()),
     };
-    
+
     let sym = vm.context.interner.intern(&name);
-    
-    let exists = vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym);
-    
+
+    let exists =
+        vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym);
+
     Ok(vm.arena.alloc(Val::Bool(exists)))
 }
 
@@ -285,78 +333,94 @@ pub fn php_constant(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("constant() expects exactly 1 parameter".into());
     }
-    
+
     let name_val = vm.arena.get(args[0]);
     let name = match &name_val.value {
         Val::String(s) => s.clone(),
         _ => return Err("constant(): Parameter 1 must be string".into()),
     };
-    
+
     let sym = vm.context.interner.intern(&name);
-    
+
     if let Some(val) = vm.context.constants.get(&sym) {
         return Ok(vm.arena.alloc(val.clone()));
     }
-    
+
     if let Some(val) = vm.context.engine.constants.get(&sym) {
         return Ok(vm.arena.alloc(val.clone()));
     }
-    
+
     // TODO: Warning
     Ok(vm.arena.alloc(Val::Null))
 }
 
 pub fn php_is_string(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_string() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_string() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::String(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_int(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_int() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_int() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Int(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_array(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_array() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_array() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Array(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_bool(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_bool() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_bool() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Bool(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_null(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_null() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_null() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Null);
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_object(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_object() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_object() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Object(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_float(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_float() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_float() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = matches!(val.value, Val::Float(_));
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_numeric(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_numeric() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_numeric() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
     let is = match &val.value {
         Val::Int(_) | Val::Float(_) => true,
@@ -364,15 +428,20 @@ pub fn php_is_numeric(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             // Simple check for numeric string
             let s = String::from_utf8_lossy(s);
             s.trim().parse::<f64>().is_ok()
-        },
+        }
         _ => false,
     };
     Ok(vm.arena.alloc(Val::Bool(is)))
 }
 
 pub fn php_is_scalar(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
-    if args.len() != 1 { return Err("is_scalar() expects exactly 1 parameter".into()); }
+    if args.len() != 1 {
+        return Err("is_scalar() expects exactly 1 parameter".into());
+    }
     let val = vm.arena.get(args[0]);
-    let is = matches!(val.value, Val::Int(_) | Val::Float(_) | Val::String(_) | Val::Bool(_));
+    let is = matches!(
+        val.value,
+        Val::Int(_) | Val::Float(_) | Val::String(_) | Val::Bool(_)
+    );
     Ok(vm.arena.alloc(Val::Bool(is)))
 }

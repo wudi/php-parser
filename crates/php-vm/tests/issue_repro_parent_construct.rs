@@ -1,9 +1,9 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::core::value::Val;
 use php_vm::compiler::emitter::Emitter;
-use std::sync::Arc;
+use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[test]
 fn test_parent_construct_call() {
@@ -34,28 +34,28 @@ fn test_parent_construct_call() {
         $employee = new Employee("Bob", 40, "E123");
         return $employee->getInfo();
     "#;
-    
+
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
     let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap();
-    
+
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
-    
+
     if let Val::String(s) = res_val {
         assert_eq!(String::from_utf8_lossy(&s), "Bob|40|E123");
     } else {
@@ -77,28 +77,28 @@ fn test_self_static_call_to_instance_method() {
         $a = new A();
         return $a->bar();
     "#;
-    
+
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
     let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap();
-    
+
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
-    
+
     if let Val::String(s) = res_val {
         assert_eq!(String::from_utf8_lossy(&s), "foofoofoo");
     } else {

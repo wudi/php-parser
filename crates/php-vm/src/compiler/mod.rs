@@ -1,2 +1,2 @@
-pub mod emitter;
 pub mod chunk;
+pub mod emitter;

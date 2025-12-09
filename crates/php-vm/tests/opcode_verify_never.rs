@@ -1,10 +1,10 @@
-use php_vm::vm::engine::{VM, VmError};
-use php_vm::runtime::context::EngineContext;
 use php_vm::compiler::chunk::CodeChunk;
+use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::{VmError, VM};
 use php_vm::vm::opcode::OpCode;
+use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::process::Command;
 
 fn php_fails() -> bool {
     let script = "function f(): never { return; }\nf();";
@@ -32,7 +32,10 @@ fn verify_never_type_errors_on_return() {
     };
     let result = vm.run(Rc::new(chunk));
     match result {
-        Err(VmError::RuntimeError(msg)) => assert!(msg.contains("Never-returning function"), "unexpected msg {msg}"),
+        Err(VmError::RuntimeError(msg)) => assert!(
+            msg.contains("Never-returning function"),
+            "unexpected msg {msg}"
+        ),
         Ok(_) => panic!("vm unexpectedly succeeded"),
         Err(e) => panic!("unexpected error {e:?}"),
     }

@@ -1,7 +1,7 @@
-use php_vm::vm::engine::VM;
 use php_vm::compiler::emitter::Emitter;
+use php_vm::core::value::{ArrayKey, Val};
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::core::value::{Val, ArrayKey};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -9,19 +9,19 @@ fn run_code(source: &str) -> VM {
     let full_source = format!("<?php {}", source);
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).expect("Execution failed");
     vm
@@ -53,10 +53,10 @@ fn test_bitwise_ops() {
         $f = 8 >> 1;
         return [$a, $b, $c, $d, $e, $f];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(2)); // 6 & 3
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Int(7)); // 6 | 3
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Int(5)); // 6 ^ 3
@@ -73,10 +73,10 @@ fn test_spaceship() {
         $c = 2 <=> 1;
         return [$a, $b, $c];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(0));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Int(-1));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Int(1));
@@ -91,10 +91,10 @@ fn test_ternary() {
         $d = 0 ?: 2;
         return [$a, $b, $c, $d];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(1));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Int(2));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Int(1));
@@ -111,10 +111,10 @@ fn test_inc_dec() {
         $e = $a--; // e=2, a=1
         return [$a, $b, $c, $d, $e];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(1)); // a
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Int(2)); // b
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Int(2)); // c
@@ -131,14 +131,14 @@ fn test_cast() {
         $d = (string) 123;
         return [$a, $b, $c, $d];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(10));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Bool(false));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Bool(true));
-    
+
     match get_array_idx(&vm, &ret, 3) {
         Val::String(s) => assert_eq!(s.as_slice(), b"123"),
         _ => panic!("Expected string"),

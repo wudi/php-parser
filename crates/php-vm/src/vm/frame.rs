@@ -1,8 +1,8 @@
-use std::rc::Rc;
-use std::collections::HashMap;
-use smallvec::SmallVec;
 use crate::compiler::chunk::{CodeChunk, UserFunc};
-use crate::core::value::{Symbol, Handle};
+use crate::core::value::{Handle, Symbol};
+use smallvec::SmallVec;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub const INLINE_ARG_CAPACITY: usize = 8;
 pub type ArgList = SmallVec<[Handle; INLINE_ARG_CAPACITY]>;

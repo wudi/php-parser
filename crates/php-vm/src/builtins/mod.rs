@@ -1,6 +1,7 @@
-pub mod string;
 pub mod array;
 pub mod class;
-pub mod variable;
-pub mod function;
 pub mod filesystem;
+pub mod function;
+pub mod spl;
+pub mod string;
+pub mod variable;

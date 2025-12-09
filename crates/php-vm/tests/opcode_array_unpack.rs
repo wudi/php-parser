@@ -31,9 +31,14 @@ fn run_vm(expr: &str) -> (VM, Handle) {
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    assert!(program.errors.is_empty(), "Parse errors: {:?}", program.errors);
+    assert!(
+        program.errors.is_empty(),
+        "Parse errors: {:?}",
+        program.errors
+    );
 
-    let mut emitter = php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
+    let mut emitter =
+        php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     vm.run(Rc::new(chunk)).expect("VM run failed");
@@ -45,7 +50,11 @@ fn val_to_json(vm: &VM, handle: Handle) -> String {
     match &vm.arena.get(handle).value {
         Val::Null => "null".into(),
         Val::Bool(b) => {
-            if *b { "true".into() } else { "false".into() }
+            if *b {
+                "true".into()
+            } else {
+                "false".into()
+            }
         }
         Val::Int(i) => i.to_string(),
         Val::Float(f) => f.to_string(),
@@ -55,7 +64,8 @@ fn val_to_json(vm: &VM, handle: Handle) -> String {
         }
         Val::Array(map) => {
             let is_list = map
-                .map.iter()
+                .map
+                .iter()
                 .enumerate()
                 .all(|(idx, (k, _))| matches!(k, ArrayKey::Int(i) if i == &(idx as i64)));
 

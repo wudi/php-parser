@@ -1,11 +1,11 @@
+use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
-use crate::core::value::{Val, Handle, ArrayData, ArrayKey};
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::fs::{self, File, OpenOptions, Metadata};
-use std::io::{Read, Write, Seek, SeekFrom};
-use std::path::PathBuf;
 use indexmap::IndexMap;
+use std::cell::RefCell;
+use std::fs::{self, File, Metadata, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
+use std::rc::Rc;
 
 /// File handle resource for fopen/fread/fwrite/fclose
 /// Uses RefCell for interior mutability to allow read/write operations
@@ -32,11 +32,11 @@ fn handle_to_path(vm: &VM, handle: Handle) -> Result<Vec<u8>, String> {
 fn bytes_to_path(bytes: &[u8]) -> Result<PathBuf, String> {
     #[cfg(unix)]
     {
-        use std::os::unix::ffi::OsStrExt;
         use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
         Ok(PathBuf::from(OsStr::from_bytes(bytes)))
     }
-    
+
     #[cfg(not(unix))]
     {
         String::from_utf8(bytes.to_vec())
@@ -48,20 +48,19 @@ fn bytes_to_path(bytes: &[u8]) -> Result<PathBuf, String> {
 /// Parse file mode string (e.g., "r", "w", "a", "r+", "rb", "w+b")
 /// Reference: $PHP_SRC_PATH/main/streams/plain_wrapper.c - php_stream_fopen_from_file_rel
 fn parse_mode(mode: &[u8]) -> Result<(bool, bool, bool, bool), String> {
-    let mode_str = std::str::from_utf8(mode)
-        .map_err(|_| "Invalid mode string".to_string())?;
-    
+    let mode_str = std::str::from_utf8(mode).map_err(|_| "Invalid mode string".to_string())?;
+
     let mut read = false;
     let mut write = false;
     let mut append = false;
     let mut create = false;
     let mut truncate = false;
-    
+
     let chars: Vec<char> = mode_str.chars().collect();
     if chars.is_empty() {
         return Err("Empty mode string".into());
     }
-    
+
     match chars[0] {
         'r' => {
             read = true;
@@ -103,7 +102,7 @@ fn parse_mode(mode: &[u8]) -> Result<(bool, bool, bool, bool), String> {
         }
         _ => return Err(format!("Invalid mode: {}", mode_str)),
     }
-    
+
     Ok((read, write, append || create && !truncate, truncate))
 }
 
@@ -113,50 +112,53 @@ pub fn php_fopen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("fopen() expects at least 2 parameters".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let mode_val = vm.arena.get(args[1]);
     let mode_bytes = match &mode_val.value {
         Val::String(s) => s.to_vec(),
         _ => return Err("fopen(): Mode must be string".into()),
     };
-    
+
     let path = bytes_to_path(&path_bytes)?;
-    let mode_str = std::str::from_utf8(&mode_bytes)
-        .map_err(|_| "Invalid mode encoding".to_string())?;
-    
+    let mode_str =
+        std::str::from_utf8(&mode_bytes).map_err(|_| "Invalid mode encoding".to_string())?;
+
     // Parse mode
     let (read, write, append, truncate) = parse_mode(&mode_bytes)?;
     let exclusive = mode_str.starts_with('x');
-    
+
     // Build OpenOptions
     let mut options = OpenOptions::new();
     options.read(read);
     options.write(write);
     options.append(append);
     options.truncate(truncate);
-    
+
     if mode_str.starts_with('w') || mode_str.starts_with('a') || mode_str.starts_with('c') {
         options.create(true);
     }
-    
+
     if exclusive {
         options.create_new(true);
     }
-    
+
     // Open file
     let file = options.open(&path).map_err(|e| {
-        format!("fopen({}): failed to open stream: {}", 
-                String::from_utf8_lossy(&path_bytes), e)
+        format!(
+            "fopen({}): failed to open stream: {}",
+            String::from_utf8_lossy(&path_bytes),
+            e
+        )
     })?;
-    
+
     let resource = FileHandle {
         file: RefCell::new(file),
         path: path.clone(),
         mode: mode_str.to_string(),
         eof: RefCell::new(false),
     };
-    
+
     Ok(vm.arena.alloc(Val::Resource(Rc::new(resource))))
 }
 
@@ -166,7 +168,7 @@ pub fn php_fclose(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("fclose() expects exactly 1 parameter".into());
     }
-    
+
     let val = vm.arena.get(args[0]);
     match &val.value {
         Val::Resource(_) => {
@@ -183,10 +185,10 @@ pub fn php_fread(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 2 {
         return Err("fread() expects exactly 2 parameters".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
     let len_val = vm.arena.get(args[1]);
-    
+
     let length = match &len_val.value {
         Val::Int(i) => {
             if *i < 0 {
@@ -196,22 +198,25 @@ pub fn php_fread(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         }
         _ => return Err("fread(): Length must be integer".into()),
     };
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
             let mut buffer = vec![0u8; length];
-            let bytes_read = fh.file.borrow_mut().read(&mut buffer)
+            let bytes_read = fh
+                .file
+                .borrow_mut()
+                .read(&mut buffer)
                 .map_err(|e| format!("fread(): {}", e))?;
-            
+
             if bytes_read == 0 {
                 *fh.eof.borrow_mut() = true;
             }
-            
+
             buffer.truncate(bytes_read);
             return Ok(vm.arena.alloc(Val::String(Rc::new(buffer))));
         }
     }
-    
+
     Err("fread(): supplied argument is not a valid stream resource".into())
 }
 
@@ -221,17 +226,17 @@ pub fn php_fwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("fwrite() expects at least 2 parameters".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
     let data_val = vm.arena.get(args[1]);
-    
+
     let data = match &data_val.value {
         Val::String(s) => s.to_vec(),
         Val::Int(i) => i.to_string().into_bytes(),
         Val::Float(f) => f.to_string().into_bytes(),
         _ => return Err("fwrite(): Data must be string or scalar".into()),
     };
-    
+
     let max_len = if args.len() > 2 {
         let len_val = vm.arena.get(args[2]);
         match &len_val.value {
@@ -241,7 +246,7 @@ pub fn php_fwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         None
     };
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
             let write_data = if let Some(max) = max_len {
@@ -249,14 +254,17 @@ pub fn php_fwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             } else {
                 &data
             };
-            
-            let bytes_written = fh.file.borrow_mut().write(write_data)
+
+            let bytes_written = fh
+                .file
+                .borrow_mut()
+                .write(write_data)
                 .map_err(|e| format!("fwrite(): {}", e))?;
-            
+
             return Ok(vm.arena.alloc(Val::Int(bytes_written as i64)));
         }
     }
-    
+
     Err("fwrite(): supplied argument is not a valid stream resource".into())
 }
 
@@ -266,15 +274,18 @@ pub fn php_file_get_contents(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     if args.is_empty() {
         return Err("file_get_contents() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let contents = fs::read(&path).map_err(|e| {
-        format!("file_get_contents({}): failed to open stream: {}",
-                String::from_utf8_lossy(&path_bytes), e)
+        format!(
+            "file_get_contents({}): failed to open stream: {}",
+            String::from_utf8_lossy(&path_bytes),
+            e
+        )
     })?;
-    
+
     Ok(vm.arena.alloc(Val::String(Rc::new(contents))))
 }
 
@@ -284,10 +295,10 @@ pub fn php_file_put_contents(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     if args.len() < 2 {
         return Err("file_put_contents() expects at least 2 parameters".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let data_val = vm.arena.get(args[1]);
     let data = match &data_val.value {
         Val::String(s) => s.to_vec(),
@@ -309,7 +320,7 @@ pub fn php_file_put_contents(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
         }
         _ => return Err("file_put_contents(): Data must be string, array, or scalar".into()),
     };
-    
+
     // Check for FILE_APPEND flag (3rd argument)
     let append = if args.len() > 2 {
         let flags_val = vm.arena.get(args[2]);
@@ -321,21 +332,37 @@ pub fn php_file_put_contents(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     } else {
         false
     };
-    
+
     let written = if append {
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(|e| format!("file_put_contents({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
-        file.write(&data)
-            .map_err(|e| format!("file_put_contents({}): write failed: {}", String::from_utf8_lossy(&path_bytes), e))?
+            .map_err(|e| {
+                format!(
+                    "file_put_contents({}): {}",
+                    String::from_utf8_lossy(&path_bytes),
+                    e
+                )
+            })?;
+        file.write(&data).map_err(|e| {
+            format!(
+                "file_put_contents({}): write failed: {}",
+                String::from_utf8_lossy(&path_bytes),
+                e
+            )
+        })?
     } else {
-        fs::write(&path, &data)
-            .map_err(|e| format!("file_put_contents({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+        fs::write(&path, &data).map_err(|e| {
+            format!(
+                "file_put_contents({}): {}",
+                String::from_utf8_lossy(&path_bytes),
+                e
+            )
+        })?;
         data.len()
     };
-    
+
     Ok(vm.arena.alloc(Val::Int(written as i64)))
 }
 
@@ -345,10 +372,10 @@ pub fn php_file_exists(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("file_exists() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let exists = path.exists();
     Ok(vm.arena.alloc(Val::Bool(exists)))
 }
@@ -359,10 +386,10 @@ pub fn php_is_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("is_file() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let is_file = path.is_file();
     Ok(vm.arena.alloc(Val::Bool(is_file)))
 }
@@ -373,10 +400,10 @@ pub fn php_is_dir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("is_dir() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let is_dir = path.is_dir();
     Ok(vm.arena.alloc(Val::Bool(is_dir)))
 }
@@ -387,15 +414,18 @@ pub fn php_filesize(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("filesize() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let metadata = fs::metadata(&path).map_err(|e| {
-        format!("filesize(): stat failed for {}: {}", 
-                String::from_utf8_lossy(&path_bytes), e)
+        format!(
+            "filesize(): stat failed for {}: {}",
+            String::from_utf8_lossy(&path_bytes),
+            e
+        )
     })?;
-    
+
     Ok(vm.arena.alloc(Val::Int(metadata.len() as i64)))
 }
 
@@ -405,10 +435,10 @@ pub fn php_is_readable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("is_readable() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     // Try to open for reading
     let readable = File::open(&path).is_ok();
     Ok(vm.arena.alloc(Val::Bool(readable)))
@@ -420,10 +450,10 @@ pub fn php_is_writable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("is_writable() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     // Check if we can open for writing
     let writable = if path.exists() {
         OpenOptions::new().write(true).open(&path).is_ok()
@@ -435,7 +465,7 @@ pub fn php_is_writable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             false
         }
     };
-    
+
     Ok(vm.arena.alloc(Val::Bool(writable)))
 }
 
@@ -445,14 +475,13 @@ pub fn php_unlink(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("unlink() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    fs::remove_file(&path).map_err(|e| {
-        format!("unlink({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    fs::remove_file(&path)
+        .map_err(|e| format!("unlink({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -462,19 +491,22 @@ pub fn php_rename(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("rename() expects at least 2 parameters".into());
     }
-    
+
     let old_bytes = handle_to_path(vm, args[0])?;
     let new_bytes = handle_to_path(vm, args[1])?;
-    
+
     let old_path = bytes_to_path(&old_bytes)?;
     let new_path = bytes_to_path(&new_bytes)?;
-    
+
     fs::rename(&old_path, &new_path).map_err(|e| {
-        format!("rename({}, {}): {}", 
-                String::from_utf8_lossy(&old_bytes),
-                String::from_utf8_lossy(&new_bytes), e)
+        format!(
+            "rename({}, {}): {}",
+            String::from_utf8_lossy(&old_bytes),
+            String::from_utf8_lossy(&new_bytes),
+            e
+        )
     })?;
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -484,10 +516,10 @@ pub fn php_mkdir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("mkdir() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     // Check for recursive flag (3rd argument)
     let recursive = if args.len() > 2 {
         let flag_val = vm.arena.get(args[2]);
@@ -495,17 +527,15 @@ pub fn php_mkdir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         false
     };
-    
+
     let result = if recursive {
         fs::create_dir_all(&path)
     } else {
         fs::create_dir(&path)
     };
-    
-    result.map_err(|e| {
-        format!("mkdir({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    result.map_err(|e| format!("mkdir({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -515,14 +545,13 @@ pub fn php_rmdir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("rmdir() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    fs::remove_dir(&path).map_err(|e| {
-        format!("rmdir({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    fs::remove_dir(&path)
+        .map_err(|e| format!("rmdir({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -532,26 +561,29 @@ pub fn php_scandir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("scandir() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let entries = fs::read_dir(&path).map_err(|e| {
-        format!("scandir({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let entries = fs::read_dir(&path)
+        .map_err(|e| format!("scandir({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     let mut files = Vec::new();
     for entry_result in entries {
         let entry = entry_result.map_err(|e| {
-            format!("scandir({}): error reading entry: {}", String::from_utf8_lossy(&path_bytes), e)
+            format!(
+                "scandir({}): error reading entry: {}",
+                String::from_utf8_lossy(&path_bytes),
+                e
+            )
         })?;
-        
+
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStrExt;
             files.push(entry.file_name().as_bytes().to_vec());
         }
-        
+
         #[cfg(not(unix))]
         {
             if let Some(name) = entry.file_name().to_str() {
@@ -559,17 +591,17 @@ pub fn php_scandir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             }
         }
     }
-    
+
     // Sort alphabetically (PHP behavior)
     files.sort();
-    
+
     // Build array
     let mut map = IndexMap::new();
     for (idx, name) in files.iter().enumerate() {
         let name_handle = vm.arena.alloc(Val::String(Rc::new(name.clone())));
         map.insert(ArrayKey::Int(idx as i64), name_handle);
     }
-    
+
     Ok(vm.arena.alloc(Val::Array(ArrayData::from(map).into())))
 }
 
@@ -579,17 +611,17 @@ pub fn php_getcwd(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if !args.is_empty() {
         return Err("getcwd() expects no parameters".into());
     }
-    
-    let cwd = std::env::current_dir().map_err(|e| {
-        format!("getcwd(): {}", e)
-    })?;
-    
+
+    let cwd = std::env::current_dir().map_err(|e| format!("getcwd(): {}", e))?;
+
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        Ok(vm.arena.alloc(Val::String(Rc::new(cwd.as_os_str().as_bytes().to_vec()))))
+        Ok(vm
+            .arena
+            .alloc(Val::String(Rc::new(cwd.as_os_str().as_bytes().to_vec()))))
     }
-    
+
     #[cfg(not(unix))]
     {
         let path_str = cwd.to_string_lossy().into_owned();
@@ -603,14 +635,13 @@ pub fn php_chdir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("chdir() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    std::env::set_current_dir(&path).map_err(|e| {
-        format!("chdir({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    std::env::set_current_dir(&path)
+        .map_err(|e| format!("chdir({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -620,21 +651,26 @@ pub fn php_realpath(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("realpath() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let canonical = path.canonicalize().map_err(|_| {
         // PHP returns false on error, but we use errors for now
-        format!("realpath({}): No such file or directory", String::from_utf8_lossy(&path_bytes))
+        format!(
+            "realpath({}): No such file or directory",
+            String::from_utf8_lossy(&path_bytes)
+        )
     })?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        Ok(vm.arena.alloc(Val::String(Rc::new(canonical.as_os_str().as_bytes().to_vec()))))
+        Ok(vm.arena.alloc(Val::String(Rc::new(
+            canonical.as_os_str().as_bytes().to_vec(),
+        ))))
     }
-    
+
     #[cfg(not(unix))]
     {
         let path_str = canonical.to_string_lossy().into_owned();
@@ -648,11 +684,12 @@ pub fn php_basename(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("basename() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let basename = path.file_name()
+
+    let basename = path
+        .file_name()
         .map(|os_str| {
             #[cfg(unix)]
             {
@@ -665,7 +702,7 @@ pub fn php_basename(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             }
         })
         .unwrap_or_default();
-    
+
     // Handle suffix removal
     let result = if args.len() > 1 {
         let suffix_val = vm.arena.get(args[1]);
@@ -681,7 +718,7 @@ pub fn php_basename(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         basename
     };
-    
+
     Ok(vm.arena.alloc(Val::String(Rc::new(result))))
 }
 
@@ -691,17 +728,17 @@ pub fn php_dirname(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("dirname() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let mut path = bytes_to_path(&path_bytes)?;
-    
+
     let levels = if args.len() > 1 {
         let level_val = vm.arena.get(args[1]);
         level_val.value.to_int().max(1) as usize
     } else {
         1
     };
-    
+
     for _ in 0..levels {
         if let Some(parent) = path.parent() {
             path = parent.to_path_buf();
@@ -709,7 +746,7 @@ pub fn php_dirname(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             break;
         }
     }
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
@@ -720,7 +757,7 @@ pub fn php_dirname(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         };
         Ok(vm.arena.alloc(Val::String(Rc::new(result))))
     }
-    
+
     #[cfg(not(unix))]
     {
         let result = if path.as_os_str().is_empty() {
@@ -738,19 +775,22 @@ pub fn php_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("copy() expects at least 2 parameters".into());
     }
-    
+
     let src_bytes = handle_to_path(vm, args[0])?;
     let dst_bytes = handle_to_path(vm, args[1])?;
-    
+
     let src_path = bytes_to_path(&src_bytes)?;
     let dst_path = bytes_to_path(&dst_bytes)?;
-    
+
     fs::copy(&src_path, &dst_path).map_err(|e| {
-        format!("copy({}, {}): {}", 
-                String::from_utf8_lossy(&src_bytes),
-                String::from_utf8_lossy(&dst_bytes), e)
+        format!(
+            "copy({}, {}): {}",
+            String::from_utf8_lossy(&src_bytes),
+            String::from_utf8_lossy(&dst_bytes),
+            e
+        )
     })?;
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -760,19 +800,22 @@ pub fn php_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("file() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let contents = fs::read(&path).map_err(|e| {
-        format!("file({}): failed to open stream: {}",
-                String::from_utf8_lossy(&path_bytes), e)
+        format!(
+            "file({}): failed to open stream: {}",
+            String::from_utf8_lossy(&path_bytes),
+            e
+        )
     })?;
-    
+
     // Split by newlines
     let mut lines = Vec::new();
     let mut current_line = Vec::new();
-    
+
     for &byte in &contents {
         current_line.push(byte);
         if byte == b'\n' {
@@ -780,19 +823,19 @@ pub fn php_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             current_line.clear();
         }
     }
-    
+
     // Add last line if not empty
     if !current_line.is_empty() {
         lines.push(current_line);
     }
-    
+
     // Build array
     let mut map = IndexMap::new();
     for (idx, line) in lines.iter().enumerate() {
         let line_handle = vm.arena.alloc(Val::String(Rc::new(line.clone())));
         map.insert(ArrayKey::Int(idx as i64), line_handle);
     }
-    
+
     Ok(vm.arena.alloc(Val::Array(ArrayData::from(map).into())))
 }
 
@@ -802,10 +845,10 @@ pub fn php_is_executable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     if args.is_empty() {
         return Err("is_executable() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -817,11 +860,12 @@ pub fn php_is_executable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
         };
         Ok(vm.arena.alloc(Val::Bool(executable)))
     }
-    
+
     #[cfg(not(unix))]
     {
         // On Windows, check file extension or try to execute
-        let executable = path.extension()
+        let executable = path
+            .extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| matches!(ext.to_lowercase().as_str(), "exe" | "bat" | "cmd" | "com"))
             .unwrap_or(false);
@@ -835,20 +879,19 @@ pub fn php_touch(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("touch() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     // Create file if it doesn't exist
     if !path.exists() {
-        File::create(&path).map_err(|e| {
-            format!("touch({}): {}", String::from_utf8_lossy(&path_bytes), e)
-        })?;
+        File::create(&path)
+            .map_err(|e| format!("touch({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
     }
-    
+
     // Note: Setting specific mtime/atime requires platform-specific code
     // For now, just creating/touching the file is sufficient
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -858,15 +901,15 @@ pub fn php_fseek(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("fseek() expects at least 2 parameters".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
     let offset_val = vm.arena.get(args[1]);
-    
+
     let offset = match &offset_val.value {
         Val::Int(i) => *i,
         _ => return Err("fseek(): Offset must be integer".into()),
     };
-    
+
     let whence = if args.len() > 2 {
         let whence_val = vm.arena.get(args[2]);
         match &whence_val.value {
@@ -876,23 +919,25 @@ pub fn php_fseek(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         0 // SEEK_SET
     };
-    
+
     let seek_from = match whence {
         0 => SeekFrom::Start(offset as u64), // SEEK_SET
-        1 => SeekFrom::Current(offset),       // SEEK_CUR
-        2 => SeekFrom::End(offset),           // SEEK_END
+        1 => SeekFrom::Current(offset),      // SEEK_CUR
+        2 => SeekFrom::End(offset),          // SEEK_END
         _ => return Err("fseek(): Invalid whence value".into()),
     };
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
-            fh.file.borrow_mut().seek(seek_from)
+            fh.file
+                .borrow_mut()
+                .seek(seek_from)
                 .map_err(|e| format!("fseek(): {}", e))?;
             *fh.eof.borrow_mut() = false;
             return Ok(vm.arena.alloc(Val::Int(0)));
         }
     }
-    
+
     Err("fseek(): supplied argument is not a valid stream resource".into())
 }
 
@@ -902,17 +947,20 @@ pub fn php_ftell(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("ftell() expects exactly 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
-            let pos = fh.file.borrow_mut().stream_position()
+            let pos = fh
+                .file
+                .borrow_mut()
+                .stream_position()
                 .map_err(|e| format!("ftell(): {}", e))?;
             return Ok(vm.arena.alloc(Val::Int(pos as i64)));
         }
     }
-    
+
     Err("ftell(): supplied argument is not a valid stream resource".into())
 }
 
@@ -922,18 +970,20 @@ pub fn php_rewind(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("rewind() expects exactly 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
-            fh.file.borrow_mut().seek(SeekFrom::Start(0))
+            fh.file
+                .borrow_mut()
+                .seek(SeekFrom::Start(0))
                 .map_err(|e| format!("rewind(): {}", e))?;
             *fh.eof.borrow_mut() = false;
             return Ok(vm.arena.alloc(Val::Bool(true)));
         }
     }
-    
+
     Err("rewind(): supplied argument is not a valid stream resource".into())
 }
 
@@ -943,16 +993,16 @@ pub fn php_feof(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("feof() expects exactly 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
             let eof = *fh.eof.borrow();
             return Ok(vm.arena.alloc(Val::Bool(eof)));
         }
     }
-    
+
     Err("feof(): supplied argument is not a valid stream resource".into())
 }
 
@@ -962,9 +1012,9 @@ pub fn php_fgets(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("fgets() expects at least 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     let max_len = if args.len() > 1 {
         let len_val = vm.arena.get(args[1]);
         match &len_val.value {
@@ -974,45 +1024,48 @@ pub fn php_fgets(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         None
     };
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
             let mut line = Vec::new();
             let mut buf = [0u8; 1];
             let mut bytes_read = 0;
-            
+
             loop {
-                let n = fh.file.borrow_mut().read(&mut buf)
+                let n = fh
+                    .file
+                    .borrow_mut()
+                    .read(&mut buf)
                     .map_err(|e| format!("fgets(): {}", e))?;
-                
+
                 if n == 0 {
                     break;
                 }
-                
+
                 line.push(buf[0]);
                 bytes_read += 1;
-                
+
                 // Stop at newline or max length
                 if buf[0] == b'\n' {
                     break;
                 }
-                
+
                 if let Some(max) = max_len {
                     if bytes_read >= max - 1 {
                         break;
                     }
                 }
             }
-            
+
             if bytes_read == 0 {
                 *fh.eof.borrow_mut() = true;
                 return Ok(vm.arena.alloc(Val::Bool(false)));
             }
-            
+
             return Ok(vm.arena.alloc(Val::String(Rc::new(line))));
         }
     }
-    
+
     Err("fgets(): supplied argument is not a valid stream resource".into())
 }
 
@@ -1022,24 +1075,27 @@ pub fn php_fgetc(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("fgetc() expects exactly 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
             let mut buf = [0u8; 1];
-            let bytes_read = fh.file.borrow_mut().read(&mut buf)
+            let bytes_read = fh
+                .file
+                .borrow_mut()
+                .read(&mut buf)
                 .map_err(|e| format!("fgetc(): {}", e))?;
-            
+
             if bytes_read == 0 {
                 *fh.eof.borrow_mut() = true;
                 return Ok(vm.arena.alloc(Val::Bool(false)));
             }
-            
+
             return Ok(vm.arena.alloc(Val::String(Rc::new(vec![buf[0]]))));
         }
     }
-    
+
     Err("fgetc(): supplied argument is not a valid stream resource".into())
 }
 
@@ -1055,17 +1111,19 @@ pub fn php_fflush(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("fflush() expects exactly 1 parameter".into());
     }
-    
+
     let resource_val = vm.arena.get(args[0]);
-    
+
     if let Val::Resource(rc) = &resource_val.value {
         if let Some(fh) = rc.downcast_ref::<FileHandle>() {
-            fh.file.borrow_mut().flush()
+            fh.file
+                .borrow_mut()
+                .flush()
                 .map_err(|e| format!("fflush(): {}", e))?;
             return Ok(vm.arena.alloc(Val::Bool(true)));
         }
     }
-    
+
     Err("fflush(): supplied argument is not a valid stream resource".into())
 }
 
@@ -1075,20 +1133,20 @@ pub fn php_filemtime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("filemtime() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::metadata(&path).map_err(|e| {
-        format!("filemtime({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
-    let mtime = metadata.modified()
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("filemtime({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
+    let mtime = metadata
+        .modified()
         .map_err(|e| format!("filemtime(): {}", e))?
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("filemtime(): {}", e))?
         .as_secs();
-    
+
     Ok(vm.arena.alloc(Val::Int(mtime as i64)))
 }
 
@@ -1098,20 +1156,20 @@ pub fn php_fileatime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("fileatime() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::metadata(&path).map_err(|e| {
-        format!("fileatime({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
-    let atime = metadata.accessed()
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("fileatime({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
+    let atime = metadata
+        .accessed()
         .map_err(|e| format!("fileatime(): {}", e))?
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("fileatime(): {}", e))?
         .as_secs();
-    
+
     Ok(vm.arena.alloc(Val::Int(atime as i64)))
 }
 
@@ -1121,14 +1179,13 @@ pub fn php_filectime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("filectime() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::metadata(&path).map_err(|e| {
-        format!("filectime({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("filectime({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     // On Unix, this is ctime (change time). On Windows, use creation time.
     #[cfg(unix)]
     {
@@ -1136,10 +1193,11 @@ pub fn php_filectime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         let ctime = metadata.ctime();
         Ok(vm.arena.alloc(Val::Int(ctime)))
     }
-    
+
     #[cfg(not(unix))]
     {
-        let ctime = metadata.created()
+        let ctime = metadata
+            .created()
             .map_err(|e| format!("filectime(): {}", e))?
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| format!("filectime(): {}", e))?
@@ -1154,21 +1212,20 @@ pub fn php_fileperms(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("fileperms() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::metadata(&path).map_err(|e| {
-        format!("fileperms({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("fileperms({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = metadata.permissions().mode();
         Ok(vm.arena.alloc(Val::Int(mode as i64)))
     }
-    
+
     #[cfg(not(unix))]
     {
         // On Windows, approximate permissions
@@ -1184,21 +1241,20 @@ pub fn php_fileowner(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("fileowner() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let metadata = fs::metadata(&path).map_err(|e| {
-            format!("fileowner({}): {}", String::from_utf8_lossy(&path_bytes), e)
-        })?;
-        
+        let metadata = fs::metadata(&path)
+            .map_err(|e| format!("fileowner({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
         let uid = metadata.uid();
         Ok(vm.arena.alloc(Val::Int(uid as i64)))
     }
-    
+
     #[cfg(not(unix))]
     {
         // Not supported on Windows
@@ -1212,21 +1268,20 @@ pub fn php_filegroup(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("filegroup() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let metadata = fs::metadata(&path).map_err(|e| {
-            format!("filegroup({}): {}", String::from_utf8_lossy(&path_bytes), e)
-        })?;
-        
+        let metadata = fs::metadata(&path)
+            .map_err(|e| format!("filegroup({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
         let gid = metadata.gid();
         Ok(vm.arena.alloc(Val::Int(gid as i64)))
     }
-    
+
     #[cfg(not(unix))]
     {
         // Not supported on Windows
@@ -1240,26 +1295,25 @@ pub fn php_chmod(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("chmod() expects at least 2 parameters".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let mode_val = vm.arena.get(args[1]);
     let mode = match &mode_val.value {
         Val::Int(m) => *m as u32,
         _ => return Err("chmod(): Mode must be integer".into()),
     };
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(mode);
-        fs::set_permissions(&path, perms).map_err(|e| {
-            format!("chmod({}): {}", String::from_utf8_lossy(&path_bytes), e)
-        })?;
+        fs::set_permissions(&path, perms)
+            .map_err(|e| format!("chmod({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
         Ok(vm.arena.alloc(Val::Bool(true)))
     }
-    
+
     #[cfg(not(unix))]
     {
         // On Windows, only read-only bit can be set
@@ -1268,9 +1322,8 @@ pub fn php_chmod(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             .map_err(|e| format!("chmod(): {}", e))?
             .permissions();
         perms.set_readonly(readonly);
-        fs::set_permissions(&path, perms).map_err(|e| {
-            format!("chmod({}): {}", String::from_utf8_lossy(&path_bytes), e)
-        })?;
+        fs::set_permissions(&path, perms)
+            .map_err(|e| format!("chmod({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
         Ok(vm.arena.alloc(Val::Bool(true)))
     }
 }
@@ -1281,14 +1334,13 @@ pub fn php_stat(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("stat() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::metadata(&path).map_err(|e| {
-        format!("stat({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("stat({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     build_stat_array(vm, &metadata)
 }
 
@@ -1298,87 +1350,173 @@ pub fn php_lstat(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("lstat() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let metadata = fs::symlink_metadata(&path).map_err(|e| {
-        format!("lstat({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|e| format!("lstat({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     build_stat_array(vm, &metadata)
 }
 
 /// Helper to build stat array from metadata
 fn build_stat_array(vm: &mut VM, metadata: &Metadata) -> Result<Handle, String> {
     let mut map = IndexMap::new();
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        
+
         // Numeric indices
-        map.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(metadata.dev() as i64)));
-        map.insert(ArrayKey::Int(1), vm.arena.alloc(Val::Int(metadata.ino() as i64)));
-        map.insert(ArrayKey::Int(2), vm.arena.alloc(Val::Int(metadata.mode() as i64)));
-        map.insert(ArrayKey::Int(3), vm.arena.alloc(Val::Int(metadata.nlink() as i64)));
-        map.insert(ArrayKey::Int(4), vm.arena.alloc(Val::Int(metadata.uid() as i64)));
-        map.insert(ArrayKey::Int(5), vm.arena.alloc(Val::Int(metadata.gid() as i64)));
-        map.insert(ArrayKey::Int(6), vm.arena.alloc(Val::Int(metadata.rdev() as i64)));
-        map.insert(ArrayKey::Int(7), vm.arena.alloc(Val::Int(metadata.size() as i64)));
+        map.insert(
+            ArrayKey::Int(0),
+            vm.arena.alloc(Val::Int(metadata.dev() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(1),
+            vm.arena.alloc(Val::Int(metadata.ino() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(2),
+            vm.arena.alloc(Val::Int(metadata.mode() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(3),
+            vm.arena.alloc(Val::Int(metadata.nlink() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(4),
+            vm.arena.alloc(Val::Int(metadata.uid() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(5),
+            vm.arena.alloc(Val::Int(metadata.gid() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(6),
+            vm.arena.alloc(Val::Int(metadata.rdev() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(7),
+            vm.arena.alloc(Val::Int(metadata.size() as i64)),
+        );
         map.insert(ArrayKey::Int(8), vm.arena.alloc(Val::Int(metadata.atime())));
         map.insert(ArrayKey::Int(9), vm.arena.alloc(Val::Int(metadata.mtime())));
-        map.insert(ArrayKey::Int(10), vm.arena.alloc(Val::Int(metadata.ctime())));
-        map.insert(ArrayKey::Int(11), vm.arena.alloc(Val::Int(metadata.blksize() as i64)));
-        map.insert(ArrayKey::Int(12), vm.arena.alloc(Val::Int(metadata.blocks() as i64)));
-        
+        map.insert(
+            ArrayKey::Int(10),
+            vm.arena.alloc(Val::Int(metadata.ctime())),
+        );
+        map.insert(
+            ArrayKey::Int(11),
+            vm.arena.alloc(Val::Int(metadata.blksize() as i64)),
+        );
+        map.insert(
+            ArrayKey::Int(12),
+            vm.arena.alloc(Val::Int(metadata.blocks() as i64)),
+        );
+
         // String indices
-        map.insert(ArrayKey::Str(Rc::new(b"dev".to_vec())), vm.arena.alloc(Val::Int(metadata.dev() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"ino".to_vec())), vm.arena.alloc(Val::Int(metadata.ino() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"mode".to_vec())), vm.arena.alloc(Val::Int(metadata.mode() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"nlink".to_vec())), vm.arena.alloc(Val::Int(metadata.nlink() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"uid".to_vec())), vm.arena.alloc(Val::Int(metadata.uid() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"gid".to_vec())), vm.arena.alloc(Val::Int(metadata.gid() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"rdev".to_vec())), vm.arena.alloc(Val::Int(metadata.rdev() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"size".to_vec())), vm.arena.alloc(Val::Int(metadata.size() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"atime".to_vec())), vm.arena.alloc(Val::Int(metadata.atime())));
-        map.insert(ArrayKey::Str(Rc::new(b"mtime".to_vec())), vm.arena.alloc(Val::Int(metadata.mtime())));
-        map.insert(ArrayKey::Str(Rc::new(b"ctime".to_vec())), vm.arena.alloc(Val::Int(metadata.ctime())));
-        map.insert(ArrayKey::Str(Rc::new(b"blksize".to_vec())), vm.arena.alloc(Val::Int(metadata.blksize() as i64)));
-        map.insert(ArrayKey::Str(Rc::new(b"blocks".to_vec())), vm.arena.alloc(Val::Int(metadata.blocks() as i64)));
+        map.insert(
+            ArrayKey::Str(Rc::new(b"dev".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.dev() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"ino".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.ino() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"mode".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.mode() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"nlink".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.nlink() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"uid".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.uid() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"gid".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.gid() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"rdev".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.rdev() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"size".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.size() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"atime".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.atime())),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"mtime".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.mtime())),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"ctime".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.ctime())),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"blksize".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.blksize() as i64)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"blocks".to_vec())),
+            vm.arena.alloc(Val::Int(metadata.blocks() as i64)),
+        );
     }
-    
+
     #[cfg(not(unix))]
     {
         // Windows - provide subset of stat data
         let size = metadata.len() as i64;
-        let mtime = metadata.modified()
+        let mtime = metadata
+            .modified()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let atime = metadata.accessed()
+        let atime = metadata
+            .accessed()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let ctime = metadata.created()
+        let ctime = metadata
+            .created()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        
+
         map.insert(ArrayKey::Int(7), vm.arena.alloc(Val::Int(size)));
         map.insert(ArrayKey::Int(8), vm.arena.alloc(Val::Int(atime)));
         map.insert(ArrayKey::Int(9), vm.arena.alloc(Val::Int(mtime)));
         map.insert(ArrayKey::Int(10), vm.arena.alloc(Val::Int(ctime)));
-        
-        map.insert(ArrayKey::Str(Rc::new(b"size".to_vec())), vm.arena.alloc(Val::Int(size)));
-        map.insert(ArrayKey::Str(Rc::new(b"atime".to_vec())), vm.arena.alloc(Val::Int(atime)));
-        map.insert(ArrayKey::Str(Rc::new(b"mtime".to_vec())), vm.arena.alloc(Val::Int(mtime)));
-        map.insert(ArrayKey::Str(Rc::new(b"ctime".to_vec())), vm.arena.alloc(Val::Int(ctime)));
+
+        map.insert(
+            ArrayKey::Str(Rc::new(b"size".to_vec())),
+            vm.arena.alloc(Val::Int(size)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"atime".to_vec())),
+            vm.arena.alloc(Val::Int(atime)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"mtime".to_vec())),
+            vm.arena.alloc(Val::Int(mtime)),
+        );
+        map.insert(
+            ArrayKey::Str(Rc::new(b"ctime".to_vec())),
+            vm.arena.alloc(Val::Int(ctime)),
+        );
     }
-    
+
     Ok(vm.arena.alloc(Val::Array(ArrayData::from(map).into())))
 }
 
@@ -1388,40 +1526,40 @@ pub fn php_tempnam(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Err("tempnam() expects at least 2 parameters".into());
     }
-    
+
     let dir_bytes = handle_to_path(vm, args[0])?;
     let prefix_bytes = handle_to_path(vm, args[1])?;
-    
+
     let dir = bytes_to_path(&dir_bytes)?;
     let prefix = String::from_utf8_lossy(&prefix_bytes);
-    
+
     // Use system temp dir if provided dir doesn't exist
     let base_dir = if dir.exists() && dir.is_dir() {
         dir
     } else {
         std::env::temp_dir()
     };
-    
+
     // Generate unique filename
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros())
         .unwrap_or(0);
-    
+
     let filename = format!("{}{:x}.tmp", prefix, timestamp);
     let temp_path = base_dir.join(filename);
-    
+
     // Create empty file
-    File::create(&temp_path).map_err(|e| {
-        format!("tempnam(): {}", e)
-    })?;
-    
+    File::create(&temp_path).map_err(|e| format!("tempnam(): {}", e))?;
+
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        Ok(vm.arena.alloc(Val::String(Rc::new(temp_path.as_os_str().as_bytes().to_vec()))))
+        Ok(vm.arena.alloc(Val::String(Rc::new(
+            temp_path.as_os_str().as_bytes().to_vec(),
+        ))))
     }
-    
+
     #[cfg(not(unix))]
     {
         let path_str = temp_path.to_string_lossy().into_owned();
@@ -1435,16 +1573,16 @@ pub fn php_is_link(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("is_link() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
+
     let is_link = if let Ok(metadata) = fs::symlink_metadata(&path) {
         metadata.is_symlink()
     } else {
         false
     };
-    
+
     Ok(vm.arena.alloc(Val::Bool(is_link)))
 }
 
@@ -1454,24 +1592,27 @@ pub fn php_readlink(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("readlink() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let path = bytes_to_path(&path_bytes)?;
-    
-    let target = fs::read_link(&path).map_err(|e| {
-        format!("readlink({}): {}", String::from_utf8_lossy(&path_bytes), e)
-    })?;
-    
+
+    let target = fs::read_link(&path)
+        .map_err(|e| format!("readlink({}): {}", String::from_utf8_lossy(&path_bytes), e))?;
+
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        Ok(vm.arena.alloc(Val::String(Rc::new(target.as_os_str().as_bytes().to_vec()))))
+        Ok(vm
+            .arena
+            .alloc(Val::String(Rc::new(target.as_os_str().as_bytes().to_vec()))))
     }
-    
+
     #[cfg(not(unix))]
     {
         let target_str = target.to_string_lossy().into_owned();
-        Ok(vm.arena.alloc(Val::String(Rc::new(target_str.into_bytes()))))
+        Ok(vm
+            .arena
+            .alloc(Val::String(Rc::new(target_str.into_bytes()))))
     }
 }
 
@@ -1481,10 +1622,10 @@ pub fn php_disk_free_space(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     if args.is_empty() {
         return Err("disk_free_space() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let _path = bytes_to_path(&path_bytes)?;
-    
+
     // This requires platform-specific syscalls (statvfs on Unix, GetDiskFreeSpaceEx on Windows)
     // For now, return a placeholder
     Err("disk_free_space(): Not yet implemented".into())
@@ -1496,11 +1637,10 @@ pub fn php_disk_total_space(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     if args.is_empty() {
         return Err("disk_total_space() expects at least 1 parameter".into());
     }
-    
+
     let path_bytes = handle_to_path(vm, args[0])?;
     let _path = bytes_to_path(&path_bytes)?;
-    
+
     // This requires platform-specific syscalls
     Err("disk_total_space(): Not yet implemented".into())
 }
-

@@ -1,7 +1,7 @@
-use php_vm::vm::engine::VM;
 use php_vm::compiler::emitter::Emitter;
+use php_vm::core::value::{ArrayKey, Val};
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::core::value::{Val, ArrayKey};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -9,19 +9,19 @@ fn run_code(source: &str) -> VM {
     let full_source = format!("<?php {}", source);
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         panic!("Parse errors: {:?}", program.errors);
     }
-    
+
     let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).expect("Execution failed");
     vm
@@ -56,10 +56,10 @@ fn test_logical_and() {
         
         return [$a, $b, $c, $d, $e];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Bool(true));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Bool(false));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Bool(false));
@@ -81,10 +81,10 @@ fn test_logical_or() {
         
         return [$a, $b, $c, $d, $e];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Bool(true));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Bool(true));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Bool(true));
@@ -102,10 +102,10 @@ fn test_coalesce() {
         
         return [$a, $b, $c, $d];
     ";
-    
+
     let vm = run_code(source);
     let ret = get_return_value(&vm);
-    
+
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(1));
     assert_eq!(get_array_idx(&vm, &ret, 1), Val::Int(2));
     assert_eq!(get_array_idx(&vm, &ret, 2), Val::Bool(false));

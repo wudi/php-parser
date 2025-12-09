@@ -1,9 +1,9 @@
-use crate::core::value::{Symbol, Val, Handle};
+use crate::core::value::{Handle, Symbol, Val};
 use crate::vm::opcode::OpCode;
-use std::rc::Rc;
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use indexmap::IndexMap;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct UserFunc {
@@ -38,10 +38,10 @@ pub struct CatchEntry {
 
 #[derive(Debug, Default)]
 pub struct CodeChunk {
-    pub name: Symbol,         // File/Func name
-    pub returns_ref: bool,    // Function returns by reference
-    pub code: Vec<OpCode>,    // Instructions
-    pub constants: Vec<Val>,  // Literals (Ints, Strings)
-    pub lines: Vec<u32>,      // Line numbers for debug
+    pub name: Symbol,        // File/Func name
+    pub returns_ref: bool,   // Function returns by reference
+    pub code: Vec<OpCode>,   // Instructions
+    pub constants: Vec<Val>, // Literals (Ints, Strings)
+    pub lines: Vec<u32>,     // Line numbers for debug
     pub catch_table: Vec<CatchEntry>,
 }

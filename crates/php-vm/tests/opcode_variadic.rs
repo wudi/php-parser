@@ -25,7 +25,10 @@ fn php_eval_int(script: &str) -> i64 {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.trim().parse::<i64>().expect("php output was not an int")
+    stdout
+        .trim()
+        .parse::<i64>()
+        .expect("php output was not an int")
 }
 
 #[test]
@@ -34,18 +37,23 @@ fn recv_variadic_counts_args() {
     let sym_args = Symbol(0);
     let mut func_chunk = CodeChunk::default();
     func_chunk.code.push(OpCode::RecvVariadic(0));
-    
+
     // Call count($args)
     let count_idx = func_chunk.constants.len();
-    func_chunk.constants.push(Val::String(b"count".to_vec().into()));
+    func_chunk
+        .constants
+        .push(Val::String(b"count".to_vec().into()));
     func_chunk.code.push(OpCode::Const(count_idx as u16));
     func_chunk.code.push(OpCode::LoadVar(sym_args));
     func_chunk.code.push(OpCode::Call(1));
-    
+
     func_chunk.code.push(OpCode::Return);
 
     let user_func = UserFunc {
-        params: vec![FuncParam { name: sym_args, by_ref: false }],
+        params: vec![FuncParam {
+            name: sym_args,
+            by_ref: false,
+        }],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),
         is_static: false,
@@ -74,7 +82,9 @@ fn recv_variadic_counts_args() {
     let engine = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine);
     let sym_varcnt = vm.context.interner.intern(b"varcnt");
-    vm.context.user_functions.insert(sym_varcnt, Rc::new(user_func));
+    vm.context
+        .user_functions
+        .insert(sym_varcnt, Rc::new(user_func));
 
     vm.run(Rc::new(chunk)).expect("VM run failed");
     let ret = vm.last_return_value.expect("no return");
@@ -83,7 +93,8 @@ fn recv_variadic_counts_args() {
         other => panic!("expected Int, got {:?}", other),
     };
 
-    let php_val = php_eval_int("function varcnt(...$args){return count($args);} echo varcnt(1,2,3);");
+    let php_val =
+        php_eval_int("function varcnt(...$args){return count($args);} echo varcnt(1,2,3);");
     assert_eq!(vm_val, php_val);
 }
 
@@ -106,9 +117,18 @@ fn send_unpack_passes_array_elements() {
 
     let user_func = UserFunc {
         params: vec![
-            FuncParam { name: sym_a, by_ref: false },
-            FuncParam { name: sym_b, by_ref: false },
-            FuncParam { name: sym_c, by_ref: false },
+            FuncParam {
+                name: sym_a,
+                by_ref: false,
+            },
+            FuncParam {
+                name: sym_b,
+                by_ref: false,
+            },
+            FuncParam {
+                name: sym_c,
+                by_ref: false,
+            },
         ],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),
@@ -131,7 +151,7 @@ fn send_unpack_passes_array_elements() {
 
     // Build array
     chunk.code.push(OpCode::InitArray(0)); // []
-    // [0 => 1]
+                                           // [0 => 1]
     chunk.code.push(OpCode::Const(1)); // key 0
     chunk.code.push(OpCode::Const(2)); // val 1
     chunk.code.push(OpCode::AddArrayElement);
@@ -152,7 +172,9 @@ fn send_unpack_passes_array_elements() {
     let engine = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine);
     let sym_sum3 = vm.context.interner.intern(b"sum3");
-    vm.context.user_functions.insert(sym_sum3, Rc::new(user_func));
+    vm.context
+        .user_functions
+        .insert(sym_sum3, Rc::new(user_func));
 
     vm.run(Rc::new(chunk)).expect("VM run failed");
     let ret = vm.last_return_value.expect("no return");
@@ -161,6 +183,7 @@ fn send_unpack_passes_array_elements() {
         other => panic!("expected Int, got {:?}", other),
     };
 
-    let php_val = php_eval_int("function sum3($a,$b,$c){return $a+$b+$c;} $arr=[1,2,3]; echo sum3(...$arr);");
+    let php_val =
+        php_eval_int("function sum3($a,$b,$c){return $a+$b+$c;} $arr=[1,2,3]; echo sum3(...$arr);");
     assert_eq!(vm_val, php_val);
 }

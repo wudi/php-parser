@@ -1,8 +1,8 @@
 use php_vm::compiler::chunk::{CodeChunk, FuncParam, UserFunc};
 use php_vm::core::value::{Symbol, Val};
-use php_vm::vm::opcode::OpCode;
-use php_vm::vm::engine::VM;
 use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::VM;
+use php_vm::vm::opcode::OpCode;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::Command;
@@ -23,7 +23,10 @@ fn php_eval_int(script: &str) -> i64 {
         );
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.trim().parse::<i64>().expect("php output was not an int")
+    stdout
+        .trim()
+        .parse::<i64>()
+        .expect("php output was not an int")
 }
 
 #[test]
@@ -69,7 +72,10 @@ fn send_ref_mutates_caller() {
     func_chunk.constants.push(Val::Int(1)); // idx 0
 
     let user_func = UserFunc {
-        params: vec![FuncParam { name: sym_x, by_ref: true }],
+        params: vec![FuncParam {
+            name: sym_x,
+            by_ref: true,
+        }],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),
         is_static: false,
@@ -97,7 +103,9 @@ fn send_ref_mutates_caller() {
     let engine = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine);
     let sym_foo = vm.context.interner.intern(b"foo");
-    vm.context.user_functions.insert(sym_foo, Rc::new(user_func));
+    vm.context
+        .user_functions
+        .insert(sym_foo, Rc::new(user_func));
 
     vm.run(Rc::new(chunk)).expect("VM run failed");
     let ret = vm.last_return_value.expect("no return");

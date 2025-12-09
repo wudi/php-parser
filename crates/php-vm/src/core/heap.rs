@@ -37,7 +37,7 @@ impl Arena {
     pub fn get_mut(&mut self, h: Handle) -> &mut Zval {
         &mut self.storage[h.0 as usize]
     }
-    
+
     pub fn free(&mut self, h: Handle) {
         self.free_slots.push(h.0 as usize);
     }

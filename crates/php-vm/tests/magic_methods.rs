@@ -1,25 +1,25 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use std::sync::Arc;
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
+use std::rc::Rc;
+use std::sync::Arc;
 
 fn run_php(src: &[u8]) -> Val {
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(src);
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap();
-    
+
     let res_handle = vm.last_return_value.expect("Should return value");
     vm.arena.get(res_handle).value.clone()
 }
@@ -36,7 +36,7 @@ fn test_magic_get() {
         $m = new Magic();
         return $m->foo;
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"got foo");
@@ -60,7 +60,7 @@ fn test_magic_set() {
         $m->bar = 'baz';
         return $m->captured;
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"bar=baz");
@@ -81,7 +81,7 @@ fn test_magic_call() {
         $m = new MagicCall();
         return $m->missing('arg1');
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"called missing with arg1");
@@ -104,7 +104,7 @@ fn test_magic_construct() {
         $m = new MagicConstruct('init');
         return $m->val;
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"init");
@@ -124,7 +124,7 @@ fn test_magic_call_static() {
         
         return MagicCallStatic::missing('arg1');
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"static called missing with arg1");
@@ -145,7 +145,7 @@ fn test_magic_isset() {
         $m = new MagicIsset();
         return isset($m->exists) && !isset($m->missing);
     ";
-    
+
     let res = run_php(src);
     if let Val::Bool(b) = res {
         assert!(b);
@@ -171,7 +171,7 @@ fn test_magic_unset() {
         unset($m->missing);
         return $m->unsetted;
     ";
-    
+
     let res = run_php(src);
     if let Val::Bool(b) = res {
         assert!(b);
@@ -192,7 +192,7 @@ fn test_magic_tostring() {
         $m = new MagicToString();
         return (string)$m;
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"I am a string");
@@ -213,7 +213,7 @@ fn test_magic_invoke() {
         $m = new MagicInvoke();
         return $m('foo');
     ";
-    
+
     let res = run_php(src);
     if let Val::String(s) = res {
         assert_eq!(s.as_slice(), b"Invoked with foo");
@@ -237,7 +237,7 @@ fn test_magic_clone() {
         
         return $m2->cloned;
     ";
-    
+
     let res = run_php(src);
     if let Val::Bool(b) = res {
         assert!(b);

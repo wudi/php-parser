@@ -1,25 +1,25 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use std::sync::Arc;
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
+use std::rc::Rc;
+use std::sync::Arc;
 
 fn run_php(src: &[u8]) -> Val {
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(src);
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap();
-    
+
     if let Some(handle) = vm.last_return_value {
         vm.arena.get(handle).value.clone()
     } else {
@@ -34,9 +34,9 @@ fn test_class_const_class() {
         $a = A::class;
         return $a;
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -52,9 +52,9 @@ fn test_object_class_const() {
         $a = $obj::class;
         return $a;
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -69,9 +69,9 @@ fn test_get_class_function() {
         $obj = new A();
         return get_class($obj);
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -90,9 +90,9 @@ fn test_get_class_no_args() {
         $obj = new A();
         return $obj->test();
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -108,9 +108,9 @@ fn test_get_parent_class() {
         $b = new B();
         return get_parent_class($b);
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -125,9 +125,9 @@ fn test_get_parent_class_string() {
         class B extends A {}
         return get_parent_class('B');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -147,9 +147,9 @@ fn test_get_parent_class_no_args() {
         $b = new B();
         return $b->test();
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
     } else {
@@ -163,9 +163,9 @@ fn test_get_parent_class_false() {
         class A {}
         return get_parent_class('A');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -181,9 +181,9 @@ fn test_is_subclass_of() {
         $b = new B();
         return is_subclass_of($b, 'A');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -198,9 +198,9 @@ fn test_is_subclass_of_string() {
         class B extends A {}
         return is_subclass_of('B', 'A');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -214,9 +214,9 @@ fn test_is_subclass_of_same_class() {
         class A {}
         return is_subclass_of('A', 'A');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -231,9 +231,9 @@ fn test_is_subclass_of_interface() {
         class A implements I {}
         return is_subclass_of('A', 'I');
     "#;
-    
+
     let val = run_php(code.as_bytes());
-    
+
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {

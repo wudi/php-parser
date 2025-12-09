@@ -1,25 +1,25 @@
-use php_vm::vm::engine::VM;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use std::sync::Arc;
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
+use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::vm::engine::VM;
+use std::rc::Rc;
+use std::sync::Arc;
 
 fn run_php(src: &[u8]) -> Val {
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(src);
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
-    
+
     let mut vm = VM::new_with_context(request_context);
     vm.run(Rc::new(chunk)).unwrap();
-    
+
     if let Some(handle) = vm.last_return_value {
         vm.arena.get(handle).value.clone()
     } else {
@@ -49,7 +49,7 @@ fn test_gettype() {
             gettype($g),
         ];
     "#;
-    
+
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
         // Check values
@@ -99,7 +99,7 @@ fn test_get_called_class() {
         
         return B::test();
     "#;
-    
+
     let val = run_php(code.as_bytes());
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "B");
@@ -119,7 +119,7 @@ fn test_get_called_class_base() {
         
         return A::test();
     "#;
-    
+
     let val = run_php(code.as_bytes());
     if let Val::String(s) = val {
         assert_eq!(String::from_utf8_lossy(&s), "A");
@@ -154,7 +154,7 @@ fn test_is_checks() {
             is_scalar($a), is_scalar($b), is_scalar($c), is_scalar($d), is_scalar($e), is_scalar($f), is_scalar($g),
         ];
     "#;
-    
+
     let val = run_php(code.as_bytes());
     if let Val::Array(arr) = val {
         assert_eq!(arr.map.len(), 26);

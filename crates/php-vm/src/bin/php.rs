@@ -1,16 +1,16 @@
-use clap::Parser;
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-use std::path::PathBuf;
-use std::fs;
-use std::sync::Arc;
-use std::rc::Rc;
 use bumpalo::Bump;
+use clap::Parser;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
-use php_vm::vm::engine::{VM, VmError};
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::{VmError, VM};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "php")]
@@ -62,7 +62,7 @@ fn run_repl() -> anyhow::Result<()> {
                     break;
                 }
                 rl.add_history_entry(line)?;
-                
+
                 // Execute line
                 // In REPL, we might want to wrap in <?php ?> if not present?
                 // Native PHP -a expects code without <?php ?> usually?
@@ -72,25 +72,25 @@ fn run_repl() -> anyhow::Result<()> {
                 // Let's assume raw PHP code.
                 // But the parser might expect `<?php` tag?
                 // Let's check `php-parser` behavior.
-                
+
                 let source_code = if line.starts_with("<?php") {
                     line.to_string()
                 } else {
                     format!("<?php {}", line)
                 };
 
-                if let Err(e) = execute_source(&source_code, &mut vm) {
+                if let Err(e) = execute_source(&source_code, None, &mut vm) {
                     println!("Error: {:?}", e);
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
                 break;
-            },
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
                 break;
-            },
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
                 break;
@@ -103,20 +103,22 @@ fn run_repl() -> anyhow::Result<()> {
 
 fn run_file(path: PathBuf) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
+    let canonical_path = path.canonicalize().unwrap_or(path);
     let engine_context = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine_context);
-    
-    execute_source(&source, &mut vm).map_err(|e| anyhow::anyhow!("VM Error: {:?}", e))?;
-    
+
+    execute_source(&source, Some(&canonical_path), &mut vm)
+        .map_err(|e| anyhow::anyhow!("VM Error: {:?}", e))?;
+
     Ok(())
 }
 
-fn execute_source(source: &str, vm: &mut VM) -> Result<(), VmError> {
+fn execute_source(source: &str, file_path: Option<&Path>, vm: &mut VM) -> Result<(), VmError> {
     let source_bytes = source.as_bytes();
     let arena = Bump::new();
     let lexer = Lexer::new(source_bytes);
     let mut parser = PhpParser::new(lexer, &arena);
-    
+
     let program = parser.parse_program();
 
     if !program.errors.is_empty() {
@@ -125,13 +127,17 @@ fn execute_source(source: &str, vm: &mut VM) -> Result<(), VmError> {
         }
         return Ok(());
     }
-    
+
     // Compile
-    let emitter = Emitter::new(source_bytes, &mut vm.context.interner);
+    let mut emitter = Emitter::new(source_bytes, &mut vm.context.interner);
+    if let Some(path) = file_path {
+        let path_string = path.to_string_lossy().into_owned();
+        emitter = emitter.with_file_path(path_string);
+    }
     let (chunk, _has_error) = emitter.compile(program.statements);
-    
+
     // Run
     vm.run(Rc::new(chunk))?;
-    
+
     Ok(())
 }
