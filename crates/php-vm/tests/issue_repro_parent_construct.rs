@@ -47,7 +47,7 @@ fn test_parent_construct_call() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -90,7 +90,7 @@ fn test_self_static_call_to_instance_method() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);

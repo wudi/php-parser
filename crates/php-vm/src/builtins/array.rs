@@ -144,9 +144,7 @@ fn values_equal(a: &Val, b: &Val, strict: bool) -> bool {
         (Val::Bool(_), _) | (_, Val::Bool(_)) => a.to_bool() == b.to_bool(),
         (Val::Int(_), Val::Int(_)) => a == b,
         (Val::Float(_), Val::Float(_)) => a == b,
-        (Val::Int(_), Val::Float(_)) | (Val::Float(_), Val::Int(_)) => {
-            a.to_float() == b.to_float()
-        }
+        (Val::Int(_), Val::Float(_)) | (Val::Float(_), Val::Int(_)) => a.to_float() == b.to_float(),
         (Val::String(_), Val::String(_)) => a == b,
         (Val::String(_), Val::Int(_))
         | (Val::Int(_), Val::String(_))

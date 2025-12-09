@@ -479,10 +479,7 @@ fn compare_part_values(a: &VersionPart, b: &VersionPart) -> Ordering {
 }
 
 fn evaluate_version_operator(ordering: Ordering, op_bytes: &[u8]) -> Result<bool, String> {
-    let normalized: Vec<u8> = op_bytes
-        .iter()
-        .map(|b| b.to_ascii_lowercase())
-        .collect();
+    let normalized: Vec<u8> = op_bytes.iter().map(|b| b.to_ascii_lowercase()).collect();
 
     let result = match normalized.as_slice() {
         b"<" | b"lt" => ordering == Ordering::Less,
@@ -650,11 +647,7 @@ fn format_string_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8
 fn format_signed_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8> {
     let val = vm.arena.get(handle);
     let raw = val.value.to_int();
-    let mut magnitude = if raw < 0 {
-        -(raw as i128)
-    } else {
-        raw as i128
-    };
+    let mut magnitude = if raw < 0 { -(raw as i128) } else { raw as i128 };
 
     if magnitude < 0 {
         magnitude = 0;

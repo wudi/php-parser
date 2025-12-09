@@ -2,7 +2,7 @@ use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
+use php_vm::vm::engine::VM;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ fn test_class_definition_and_instantiation() {
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -72,7 +72,7 @@ fn test_inheritance() {
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -111,7 +111,7 @@ fn test_method_argument_binding() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -150,7 +150,7 @@ fn test_static_method_argument_binding() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -187,7 +187,7 @@ fn test_magic_call_func_get_args_metadata() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -223,7 +223,7 @@ fn test_magic_call_static_func_get_args_metadata() {
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(src, &mut request_context.interner);
+    let emitter = Emitter::new(src, &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

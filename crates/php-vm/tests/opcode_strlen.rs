@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 fn eval_vm_expr(expr: &str) -> Val {
-    let mut engine_context = EngineContext::new();
+    let engine_context = EngineContext::new();
     let engine = Arc::new(engine_context);
     let mut vm = VM::new(engine);
 
@@ -21,7 +21,7 @@ fn eval_vm_expr(expr: &str) -> Val {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter =
+    let emitter =
         php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 

@@ -1,7 +1,7 @@
 pub mod token;
 
 use crate::span::Span;
-use memchr::{memchr, memchr2, memchr3};
+use memchr::{memchr, memchr3};
 use token::{Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq)]

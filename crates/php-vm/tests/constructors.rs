@@ -38,7 +38,7 @@ fn test_constructor() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -83,7 +83,7 @@ fn test_constructor_no_args() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -125,7 +125,7 @@ fn test_constructor_defaults_respected() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -170,7 +170,7 @@ fn test_constructor_dynamic_class_args() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
     let mut vm = VM::new_with_context(request_context);

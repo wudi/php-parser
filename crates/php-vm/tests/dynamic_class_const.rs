@@ -32,7 +32,7 @@ fn test_dynamic_class_const() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -72,7 +72,7 @@ fn test_dynamic_class_const_from_object() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -108,7 +108,7 @@ fn test_dynamic_class_keyword() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
@@ -144,7 +144,7 @@ fn test_dynamic_class_keyword_object() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

@@ -42,7 +42,7 @@ fn test_magic_nested_assign() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

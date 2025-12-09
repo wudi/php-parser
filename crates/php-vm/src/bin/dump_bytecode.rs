@@ -4,10 +4,8 @@ use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::interner::Interner;
-use php_vm::runtime::context::EngineContext;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 #[derive(Parser)]
 struct Cli {
@@ -32,7 +30,6 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let engine_context = Arc::new(EngineContext::new());
     let mut interner = Interner::new();
     let emitter = Emitter::new(source_bytes, &mut interner);
     let (chunk, _has_error) = emitter.compile(program.statements);

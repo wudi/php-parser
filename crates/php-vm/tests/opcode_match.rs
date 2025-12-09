@@ -32,7 +32,7 @@ fn run_vm(expr: &str) -> Result<(VM, Handle), VmError> {
         program.errors
     );
 
-    let mut emitter =
+    let emitter =
         php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 

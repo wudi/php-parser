@@ -1,5 +1,5 @@
 use php_vm::compiler::emitter::Emitter;
-use php_vm::core::value::{ArrayKey, Val};
+use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
 use std::rc::Rc;
@@ -30,16 +30,6 @@ fn run_code(source: &str) -> VM {
 fn get_return_value(vm: &VM) -> Val {
     let handle = vm.last_return_value.expect("No return value");
     vm.arena.get(handle).value.clone()
-}
-
-fn get_array_idx(vm: &VM, val: &Val, idx: i64) -> Val {
-    if let Val::Array(arr) = val {
-        let key = ArrayKey::Int(idx);
-        let handle = arr.map.get(&key).expect("Array index not found");
-        vm.arena.get(*handle).value.clone()
-    } else {
-        panic!("Not an array");
-    }
 }
 
 #[test]

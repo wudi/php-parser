@@ -1,8 +1,6 @@
 use php_vm::compiler::emitter::Emitter;
-use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::sync::Arc;
+use php_vm::vm::engine::VM;
 
 fn run_code(source: &str) -> VM {
     let full_source = format!("<?php {}", source);
@@ -18,7 +16,7 @@ fn run_code(source: &str) -> VM {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let mut emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

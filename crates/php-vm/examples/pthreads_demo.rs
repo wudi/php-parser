@@ -70,7 +70,7 @@ fn demo_mutex(vm: &mut VM) {
         .get_function(b"pthreads_mutex_lock")
         .expect("pthreads_mutex_lock not found");
 
-    let result = lock_handler(vm, &[mutex]).expect("Failed to lock");
+    let _result = lock_handler(vm, &[mutex]).expect("Failed to lock");
     println!("✓ Acquired lock");
 
     // Unlock it
@@ -81,7 +81,7 @@ fn demo_mutex(vm: &mut VM) {
         .get_function(b"pthreads_mutex_unlock")
         .expect("pthreads_mutex_unlock not found");
 
-    let result = unlock_handler(vm, &[mutex]).expect("Failed to unlock");
+    let _result = unlock_handler(vm, &[mutex]).expect("Failed to unlock");
     println!("✓ Released lock");
 }
 
@@ -166,7 +166,7 @@ fn demo_condition_variables(vm: &mut VM) {
         .get_function(b"pthreads_cond_signal")
         .expect("pthreads_cond_signal not found");
 
-    let result = signal_handler(vm, &[cond]).expect("Failed to signal");
+    let _result = signal_handler(vm, &[cond]).expect("Failed to signal");
     println!("✓ Signaled condition variable");
 
     // Broadcast it
@@ -177,6 +177,6 @@ fn demo_condition_variables(vm: &mut VM) {
         .get_function(b"pthreads_cond_broadcast")
         .expect("pthreads_cond_broadcast not found");
 
-    let result = broadcast_handler(vm, &[cond]).expect("Failed to broadcast");
+    let _result = broadcast_handler(vm, &[cond]).expect("Failed to broadcast");
     println!("✓ Broadcast condition variable");
 }
