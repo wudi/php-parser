@@ -129,6 +129,20 @@ impl PartialEq for Val {
 }
 
 impl Val {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Val::Null => "null",
+            Val::Bool(_) => "bool",
+            Val::Int(_) => "int",
+            Val::Float(_) => "float",
+            Val::String(_) => "string",
+            Val::Array(_) => "array",
+            Val::Object(_) | Val::ObjPayload(_) => "object",
+            Val::Resource(_) => "resource",
+            Val::AppendPlaceholder => "append_placeholder",
+        }
+    }
+
     /// Convert to boolean following PHP's zend_is_true semantics
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - zend_is_true
     pub fn to_bool(&self) -> bool {

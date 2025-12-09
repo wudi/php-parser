@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, filesystem, function, string, variable};
+use crate::builtins::{array, class, filesystem, function, http, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -33,6 +33,12 @@ pub struct ClassDef {
     pub constants: HashMap<Symbol, (Val, Visibility)>,
     pub static_properties: HashMap<Symbol, (Val, Visibility)>,
     pub allows_dynamic_properties: bool, // Set by #[AllowDynamicProperties] attribute
+}
+
+#[derive(Debug, Clone)]
+pub struct HeaderEntry {
+    pub key: Option<Vec<u8>>, // Normalized lowercase header name
+    pub line: Vec<u8>,        // Original header line bytes
 }
 
 pub struct EngineContext {
@@ -109,6 +115,9 @@ impl EngineContext {
         );
         functions.insert(b"implode".to_vec(), string::php_implode as NativeHandler);
         functions.insert(b"explode".to_vec(), string::php_explode as NativeHandler);
+        functions.insert(b"sprintf".to_vec(), string::php_sprintf as NativeHandler);
+        functions.insert(b"printf".to_vec(), string::php_printf as NativeHandler);
+        functions.insert(b"header".to_vec(), http::php_header as NativeHandler);
         functions.insert(b"define".to_vec(), variable::php_define as NativeHandler);
         functions.insert(b"defined".to_vec(), variable::php_defined as NativeHandler);
         functions.insert(
@@ -193,6 +202,10 @@ impl EngineContext {
         functions.insert(
             b"spl_autoload_register".to_vec(),
             spl::php_spl_autoload_register as NativeHandler,
+        );
+        functions.insert(
+            b"spl_object_hash".to_vec(),
+            spl::php_spl_object_hash as NativeHandler,
         );
         functions.insert(b"assert".to_vec(), function::php_assert as NativeHandler);
 
@@ -352,6 +365,8 @@ pub struct RequestContext {
     pub autoloaders: Vec<Handle>,
     pub interner: Interner,
     pub error_reporting: u32,
+    pub headers: Vec<HeaderEntry>,
+    pub http_status: Option<i64>,
 }
 
 impl RequestContext {
@@ -366,8 +381,11 @@ impl RequestContext {
             autoloaders: Vec::new(),
             interner: Interner::new(),
             error_reporting: 32767, // E_ALL
+            headers: Vec::new(),
+            http_status: None,
         };
         ctx.register_builtin_classes();
+        ctx.register_builtin_constants();
         ctx
     }
 }
@@ -391,5 +409,40 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
+    }
+
+    fn register_builtin_constants(&mut self) {
+        const PHP_VERSION_STR: &str = "8.2.0";
+        const PHP_VERSION_ID_VALUE: i64 = 80200;
+        const PHP_MAJOR: i64 = 8;
+        const PHP_MINOR: i64 = 2;
+        const PHP_RELEASE: i64 = 0;
+
+        self.insert_builtin_constant(
+            b"PHP_VERSION",
+            Val::String(Rc::new(PHP_VERSION_STR.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(b"PHP_VERSION_ID", Val::Int(PHP_VERSION_ID_VALUE));
+        self.insert_builtin_constant(b"PHP_MAJOR_VERSION", Val::Int(PHP_MAJOR));
+        self.insert_builtin_constant(b"PHP_MINOR_VERSION", Val::Int(PHP_MINOR));
+        self.insert_builtin_constant(b"PHP_RELEASE_VERSION", Val::Int(PHP_RELEASE));
+        self.insert_builtin_constant(b"PHP_EXTRA_VERSION", Val::String(Rc::new(Vec::new())));
+        self.insert_builtin_constant(b"PHP_OS", Val::String(Rc::new(b"Darwin".to_vec())));
+        self.insert_builtin_constant(b"PHP_SAPI", Val::String(Rc::new(b"cli".to_vec())));
+        self.insert_builtin_constant(b"PHP_EOL", Val::String(Rc::new(b"\n".to_vec())));
+
+        let dir_sep = std::path::MAIN_SEPARATOR.to_string().into_bytes();
+        self.insert_builtin_constant(b"DIRECTORY_SEPARATOR", Val::String(Rc::new(dir_sep)));
+
+        let path_sep_byte = if cfg!(windows) { b';' } else { b':' };
+        self.insert_builtin_constant(
+            b"PATH_SEPARATOR",
+            Val::String(Rc::new(vec![path_sep_byte])),
+        );
+    }
+
+    fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
+        let sym = self.interner.intern(name);
+        self.constants.insert(sym, value);
     }
 }

@@ -74,6 +74,15 @@ impl<'src> Emitter<'src> {
         self.chunk.code.push(OpCode::Const(null_idx as u16));
         self.chunk.code.push(OpCode::Return);
 
+        let chunk_name = if let Some(func_sym) = self.current_function {
+            func_sym
+        } else if let Some(path) = &self.file_path {
+            self.interner.intern(path.as_bytes())
+        } else {
+            self.interner.intern(b"(unknown)")
+        };
+        self.chunk.name = chunk_name;
+
         (self.chunk, self.is_generator)
     }
 

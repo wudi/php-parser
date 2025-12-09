@@ -292,6 +292,67 @@ pub fn php_strtoupper(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(upper)))
 }
 
+pub fn php_sprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let bytes = format_sprintf_bytes(vm, args)?;
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_printf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let bytes = format_sprintf_bytes(vm, args)?;
+    vm.print_bytes(&bytes)?;
+    Ok(vm.arena.alloc(Val::Int(bytes.len() as i64)))
+}
+
+fn format_sprintf_bytes(vm: &mut VM, args: &[Handle]) -> Result<Vec<u8>, String> {
+    if args.is_empty() {
+        return Err("sprintf() expects at least 1 parameter".into());
+    }
+
+    let format = match &vm.arena.get(args[0]).value {
+        Val::String(s) => s.clone(),
+        _ => return Err("sprintf(): Argument #1 must be a string".into()),
+    };
+
+    let mut output = Vec::new();
+    let mut idx = 0;
+    let mut next_arg = 1; // Skip format string
+
+    while idx < format.len() {
+        if format[idx] != b'%' {
+            output.push(format[idx]);
+            idx += 1;
+            continue;
+        }
+
+        if idx + 1 < format.len() && format[idx + 1] == b'%' {
+            output.push(b'%');
+            idx += 2;
+            continue;
+        }
+
+        idx += 1;
+        let (spec, consumed) = parse_format_spec(&format[idx..])?;
+        idx += consumed;
+
+        let arg_slot = if let Some(pos) = spec.position {
+            pos
+        } else {
+            let slot = next_arg;
+            next_arg += 1;
+            slot
+        };
+
+        if arg_slot == 0 || arg_slot >= args.len() {
+            return Err("sprintf(): Too few arguments".into());
+        }
+
+        let formatted = format_argument(vm, &spec, args[arg_slot])?;
+        output.extend_from_slice(&formatted);
+    }
+
+    Ok(output)
+}
+
 pub fn php_version_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 || args.len() > 3 {
         return Err("version_compare() expects 2 or 3 parameters".into());
@@ -460,4 +521,263 @@ fn read_version_operand(vm: &VM, handle: Handle, position: usize) -> Result<Vec<
         }
     };
     Ok(bytes)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FormatSpec {
+    position: Option<usize>,
+    left_align: bool,
+    zero_pad: bool,
+    show_sign: bool,
+    space_sign: bool,
+    width: Option<usize>,
+    precision: Option<usize>,
+    specifier: u8,
+}
+
+fn parse_format_spec(input: &[u8]) -> Result<(FormatSpec, usize), String> {
+    let mut cursor = 0;
+    let mut spec = FormatSpec {
+        position: None,
+        left_align: false,
+        zero_pad: false,
+        show_sign: false,
+        space_sign: false,
+        width: None,
+        precision: None,
+        specifier: b's',
+    };
+
+    if cursor < input.len() && input[cursor].is_ascii_digit() {
+        let mut lookahead = cursor;
+        let mut value = 0usize;
+        while lookahead < input.len() && input[lookahead].is_ascii_digit() {
+            value = value * 10 + (input[lookahead] - b'0') as usize;
+            lookahead += 1;
+        }
+        if lookahead < input.len() && input[lookahead] == b'$' {
+            if value == 0 {
+                return Err("sprintf(): Argument number must be greater than zero".into());
+            }
+            spec.position = Some(value);
+            cursor = lookahead + 1;
+        }
+    }
+
+    while cursor < input.len() {
+        match input[cursor] {
+            b'-' => spec.left_align = true,
+            b'+' => spec.show_sign = true,
+            b' ' => spec.space_sign = true,
+            b'0' => spec.zero_pad = true,
+            _ => break,
+        }
+        cursor += 1;
+    }
+
+    let mut width_value = 0usize;
+    let mut has_width = false;
+    while cursor < input.len() && input[cursor].is_ascii_digit() {
+        has_width = true;
+        width_value = width_value * 10 + (input[cursor] - b'0') as usize;
+        cursor += 1;
+    }
+    if has_width {
+        spec.width = Some(width_value);
+    }
+
+    if cursor < input.len() && input[cursor] == b'.' {
+        cursor += 1;
+        let mut precision_value = 0usize;
+        let mut has_precision = false;
+        while cursor < input.len() && input[cursor].is_ascii_digit() {
+            has_precision = true;
+            precision_value = precision_value * 10 + (input[cursor] - b'0') as usize;
+            cursor += 1;
+        }
+        if has_precision {
+            spec.precision = Some(precision_value);
+        } else {
+            spec.precision = Some(0);
+        }
+    }
+
+    while cursor < input.len() && matches!(input[cursor], b'h' | b'l' | b'L' | b'j' | b'z' | b't') {
+        cursor += 1;
+    }
+
+    if cursor >= input.len() {
+        return Err("sprintf(): Missing format specifier".into());
+    }
+
+    spec.specifier = input[cursor];
+    let consumed = cursor + 1;
+
+    match spec.specifier {
+        b's' | b'd' | b'i' | b'u' | b'f' => {}
+        other => {
+            return Err(format!(
+                "sprintf(): Unsupported format type '%{}'",
+                other as char
+            ))
+        }
+    }
+
+    Ok((spec, consumed))
+}
+
+fn format_argument(vm: &mut VM, spec: &FormatSpec, handle: Handle) -> Result<Vec<u8>, String> {
+    match spec.specifier {
+        b's' => Ok(format_string_value(vm, handle, spec)),
+        b'd' | b'i' => Ok(format_signed_value(vm, handle, spec)),
+        b'u' => Ok(format_unsigned_value(vm, handle, spec)),
+        b'f' => Ok(format_float_value(vm, handle, spec)),
+        _ => Err("sprintf(): Unsupported format placeholder".into()),
+    }
+}
+
+fn format_string_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8> {
+    let val = vm.arena.get(handle);
+    let mut bytes = value_to_string_bytes(&val.value);
+    if let Some(limit) = spec.precision {
+        if bytes.len() > limit {
+            bytes.truncate(limit);
+        }
+    }
+    apply_string_width(bytes, spec.width, spec.left_align)
+}
+
+fn format_signed_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8> {
+    let val = vm.arena.get(handle);
+    let raw = val.value.to_int();
+    let mut magnitude = if raw < 0 {
+        -(raw as i128)
+    } else {
+        raw as i128
+    };
+
+    if magnitude < 0 {
+        magnitude = 0;
+    }
+
+    let mut digits = magnitude.to_string();
+    if let Some(precision) = spec.precision {
+        if precision == 0 && raw == 0 {
+            digits.clear();
+        } else if digits.len() < precision {
+            let padding = "0".repeat(precision - digits.len());
+            digits = format!("{}{}", padding, digits);
+        }
+    }
+
+    let mut prefix = String::new();
+    if raw < 0 {
+        prefix.push('-');
+    } else if spec.show_sign {
+        prefix.push('+');
+    } else if spec.space_sign {
+        prefix.push(' ');
+    }
+
+    let mut combined = format!("{}{}", prefix, digits);
+    combined = apply_numeric_width(combined, spec);
+    combined.into_bytes()
+}
+
+fn format_unsigned_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8> {
+    let val = vm.arena.get(handle);
+    let raw = val.value.to_int() as u64;
+    let mut digits = raw.to_string();
+    if let Some(precision) = spec.precision {
+        if precision == 0 && raw == 0 {
+            digits.clear();
+        } else if digits.len() < precision {
+            let padding = "0".repeat(precision - digits.len());
+            digits = format!("{}{}", padding, digits);
+        }
+    }
+
+    let combined = digits;
+    apply_numeric_width(combined, spec).into_bytes()
+}
+
+fn format_float_value(vm: &mut VM, handle: Handle, spec: &FormatSpec) -> Vec<u8> {
+    let val = vm.arena.get(handle);
+    let raw = val.value.to_float();
+    let precision = spec.precision.unwrap_or(6);
+    let mut formatted = format!("{:.*}", precision, raw);
+    if raw.is_sign_positive() {
+        if spec.show_sign {
+            formatted = format!("+{}", formatted);
+        } else if spec.space_sign {
+            formatted = format!(" {}", formatted);
+        }
+    }
+
+    apply_numeric_width(formatted, spec).into_bytes()
+}
+
+fn value_to_string_bytes(val: &Val) -> Vec<u8> {
+    match val {
+        Val::String(s) => s.as_ref().clone(),
+        Val::Int(i) => i.to_string().into_bytes(),
+        Val::Float(f) => f.to_string().into_bytes(),
+        Val::Bool(b) => {
+            if *b {
+                b"1".to_vec()
+            } else {
+                Vec::new()
+            }
+        }
+        Val::Null => Vec::new(),
+        Val::Array(_) => b"Array".to_vec(),
+        Val::Object(_) | Val::ObjPayload(_) => b"Object".to_vec(),
+        Val::Resource(_) => b"Resource".to_vec(),
+        Val::AppendPlaceholder => Vec::new(),
+    }
+}
+
+fn apply_string_width(mut value: Vec<u8>, width: Option<usize>, left_align: bool) -> Vec<u8> {
+    if let Some(width) = width {
+        if value.len() < width {
+            let pad_len = width - value.len();
+            let padding = vec![b' '; pad_len];
+            if left_align {
+                value.extend_from_slice(&padding);
+            } else {
+                let mut result = padding;
+                result.extend_from_slice(&value);
+                value = result;
+            }
+        }
+    }
+    value
+}
+
+fn apply_numeric_width(value: String, spec: &FormatSpec) -> String {
+    if let Some(width) = spec.width {
+        if value.len() < width {
+            if spec.left_align {
+                let mut result = value;
+                result.push_str(&" ".repeat(width - result.len()));
+                return result;
+            } else if spec.zero_pad && spec.precision.is_none() {
+                let pad_len = width - value.len();
+                let mut chars = value.chars();
+                if let Some(first) = chars.next() {
+                    if matches!(first, '-' | '+' | ' ') {
+                        let rest: String = chars.collect();
+                        let zeros = "0".repeat(pad_len);
+                        return format!("{}{}{}", first, zeros, rest);
+                    }
+                }
+                let zeros = "0".repeat(pad_len);
+                return format!("{}{}", zeros, value);
+            } else {
+                let padding = " ".repeat(width - value.len());
+                return format!("{}{}", padding, value);
+            }
+        }
+    }
+    value
 }

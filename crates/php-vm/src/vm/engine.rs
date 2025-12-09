@@ -1,6 +1,6 @@
 use crate::compiler::chunk::{ClosureData, CodeChunk, UserFunc};
 use crate::core::heap::Arena;
-use crate::core::value::{ArrayKey, Handle, ObjectData, Symbol, Val, Visibility};
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val, Visibility};
 use crate::runtime::context::{ClassDef, EngineContext, MethodEntry, RequestContext};
 use crate::vm::frame::{
     ArgList, CallFrame, GeneratorData, GeneratorState, SubGenState, SubIterator,
@@ -14,6 +14,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub enum VmError {
@@ -119,6 +120,29 @@ pub enum PropertyCollectionMode {
     VisibleTo(Option<Symbol>),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum SuperglobalKind {
+    Server,
+    Get,
+    Post,
+    Files,
+    Cookie,
+    Request,
+    Env,
+    Session,
+}
+
+const SUPERGLOBAL_SPECS: &[(SuperglobalKind, &[u8])] = &[
+    (SuperglobalKind::Server, b"_SERVER"),
+    (SuperglobalKind::Get, b"_GET"),
+    (SuperglobalKind::Post, b"_POST"),
+    (SuperglobalKind::Files, b"_FILES"),
+    (SuperglobalKind::Cookie, b"_COOKIE"),
+    (SuperglobalKind::Request, b"_REQUEST"),
+    (SuperglobalKind::Env, b"_ENV"),
+    (SuperglobalKind::Session, b"_SESSION"),
+];
+
 pub struct VM {
     pub arena: Arena,
     pub operand_stack: Stack,
@@ -129,11 +153,17 @@ pub struct VM {
     pub pending_calls: Vec<PendingCall>,
     pub output_writer: Box<dyn OutputWriter>,
     pub error_handler: Box<dyn ErrorHandler>,
+    trace_includes: bool,
+    superglobal_map: HashMap<Symbol, SuperglobalKind>,
 }
 
 impl VM {
     pub fn new(engine_context: Arc<EngineContext>) -> Self {
-        Self {
+        let trace_includes = std::env::var_os("PHP_VM_TRACE_INCLUDE").is_some();
+        if trace_includes {
+            eprintln!("[php-vm] include tracing enabled");
+        }
+        let mut vm = Self {
             arena: Arena::new(),
             operand_stack: Stack::new(),
             frames: Vec::new(),
@@ -143,7 +173,11 @@ impl VM {
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
             error_handler: Box::new(StderrErrorHandler::default()),
-        }
+            trace_includes,
+            superglobal_map: HashMap::new(),
+        };
+        vm.initialize_superglobals();
+        vm
     }
 
     /// Convert bytes to lowercase for case-insensitive lookups
@@ -168,8 +202,143 @@ impl VM {
         Ok(self.context.interner.intern(&lower))
     }
 
+    fn register_superglobal_symbols(&mut self) {
+        for (kind, name) in SUPERGLOBAL_SPECS {
+            let sym = self.context.interner.intern(name);
+            self.superglobal_map.insert(sym, *kind);
+        }
+    }
+
+    fn initialize_superglobals(&mut self) {
+        self.register_superglobal_symbols();
+        let entries: Vec<(Symbol, SuperglobalKind)> = self
+            .superglobal_map
+            .iter()
+            .map(|(&sym, &kind)| (sym, kind))
+            .collect();
+        for (sym, kind) in entries {
+            if !self.context.globals.contains_key(&sym) {
+                let handle = self.create_superglobal_value(kind);
+                self.arena.get_mut(handle).is_ref = true;
+                self.context.globals.insert(sym, handle);
+            }
+        }
+    }
+
+    fn create_superglobal_value(&mut self, kind: SuperglobalKind) -> Handle {
+        match kind {
+            SuperglobalKind::Server => self.create_server_superglobal(),
+            _ => self.arena.alloc(Val::Array(Rc::new(ArrayData::new()))),
+        }
+    }
+
+    fn create_server_superglobal(&mut self) -> Handle {
+        let mut data = ArrayData::new();
+        Self::insert_array_value(&mut data, b"SERVER_PROTOCOL", self.alloc_string_handle(b"HTTP/1.1"));
+        Self::insert_array_value(&mut data, b"REQUEST_METHOD", self.alloc_string_handle(b"GET"));
+        Self::insert_array_value(&mut data, b"HTTP_HOST", self.alloc_string_handle(b"localhost"));
+        Self::insert_array_value(&mut data, b"SERVER_NAME", self.alloc_string_handle(b"localhost"));
+        Self::insert_array_value(&mut data, b"SERVER_SOFTWARE", self.alloc_string_handle(b"php-vm"));
+        Self::insert_array_value(&mut data, b"SERVER_ADDR", self.alloc_string_handle(b"127.0.0.1"));
+        Self::insert_array_value(&mut data, b"REMOTE_ADDR", self.alloc_string_handle(b"127.0.0.1"));
+        Self::insert_array_value(&mut data, b"REMOTE_PORT", self.arena.alloc(Val::Int(0)));
+        Self::insert_array_value(&mut data, b"SERVER_PORT", self.arena.alloc(Val::Int(80)));
+        Self::insert_array_value(&mut data, b"REQUEST_SCHEME", self.alloc_string_handle(b"http"));
+        Self::insert_array_value(&mut data, b"HTTPS", self.alloc_string_handle(b"off"));
+        Self::insert_array_value(&mut data, b"QUERY_STRING", self.alloc_string_handle(b""));
+        Self::insert_array_value(&mut data, b"REQUEST_URI", self.alloc_string_handle(b"/"));
+        Self::insert_array_value(&mut data, b"PATH_INFO", self.alloc_string_handle(b""));
+        Self::insert_array_value(&mut data, b"ORIG_PATH_INFO", self.alloc_string_handle(b""));
+
+        let document_root = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| ".".into());
+        let normalized_root = if document_root == "/" {
+            document_root.clone()
+        } else {
+            document_root.trim_end_matches('/').to_string()
+        };
+        let script_basename = "index.php";
+        let script_name = format!("/{}", script_basename);
+        let script_filename = if normalized_root.is_empty() {
+            script_basename.to_string()
+        } else if normalized_root == "/" {
+            format!("/{}", script_basename)
+        } else {
+            format!("{}/{}", normalized_root, script_basename)
+        };
+
+        Self::insert_array_value(
+            &mut data,
+            b"DOCUMENT_ROOT",
+            self.alloc_string_handle(document_root.as_bytes()),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"SCRIPT_NAME",
+            self.alloc_string_handle(script_name.as_bytes()),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"PHP_SELF",
+            self.alloc_string_handle(script_name.as_bytes()),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"SCRIPT_FILENAME",
+            self.alloc_string_handle(script_filename.as_bytes()),
+        );
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let request_time = now.as_secs() as i64;
+        let request_time_float = now.as_secs_f64();
+        Self::insert_array_value(
+            &mut data,
+            b"REQUEST_TIME",
+            self.arena.alloc(Val::Int(request_time)),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"REQUEST_TIME_FLOAT",
+            self.arena.alloc(Val::Float(request_time_float)),
+        );
+
+        self.arena.alloc(Val::Array(Rc::new(data)))
+    }
+
+    fn alloc_string_handle(&mut self, value: &[u8]) -> Handle {
+        self.arena.alloc(Val::String(Rc::new(value.to_vec())))
+    }
+
+    fn insert_array_value(data: &mut ArrayData, key: &[u8], handle: Handle) {
+        data.insert(ArrayKey::Str(Rc::new(key.to_vec())), handle);
+    }
+
+    fn ensure_superglobal_handle(&mut self, sym: Symbol) -> Option<Handle> {
+        let kind = self.superglobal_map.get(&sym).copied()?;
+        let handle = if let Some(&existing) = self.context.globals.get(&sym) {
+            existing
+        } else {
+            let new_handle = self.create_superglobal_value(kind);
+            self.context.globals.insert(sym, new_handle);
+            new_handle
+        };
+        self.arena.get_mut(handle).is_ref = true;
+        Some(handle)
+    }
+
+    fn is_superglobal(&self, sym: Symbol) -> bool {
+        self.superglobal_map.contains_key(&sym)
+    }
+
     pub fn new_with_context(context: RequestContext) -> Self {
-        Self {
+        let trace_includes = std::env::var_os("PHP_VM_TRACE_INCLUDE").is_some();
+        if trace_includes {
+            eprintln!("[php-vm] include tracing enabled");
+        }
+        let mut vm = Self {
             arena: Arena::new(),
             operand_stack: Stack::new(),
             frames: Vec::new(),
@@ -179,7 +348,11 @@ impl VM {
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
             error_handler: Box::new(StderrErrorHandler::default()),
-        }
+            trace_includes,
+            superglobal_map: HashMap::new(),
+        };
+        vm.initialize_superglobals();
+        vm
     }
 
     pub fn with_output_writer(mut self, writer: Box<dyn OutputWriter>) -> Self {
@@ -197,6 +370,13 @@ impl VM {
 
     fn write_output(&mut self, bytes: &[u8]) -> Result<(), VmError> {
         self.output_writer.write(bytes)
+    }
+
+    pub(crate) fn print_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        self.write_output(bytes).map_err(|err| match err {
+            VmError::RuntimeError(msg) => msg,
+            VmError::Exception(_) => "Output aborted by exception".into(),
+        })
     }
 
     // Safe frame access helpers (no-panic guarantee)
@@ -1284,9 +1464,10 @@ impl VM {
                     )),
                 }
             }
-            _ => Err(VmError::RuntimeError(
-                "Call expects function name or closure".into(),
-            )),
+            _ => Err(VmError::RuntimeError(format!(
+                "Call expects function name or closure (got {})",
+                self.describe_handle(callable_handle)
+            ))),
         }
     }
 
@@ -1382,6 +1563,44 @@ impl VM {
                     "Cannot convert value to string"
                 )))
             }
+        }
+    }
+
+    fn describe_handle(&self, handle: Handle) -> String {
+        let val = self.arena.get(handle);
+        match &val.value {
+            Val::Null => "null".into(),
+            Val::Bool(b) => format!("bool({})", b),
+            Val::Int(i) => format!("int({})", i),
+            Val::Float(f) => format!("float({})", f),
+            Val::String(s) => {
+                let preview = String::from_utf8_lossy(&s[..s.len().min(32)])
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r");
+                format!("string(len={}, \"{}{}\")",
+                    s.len(),
+                    preview,
+                    if s.len() > 32 { "…" } else { "" })
+            }
+            Val::Array(_) => "array".into(),
+            Val::Object(_) => "object".into(),
+            Val::ObjPayload(_) => "object(payload)".into(),
+            Val::Resource(_) => "resource".into(),
+            Val::AppendPlaceholder => "append-placeholder".into(),
+        }
+    }
+
+    fn describe_object_class(&self, payload_handle: Handle) -> String {
+        if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
+            String::from_utf8_lossy(
+                self.context
+                    .interner
+                    .lookup(obj_data.class)
+                    .unwrap_or(b"<unknown>"),
+            )
+            .into_owned()
+        } else {
+            "<unknown>".into()
         }
     }
 
@@ -1675,19 +1894,32 @@ impl VM {
             | OpCode::BoolNot => self.exec_math_op(op)?,
 
             OpCode::LoadVar(sym) => {
-                let frame = self.current_frame()?;
-                if let Some(&handle) = frame.locals.get(&sym) {
+                let existing = {
+                    let frame = self.current_frame()?;
+                    frame.locals.get(&sym).copied()
+                };
+
+                if let Some(handle) = existing {
                     self.operand_stack.push(handle);
                 } else {
-                    // Check for $this
                     let name = self.context.interner.lookup(sym);
                     if name == Some(b"this") {
-                        if let Some(this_handle) = frame.this {
-                            self.operand_stack.push(this_handle);
+                        let frame = self.current_frame()?;
+                        if let Some(this_val) = frame.this {
+                            self.operand_stack.push(this_val);
                         } else {
                             return Err(VmError::RuntimeError(
                                 "Using $this when not in object context".into(),
                             ));
+                        }
+                    } else if self.is_superglobal(sym) {
+                        if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                            let frame = self.current_frame_mut()?;
+                            frame.locals.entry(sym).or_insert(handle);
+                            self.operand_stack.push(handle);
+                        } else {
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
                         }
                     } else {
                         let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
@@ -1706,9 +1938,23 @@ impl VM {
                 let name_bytes = self.convert_to_string(name_handle)?;
                 let sym = self.context.interner.intern(&name_bytes);
 
-                let frame = self.frames.last().unwrap();
-                if let Some(&handle) = frame.locals.get(&sym) {
+                let existing = self
+                    .frames
+                    .last()
+                    .and_then(|frame| frame.locals.get(&sym).copied());
+
+                if let Some(handle) = existing {
                     self.operand_stack.push(handle);
+                } else if self.is_superglobal(sym) {
+                    if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                        if let Some(frame) = self.frames.last_mut() {
+                            frame.locals.entry(sym).or_insert(handle);
+                        }
+                        self.operand_stack.push(handle);
+                    } else {
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
+                    }
                 } else {
                     let var_name = String::from_utf8_lossy(&name_bytes);
                     let msg = format!("Undefined variable: ${}", var_name);
@@ -1718,6 +1964,18 @@ impl VM {
                 }
             }
             OpCode::LoadRef(sym) => {
+                let to_bind = if self.is_superglobal(sym) {
+                    self.ensure_superglobal_handle(sym)
+                } else {
+                    None
+                };
+
+                if let Some(handle) = to_bind {
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.locals.entry(sym).or_insert(handle);
+                    }
+                }
+
                 let frame = self.frames.last_mut().unwrap();
                 if let Some(&handle) = frame.locals.get(&sym) {
                     if self.arena.get(handle).is_ref {
@@ -1743,7 +2001,16 @@ impl VM {
                     .operand_stack
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let to_bind = if self.is_superglobal(sym) {
+                    self.ensure_superglobal_handle(sym)
+                } else {
+                    None
+                };
                 let frame = self.frames.last_mut().unwrap();
+
+                if let Some(handle) = to_bind {
+                    frame.locals.entry(sym).or_insert(handle);
+                }
 
                 // Check if the target variable is a reference
                 let mut is_target_ref = false;
@@ -1778,7 +2045,17 @@ impl VM {
                 let name_bytes = self.convert_to_string(name_handle)?;
                 let sym = self.context.interner.intern(&name_bytes);
 
+                let to_bind = if self.is_superglobal(sym) {
+                    self.ensure_superglobal_handle(sym)
+                } else {
+                    None
+                };
+
                 let frame = self.frames.last_mut().unwrap();
+
+                if let Some(handle) = to_bind {
+                    frame.locals.entry(sym).or_insert(handle);
+                }
 
                 // Check if the target variable is a reference
                 let result_handle = if let Some(&old_handle) = frame.locals.get(&sym) {
@@ -1813,6 +2090,9 @@ impl VM {
                 let frame = self.frames.last_mut().unwrap();
                 // Overwrite the local slot with the reference handle
                 frame.locals.insert(sym, ref_handle);
+                if self.is_superglobal(sym) {
+                    self.context.globals.insert(sym, ref_handle);
+                }
             }
             OpCode::AssignOp(op) => {
                 let val_handle = self
@@ -2027,8 +2307,10 @@ impl VM {
                 }
             }
             OpCode::UnsetVar(sym) => {
-                let frame = self.frames.last_mut().unwrap();
-                frame.locals.remove(&sym);
+                if !self.is_superglobal(sym) {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.remove(&sym);
+                }
             }
             OpCode::UnsetVarDynamic => {
                 let name_handle = self
@@ -2037,8 +2319,10 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 let name_bytes = self.convert_to_string(name_handle)?;
                 let sym = self.context.interner.intern(&name_bytes);
-                let frame = self.frames.last_mut().unwrap();
-                frame.locals.remove(&sym);
+                if !self.is_superglobal(sym) {
+                    let frame = self.frames.last_mut().unwrap();
+                    frame.locals.remove(&sym);
+                }
             }
             OpCode::BindGlobal(sym) => {
                 let global_handle = self.context.globals.get(&sym).copied();
@@ -3212,11 +3496,7 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
                 let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                };
+                let key = self.array_key_from_value(key_val)?;
 
                 let array_val = &self.arena.get(array_handle).value;
                 match array_val {
@@ -3314,11 +3594,7 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
                 let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                };
+                let key = self.array_key_from_value(key_val)?;
 
                 let current_val = {
                     let array_val = &self.arena.get(array_handle).value;
@@ -3400,11 +3676,7 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
                 let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                };
+                let key = self.array_key_from_value(key_val)?;
 
                 let array_zval = self.arena.get_mut(array_handle);
                 if let Val::Array(map) = &mut array_zval.value {
@@ -3534,11 +3806,7 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
                 let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                };
+                let key = self.array_key_from_value(key_val)?;
 
                 let array_zval_mut = self.arena.get_mut(array_handle);
                 if let Val::Array(map) = &mut array_zval_mut.value {
@@ -3581,11 +3849,7 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
                 let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                };
+                let key = self.array_key_from_value(key_val)?;
 
                 let array_val = &self.arena.get(array_handle).value;
                 let found = if let Val::Array(map) = array_val {
@@ -5239,11 +5503,30 @@ impl VM {
                     let canonical_path = Self::canonical_path_string(&resolved_path);
                     let already_included = self.context.included_files.contains(&canonical_path);
 
+                    if self.trace_includes {
+                        eprintln!(
+                            "[php-vm] include {:?} -> {} (once={}, already_included={})",
+                            path_str,
+                            resolved_path.display(),
+                            is_once,
+                            already_included
+                        );
+                    }
+
                     if is_once && already_included {
                         // _once variant already included: return true
                         let true_val = self.arena.alloc(Val::Bool(true));
                         self.operand_stack.push(true_val);
                     } else {
+                        let inserted_once_guard = if is_once && !already_included {
+                            self.context
+                                .included_files
+                                .insert(canonical_path.clone());
+                            true
+                        } else {
+                            false
+                        };
+
                         let source_res = std::fs::read(&resolved_path);
                         match source_res {
                             Ok(source) => {
@@ -5253,6 +5536,9 @@ impl VM {
                                 let program = parser.parse_program();
 
                                 if !program.errors.is_empty() {
+                                    if inserted_once_guard {
+                                        self.context.included_files.remove(&canonical_path);
+                                    }
                                     return Err(VmError::RuntimeError(format!(
                                         "Parse errors in {}: {:?}",
                                         path_str, program.errors
@@ -5329,12 +5615,10 @@ impl VM {
                                 }
 
                                 if let Some(err) = include_error {
+                                    if inserted_once_guard {
+                                        self.context.included_files.remove(&canonical_path);
+                                    }
                                     return Err(err);
-                                }
-
-                                // Mark as successfully included ONLY after execution succeeds (Issue #8 fix)
-                                if is_once {
-                                    self.context.included_files.insert(canonical_path.clone());
                                 }
 
                                 // Include returns explicit return value or 1
@@ -5345,6 +5629,9 @@ impl VM {
                                 self.operand_stack.push(return_val);
                             }
                             Err(e) => {
+                                if inserted_once_guard {
+                                    self.context.included_files.remove(&canonical_path);
+                                }
                                 if is_require {
                                     return Err(VmError::RuntimeError(format!(
                                         "Require failed: {}",
@@ -7805,11 +8092,7 @@ impl VM {
     ) -> Result<(), VmError> {
         // Check if we have a reference at the key
         let key_val = &self.arena.get(key_handle).value;
-        let key = match key_val {
-            Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(s.clone()),
-            _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-        };
+        let key = self.array_key_from_value(key_val)?;
 
         let array_zval = self.arena.get(array_handle);
         if let Val::Array(map) = &array_zval.value {
@@ -7835,11 +8118,7 @@ impl VM {
         val_handle: Handle,
     ) -> Result<(), VmError> {
         let key_val = &self.arena.get(key_handle).value;
-        let key = match key_val {
-            Val::Int(i) => ArrayKey::Int(*i),
-            Val::String(s) => ArrayKey::Str(s.clone()),
-            _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-        };
+        let key = self.array_key_from_value(key_val)?;
 
         let is_ref = self.arena.get(array_handle).is_ref;
 
@@ -7972,11 +8251,7 @@ impl VM {
             match current_val {
                 Val::Array(map) => {
                     let key_val = &self.arena.get(*key_handle).value;
-                    let key = match key_val {
-                        Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
-                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                    };
+                    let key = self.array_key_from_value(key_val)?;
 
                     if let Some(val) = map.map.get(&key) {
                         current_handle = *val;
@@ -8071,11 +8346,7 @@ impl VM {
                     // We'll compute this after autovivify
                     None
                 } else {
-                    Some(match key_val {
-                        Val::Int(i) => ArrayKey::Int(*i),
-                        Val::String(s) => ArrayKey::Str(s.clone()),
-                        _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                    })
+                    Some(self.array_key_from_value(key_val)?)
                 };
 
                 (needs_autovivify, key)
@@ -8185,11 +8456,7 @@ impl VM {
                 let next_key = Self::compute_next_array_index(&map_mut);
                 ArrayKey::Int(next_key)
             } else {
-                match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => return Err(VmError::RuntimeError("Invalid array key".into())),
-                }
+                self.array_key_from_value(key_val)?
             };
 
             if remaining_keys.is_empty() {
@@ -8227,6 +8494,47 @@ impl VM {
 
         let new_handle = self.arena.alloc(new_val);
         Ok(new_handle)
+    }
+
+    fn array_key_from_value(&self, value: &Val) -> Result<ArrayKey, VmError> {
+        match value {
+            Val::Int(i) => Ok(ArrayKey::Int(*i)),
+            Val::Bool(b) => Ok(ArrayKey::Int(if *b { 1 } else { 0 })),
+            Val::Float(f) => Ok(ArrayKey::Int(*f as i64)),
+            Val::String(s) => {
+                if let Ok(text) = std::str::from_utf8(s) {
+                    if let Ok(int_val) = text.parse::<i64>() {
+                        return Ok(ArrayKey::Int(int_val));
+                    }
+                }
+                Ok(ArrayKey::Str(s.clone()))
+            }
+            Val::Null => Ok(ArrayKey::Str(Rc::new(Vec::new()))),
+            Val::Object(payload_handle) => {
+                eprintln!(
+                    "[php-vm] Illegal offset object {} stack:",
+                    self.describe_object_class(*payload_handle)
+                );
+                for frame in self.frames.iter().rev() {
+                    if let Some(name_bytes) = self.context.interner.lookup(frame.chunk.name) {
+                        let line = frame.chunk.lines.get(frame.ip).copied().unwrap_or(0);
+                        eprintln!(
+                            "    at {}:{}",
+                            String::from_utf8_lossy(name_bytes),
+                            line
+                        );
+                    }
+                }
+                Err(VmError::RuntimeError(format!(
+                    "Illegal offset type object ({})",
+                    self.describe_object_class(*payload_handle)
+                )))
+            }
+            _ => Err(VmError::RuntimeError(format!(
+                "Illegal offset type {}",
+                value.type_name()
+            ))),
+        }
     }
 }
 

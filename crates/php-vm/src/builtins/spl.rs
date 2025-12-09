@@ -1,5 +1,6 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
+use std::rc::Rc;
 
 /// spl_autoload_register() - Register a function for autoloading classes
 pub fn php_spl_autoload_register(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -61,4 +62,28 @@ pub fn php_spl_autoload_register(vm: &mut VM, args: &[Handle]) -> Result<Handle,
     }
 
     Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+/// spl_object_hash() - Retrieve a unique identifier for an object
+pub fn php_spl_object_hash(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("spl_object_hash() expects at least 1 parameter".to_string());
+    }
+
+    let target_handle = args[0];
+    let target_val = vm.arena.get(target_handle);
+
+    let object_handle = match &target_val.value {
+        Val::Object(payload_handle) => *payload_handle,
+        _ => {
+            return Err(format!(
+                "spl_object_hash() expects parameter 1 to be object, {} given",
+                target_val.value.type_name()
+            ))
+        }
+    };
+
+    let hash = format!("{:016x}", object_handle.0);
+    let hash_bytes = Rc::new(hash.into_bytes());
+    Ok(vm.arena.alloc(Val::String(hash_bytes)))
 }
