@@ -1630,6 +1630,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 }
                 expr
             }
+            TokenKind::Error => {
+                self.errors.push(ParseError {
+                    span: token.span,
+                    message: "Unexpected token",
+                });
+                self.bump();
+                self.arena.alloc(Expr::Error { span: token.span })
+            }
             _ => {
                 // Error recovery
                 let is_terminator = matches!(
