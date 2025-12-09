@@ -678,26 +678,17 @@ impl<'src> Lexer<'src> {
     }
 
     fn read_single_quoted(&mut self) -> TokenKind {
-        while self.cursor < self.input.len() {
-            let remaining = &self.input[self.cursor..];
-            match memchr2(b'\'', b'\\', remaining) {
-                Some(pos) => {
-                    self.cursor += pos;
-                    let c = self.input[self.cursor];
-                    self.advance(); // Consume ' or \
-                    if c == b'\'' {
-                        return TokenKind::StringLiteral;
-                    } else {
-                        // Backslash
-                        if self.cursor < self.input.len() {
-                            self.advance(); // Skip escaped char
-                        }
-                    }
+        while let Some(c) = self.peek() {
+            self.advance();
+            if c == b'\\' {
+                if self.peek().is_some() {
+                    self.advance();
                 }
-                None => {
-                    self.cursor = self.input.len();
-                    break;
-                }
+                continue;
+            }
+
+            if c == b'\'' {
+                return TokenKind::StringLiteral;
             }
         }
         TokenKind::Error
