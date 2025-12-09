@@ -3,7 +3,8 @@ use clap::Parser;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::{EngineBuilder, EngineContext};
+use php_vm::runtime::pthreads_extension::PthreadsExtension;
 use php_vm::vm::engine::{VmError, VM};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -20,6 +21,10 @@ struct Cli {
     #[arg(short = 'a', long)]
     interactive: bool,
 
+    /// Enable pthreads extension for multi-threading support
+    #[arg(long)]
+    enable_pthreads: bool,
+
     /// Script file to run
     #[arg(name = "FILE")]
     file: Option<PathBuf>,
@@ -29,9 +34,9 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if cli.interactive {
-        run_repl()?;
+        run_repl(cli.enable_pthreads)?;
     } else if let Some(file) = cli.file {
-        run_file(file)?;
+        run_file(file, cli.enable_pthreads)?;
     } else {
         // If no arguments, show help
         use clap::CommandFactory;
@@ -41,16 +46,39 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_repl() -> anyhow::Result<()> {
+fn create_engine(enable_pthreads: bool) -> anyhow::Result<Arc<EngineContext>> {
+    let mut builder = EngineBuilder::new();
+
+    if enable_pthreads {
+        println!("[PHP] Loading pthreads extension...");
+        builder = builder.with_extension(PthreadsExtension);
+    }
+
+    // For backward compatibility, we still create the default EngineContext
+    // with all built-in functions if no extensions are loaded
+    if enable_pthreads {
+        builder
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build engine: {}", e))
+    } else {
+        // Use the legacy EngineContext::new() for backward compatibility
+        Ok(Arc::new(EngineContext::new()))
+    }
+}
+
+fn run_repl(enable_pthreads: bool) -> anyhow::Result<()> {
     let mut rl = DefaultEditor::new()?;
     if let Err(_) = rl.load_history("history.txt") {
         // No history file is fine
     }
 
     println!("Interactive shell");
+    if enable_pthreads {
+        println!("pthreads extension: enabled");
+    }
     println!("Type 'exit' or 'quit' to quit");
 
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = create_engine(enable_pthreads)?;
     let mut vm = VM::new(engine_context);
 
     loop {
@@ -101,10 +129,10 @@ fn run_repl() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_file(path: PathBuf) -> anyhow::Result<()> {
+fn run_file(path: PathBuf, enable_pthreads: bool) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
     let canonical_path = path.canonicalize().unwrap_or(path);
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = create_engine(enable_pthreads)?;
     let mut vm = VM::new(engine_context);
 
     execute_source(&source, Some(&canonical_path), &mut vm)
