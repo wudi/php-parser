@@ -1,8 +1,10 @@
 use bumpalo::Bump;
 use clap::Parser;
+use indexmap::IndexMap;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
+use php_vm::core::value::{ArrayData, ArrayKey, Val};
 use php_vm::runtime::context::{EngineBuilder, EngineContext};
 use php_vm::runtime::pthreads_extension::PthreadsExtension;
 use php_vm::vm::engine::{VmError, VM};
@@ -28,6 +30,10 @@ struct Cli {
     /// Script file to run
     #[arg(name = "FILE")]
     file: Option<PathBuf>,
+
+    /// Arguments to pass to the script
+    #[arg(allow_hyphen_values = true, trailing_var_arg = true)]
+    args: Vec<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -36,7 +42,7 @@ fn main() -> anyhow::Result<()> {
     if cli.interactive {
         run_repl(cli.enable_pthreads)?;
     } else if let Some(file) = cli.file {
-        run_file(file, cli.enable_pthreads)?;
+        run_file(file, cli.args, cli.enable_pthreads)?;
     } else {
         // If no arguments, show help
         use clap::CommandFactory;
@@ -129,11 +135,40 @@ fn run_repl(enable_pthreads: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_file(path: PathBuf, enable_pthreads: bool) -> anyhow::Result<()> {
+fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
+    let script_name = path.to_string_lossy().into_owned();
     let canonical_path = path.canonicalize().unwrap_or(path);
     let engine_context = create_engine(enable_pthreads)?;
     let mut vm = VM::new(engine_context);
+
+    // Populate $argv and $argc
+    let mut argv_map = IndexMap::new();
+
+    // argv[0] is the script name
+    argv_map.insert(
+        ArrayKey::Int(0),
+        vm.arena
+            .alloc(Val::String(Rc::new(script_name.into_bytes()))),
+    );
+
+    // Remaining args
+    for (i, arg) in args.iter().enumerate() {
+        argv_map.insert(
+            ArrayKey::Int((i + 1) as i64),
+            vm.arena
+                .alloc(Val::String(Rc::new(arg.clone().into_bytes()))),
+        );
+    }
+
+    let argv_handle = vm.arena.alloc(Val::Array(ArrayData::from(argv_map).into()));
+    let argc_handle = vm.arena.alloc(Val::Int((args.len() + 1) as i64));
+
+    let argv_symbol = vm.context.interner.intern(b"argv");
+    let argc_symbol = vm.context.interner.intern(b"argc");
+
+    vm.context.globals.insert(argv_symbol, argv_handle);
+    vm.context.globals.insert(argc_symbol, argc_handle);
 
     execute_source(&source, Some(&canonical_path), &mut vm)
         .map_err(|e| anyhow::anyhow!("VM Error: {:?}", e))?;

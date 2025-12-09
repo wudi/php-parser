@@ -1,5 +1,6 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
+use std::rc::Rc;
 
 pub fn php_var_dump(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     for arg in args {
@@ -444,4 +445,68 @@ pub fn php_is_scalar(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Val::Int(_) | Val::Float(_) | Val::String(_) | Val::Bool(_)
     );
     Ok(vm.arena.alloc(Val::Bool(is)))
+}
+
+pub fn php_getenv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        // Validation: php_getenv without args returns array of all env vars (not implemented here yet)
+        // or just returns false?
+        // PHP documentation says: string|false getenv(( string $name = null [, bool $local_only = false ] ))
+        // If name is null, returns array of all env vars.
+        return Err("getenv() expects at least 1 parameter".into());
+    }
+
+    let name_val = vm.arena.get(args[0]);
+    let name = match &name_val.value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        _ => return Err("getenv(): Parameter 1 must be string".into()),
+    };
+
+    match std::env::var(&name) {
+        Ok(val) => Ok(vm.arena.alloc(Val::String(Rc::new(val.into_bytes())))),
+        Err(_) => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+pub fn php_putenv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("putenv() expects exactly 1 parameter".into());
+    }
+
+    let setting_val = vm.arena.get(args[0]);
+    let setting = match &setting_val.value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        _ => return Err("putenv(): Parameter 1 must be string".into()),
+    };
+
+    if let Some((key, val)) = setting.split_once('=') {
+        unsafe {
+            if val.is_empty() {
+                std::env::remove_var(key);
+            } else {
+                std::env::set_var(key, val);
+            }
+        }
+    } else {
+        // "KEY" without "=" -> unset? Or no-op?
+        // PHP manual: "setting - The setting, like "FOO=BAR""
+        // std implementation usually requires key=val.
+        // If just "KEY", PHP might unset it.
+        unsafe {
+            std::env::remove_var(&setting);
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+pub fn php_getopt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("getopt() expects at least 1 parameter".into());
+    }
+
+    // TODO: Implement proper getopt parsing using $argv
+    // For now, return an empty array to prevent crashes
+    let map = crate::core::value::ArrayData::new();
+    Ok(vm.arena.alloc(Val::Array(map.into())))
 }

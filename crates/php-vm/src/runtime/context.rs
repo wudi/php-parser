@@ -182,6 +182,17 @@ impl EngineContext {
             b"var_export".to_vec(),
             variable::php_var_export as NativeHandler,
         );
+        functions.insert(b"getenv".to_vec(), variable::php_getenv as NativeHandler);
+        functions.insert(b"putenv".to_vec(), variable::php_putenv as NativeHandler);
+        functions.insert(b"getopt".to_vec(), variable::php_getopt as NativeHandler);
+        functions.insert(
+            b"sys_get_temp_dir".to_vec(),
+            filesystem::php_sys_get_temp_dir as NativeHandler,
+        );
+        functions.insert(
+            b"tmpfile".to_vec(),
+            filesystem::php_tmpfile as NativeHandler,
+        );
         functions.insert(
             b"func_get_args".to_vec(),
             function::php_func_get_args as NativeHandler,

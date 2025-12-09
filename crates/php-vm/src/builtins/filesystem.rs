@@ -10,6 +10,7 @@ use std::rc::Rc;
 /// File handle resource for fopen/fread/fwrite/fclose
 /// Uses RefCell for interior mutability to allow read/write operations
 #[derive(Debug)]
+#[allow(dead_code)]
 struct FileHandle {
     file: RefCell<File>,
     path: PathBuf,
@@ -603,6 +604,41 @@ pub fn php_scandir(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     Ok(vm.arena.alloc(Val::Array(ArrayData::from(map).into())))
+}
+
+/// sys_get_temp_dir() - Get directory path used for temporary files
+/// Reference: $PHP_SRC_PATH/ext/standard/file.c - PHP_FUNCTION(sys_get_temp_dir)
+pub fn php_sys_get_temp_dir(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let temp_dir = std::env::temp_dir();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(vm.arena.alloc(Val::String(Rc::new(
+            temp_dir.as_os_str().as_bytes().to_vec(),
+        ))))
+    }
+
+    #[cfg(not(unix))]
+    {
+        let path_str = temp_dir.to_string_lossy().into_owned();
+        Ok(vm.arena.alloc(Val::String(Rc::new(path_str.into_bytes()))))
+    }
+}
+
+/// tmpfile() - Creates a temporary file
+/// Reference: $PHP_SRC_PATH/ext/standard/file.c - PHP_FUNCTION(tmpfile)
+pub fn php_tmpfile(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let file = tempfile::tempfile().map_err(|e| format!("tmpfile(): {}", e))?;
+
+    let resource = FileHandle {
+        file: RefCell::new(file),
+        path: PathBuf::new(), // Anonymous file
+        mode: "w+b".to_string(),
+        eof: RefCell::new(false),
+    };
+
+    Ok(vm.arena.alloc(Val::Resource(Rc::new(resource))))
 }
 
 /// getcwd() - Get current working directory
@@ -1531,38 +1567,29 @@ pub fn php_tempnam(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let prefix_bytes = handle_to_path(vm, args[1])?;
 
     let dir = bytes_to_path(&dir_bytes)?;
-    let prefix = String::from_utf8_lossy(&prefix_bytes);
+    let prefix = String::from_utf8_lossy(&prefix_bytes).to_string();
 
-    // Use system temp dir if provided dir doesn't exist
-    let base_dir = if dir.exists() && dir.is_dir() {
-        dir
-    } else {
-        std::env::temp_dir()
-    };
+    let named_temp_file = tempfile::Builder::new()
+        .prefix(&prefix)
+        .tempfile_in(&dir)
+        .map_err(|e| format!("tempnam(): {}", e))?;
 
-    // Generate unique filename
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros())
-        .unwrap_or(0);
-
-    let filename = format!("{}{:x}.tmp", prefix, timestamp);
-    let temp_path = base_dir.join(filename);
-
-    // Create empty file
-    File::create(&temp_path).map_err(|e| format!("tempnam(): {}", e))?;
+    // Persist the file so it's not deleted when NamedTempFile drops
+    let (_file, path) = named_temp_file
+        .keep()
+        .map_err(|e| format!("tempnam(): {}", e))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        Ok(vm.arena.alloc(Val::String(Rc::new(
-            temp_path.as_os_str().as_bytes().to_vec(),
-        ))))
+        Ok(vm
+            .arena
+            .alloc(Val::String(Rc::new(path.as_os_str().as_bytes().to_vec()))))
     }
 
     #[cfg(not(unix))]
     {
-        let path_str = temp_path.to_string_lossy().into_owned();
+        let path_str = path.to_string_lossy().into_owned();
         Ok(vm.arena.alloc(Val::String(Rc::new(path_str.into_bytes()))))
     }
 }

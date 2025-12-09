@@ -1512,7 +1512,13 @@ impl VM {
     }
 
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
-        let initial_frame = CallFrame::new(chunk);
+        let mut initial_frame = CallFrame::new(chunk);
+
+        // Inject globals into the top-level frame locals
+        for (symbol, handle) in &self.context.globals {
+            initial_frame.locals.insert(*symbol, *handle);
+        }
+
         self.frames.push(initial_frame);
         self.run_loop(0)
     }
