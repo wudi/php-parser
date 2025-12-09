@@ -3,6 +3,8 @@ use crate::builtins::{array, class, filesystem, function, http, string, variable
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
+use crate::runtime::extension::Extension;
+use crate::runtime::registry::ExtensionRegistry;
 use crate::vm::engine::VM;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -42,7 +44,12 @@ pub struct HeaderEntry {
 }
 
 pub struct EngineContext {
+    pub registry: ExtensionRegistry,
+    // Deprecated: use registry.functions() instead
+    // Kept for backward compatibility
     pub functions: HashMap<Vec<u8>, NativeHandler>,
+    // Deprecated: use registry.constants() instead
+    // Kept for backward compatibility
     pub constants: HashMap<Symbol, Val>,
 }
 
@@ -349,6 +356,7 @@ impl EngineContext {
         );
 
         Self {
+            registry: ExtensionRegistry::new(),
             functions,
             constants: HashMap::new(),
         }
@@ -435,14 +443,73 @@ impl RequestContext {
         self.insert_builtin_constant(b"DIRECTORY_SEPARATOR", Val::String(Rc::new(dir_sep)));
 
         let path_sep_byte = if cfg!(windows) { b';' } else { b':' };
-        self.insert_builtin_constant(
-            b"PATH_SEPARATOR",
-            Val::String(Rc::new(vec![path_sep_byte])),
-        );
+        self.insert_builtin_constant(b"PATH_SEPARATOR", Val::String(Rc::new(vec![path_sep_byte])));
     }
 
     fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
         let sym = self.interner.intern(name);
         self.constants.insert(sym, value);
+    }
+}
+
+/// Builder for constructing EngineContext with extensions
+///
+/// # Example
+/// ```ignore
+/// let engine = EngineBuilder::new()
+///     .with_core_extensions()
+///     .build()?;
+/// ```
+pub struct EngineBuilder {
+    extensions: Vec<Box<dyn Extension>>,
+}
+
+impl EngineBuilder {
+    /// Create a new empty builder
+    pub fn new() -> Self {
+        Self {
+            extensions: Vec::new(),
+        }
+    }
+
+    /// Add an extension to the builder
+    pub fn with_extension<E: Extension + 'static>(mut self, ext: E) -> Self {
+        self.extensions.push(Box::new(ext));
+        self
+    }
+
+    /// Add core extensions (standard builtins)
+    ///
+    /// This includes all the functions currently hardcoded in EngineContext::new()
+    pub fn with_core_extensions(self) -> Self {
+        // TODO: Replace with actual CoreExtension once implemented
+        self
+    }
+
+    /// Build the EngineContext
+    ///
+    /// This will:
+    /// 1. Create an empty registry
+    /// 2. Register all extensions (calling MINIT for each)
+    /// 3. Return the configured EngineContext
+    pub fn build(self) -> Result<Arc<EngineContext>, String> {
+        let mut registry = ExtensionRegistry::new();
+
+        // Register all extensions
+        for ext in self.extensions {
+            registry.register_extension(ext)?;
+        }
+
+        Ok(Arc::new(EngineContext {
+            registry,
+            functions: HashMap::new(), // Deprecated, kept for compatibility
+            constants: HashMap::new(), // Deprecated, kept for compatibility
+        }))
+    }
+}
+
+impl Default for EngineBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }

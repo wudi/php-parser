@@ -234,16 +234,48 @@ impl VM {
 
     fn create_server_superglobal(&mut self) -> Handle {
         let mut data = ArrayData::new();
-        Self::insert_array_value(&mut data, b"SERVER_PROTOCOL", self.alloc_string_handle(b"HTTP/1.1"));
-        Self::insert_array_value(&mut data, b"REQUEST_METHOD", self.alloc_string_handle(b"GET"));
-        Self::insert_array_value(&mut data, b"HTTP_HOST", self.alloc_string_handle(b"localhost"));
-        Self::insert_array_value(&mut data, b"SERVER_NAME", self.alloc_string_handle(b"localhost"));
-        Self::insert_array_value(&mut data, b"SERVER_SOFTWARE", self.alloc_string_handle(b"php-vm"));
-        Self::insert_array_value(&mut data, b"SERVER_ADDR", self.alloc_string_handle(b"127.0.0.1"));
-        Self::insert_array_value(&mut data, b"REMOTE_ADDR", self.alloc_string_handle(b"127.0.0.1"));
+        Self::insert_array_value(
+            &mut data,
+            b"SERVER_PROTOCOL",
+            self.alloc_string_handle(b"HTTP/1.1"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"REQUEST_METHOD",
+            self.alloc_string_handle(b"GET"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"HTTP_HOST",
+            self.alloc_string_handle(b"localhost"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"SERVER_NAME",
+            self.alloc_string_handle(b"localhost"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"SERVER_SOFTWARE",
+            self.alloc_string_handle(b"php-vm"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"SERVER_ADDR",
+            self.alloc_string_handle(b"127.0.0.1"),
+        );
+        Self::insert_array_value(
+            &mut data,
+            b"REMOTE_ADDR",
+            self.alloc_string_handle(b"127.0.0.1"),
+        );
         Self::insert_array_value(&mut data, b"REMOTE_PORT", self.arena.alloc(Val::Int(0)));
         Self::insert_array_value(&mut data, b"SERVER_PORT", self.arena.alloc(Val::Int(80)));
-        Self::insert_array_value(&mut data, b"REQUEST_SCHEME", self.alloc_string_handle(b"http"));
+        Self::insert_array_value(
+            &mut data,
+            b"REQUEST_SCHEME",
+            self.alloc_string_handle(b"http"),
+        );
         Self::insert_array_value(&mut data, b"HTTPS", self.alloc_string_handle(b"off"));
         Self::insert_array_value(&mut data, b"QUERY_STRING", self.alloc_string_handle(b""));
         Self::insert_array_value(&mut data, b"REQUEST_URI", self.alloc_string_handle(b"/"));
@@ -1577,10 +1609,12 @@ impl VM {
                 let preview = String::from_utf8_lossy(&s[..s.len().min(32)])
                     .replace('\n', "\\n")
                     .replace('\r', "\\r");
-                format!("string(len={}, \"{}{}\")",
+                format!(
+                    "string(len={}, \"{}{}\")",
                     s.len(),
                     preview,
-                    if s.len() > 32 { "…" } else { "" })
+                    if s.len() > 32 { "…" } else { "" }
+                )
             }
             Val::Array(_) => "array".into(),
             Val::Object(_) => "object".into(),
@@ -5519,9 +5553,7 @@ impl VM {
                         self.operand_stack.push(true_val);
                     } else {
                         let inserted_once_guard = if is_once && !already_included {
-                            self.context
-                                .included_files
-                                .insert(canonical_path.clone());
+                            self.context.included_files.insert(canonical_path.clone());
                             true
                         } else {
                             false
@@ -8518,11 +8550,7 @@ impl VM {
                 for frame in self.frames.iter().rev() {
                     if let Some(name_bytes) = self.context.interner.lookup(frame.chunk.name) {
                         let line = frame.chunk.lines.get(frame.ip).copied().unwrap_or(0);
-                        eprintln!(
-                            "    at {}:{}",
-                            String::from_utf8_lossy(name_bytes),
-                            line
-                        );
+                        eprintln!("    at {}:{}", String::from_utf8_lossy(name_bytes), line);
                     }
                 }
                 Err(VmError::RuntimeError(format!(
@@ -8554,15 +8582,7 @@ mod tests {
             b"strlen".to_vec(),
             php_strlen as crate::runtime::context::NativeHandler,
         );
-        functions.insert(
-            b"str_repeat".to_vec(),
-            php_str_repeat as crate::runtime::context::NativeHandler,
-        );
-
-        let engine = Arc::new(EngineContext {
-            functions,
-            constants: std::collections::HashMap::new(),
-        });
+        let engine = Arc::new(EngineContext::new());
 
         VM::new(engine)
     }
