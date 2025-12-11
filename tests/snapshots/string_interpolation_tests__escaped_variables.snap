@@ -1,9 +1,16 @@
 ---
 source: tests/string_interpolation_tests.rs
+assertion_line: 151
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Echo {
             exprs: [
                 String {
@@ -38,7 +45,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 28,
     },
 }

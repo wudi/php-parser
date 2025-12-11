@@ -74,3 +74,17 @@ fn test_match_infinite_loop_recovery() {
     let program = parser.parse_program();
     assert_debug_snapshot!(program);
 }
+
+#[test]
+fn test_missing_class_name() {
+    let code = "<?php
+    class {
+        public $x;
+    }
+    ";
+    let lexer = Lexer::new(code.as_bytes());
+    let bump = Bump::new();
+    let mut parser = Parser::new(lexer, &bump);
+    let program = parser.parse_program();
+    assert_debug_snapshot!(program);
+}

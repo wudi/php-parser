@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Class {
             attributes: [],
             modifiers: [
@@ -77,12 +83,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 32,
                         end: 76,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 77,
@@ -99,7 +107,7 @@ Program {
         },
     ],
     span: Span {
-        start: 6,
+        start: 0,
         end: 77,
     },
 }

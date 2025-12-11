@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Namespace {
             name: Some(
                 Name {
@@ -279,12 +285,14 @@ Program {
                     params: [],
                     return_type: None,
                     body: [],
+                    doc_comment: None,
                     span: Span {
                         start: 156,
                         end: 188,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 81,
                 end: 199,
@@ -403,7 +411,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 250,
     },
 }

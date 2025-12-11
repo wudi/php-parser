@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Expression {
             expr: Match {
                 condition: Error {
@@ -41,7 +47,7 @@ Program {
         },
     ],
     span: Span {
-        start: 10,
+        start: 0,
         end: 38,
     },
 }

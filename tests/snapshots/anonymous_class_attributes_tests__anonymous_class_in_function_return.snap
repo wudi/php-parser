@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Function {
             attributes: [],
             name: Token {
@@ -79,6 +85,7 @@ Program {
                                         params: [],
                                         return_type: None,
                                         body: [],
+                                        doc_comment: None,
                                         span: Span {
                                             start: 71,
                                             end: 104,
@@ -103,6 +110,7 @@ Program {
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 108,
@@ -111,7 +119,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 108,
     },
 }

@@ -257,7 +257,10 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn is_assignable(&self, expr: ExprId<'ast>) -> bool {
         match expr {
-            Expr::Variable { .. } | Expr::ArrayDimFetch { .. } | Expr::PropertyFetch { .. } => true,
+            Expr::Variable { .. }
+            | Expr::IndirectVariable { .. }
+            | Expr::ArrayDimFetch { .. }
+            | Expr::PropertyFetch { .. } => true,
             Expr::ClassConstFetch { constant, .. } => {
                 if let Expr::Variable { span, .. } = constant {
                     let slice = self.lexer.slice(*span);
@@ -1370,17 +1373,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     };
 
                     let span = Span::new(start, end);
-                    self.arena.alloc(Expr::Variable {
-                        name: expr.span(),
-                        span,
-                    })
+                    self.arena
+                        .alloc(Expr::IndirectVariable { name: expr, span })
                 } else {
                     let expr = self.parse_expr(200);
                     let span = Span::new(start, expr.span().end);
-                    self.arena.alloc(Expr::Variable {
-                        name: expr.span(),
-                        span,
-                    })
+                    self.arena
+                        .alloc(Expr::IndirectVariable { name: expr, span })
                 }
             }
             TokenKind::StringVarname => {
@@ -1630,6 +1629,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     self.bump();
                 }
                 expr
+            }
+            TokenKind::Error => {
+                self.errors.push(ParseError {
+                    span: token.span,
+                    message: "Unexpected token",
+                });
+                self.bump();
+                self.arena.alloc(Expr::Error { span: token.span })
             }
             _ => {
                 // Error recovery

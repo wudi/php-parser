@@ -12,11 +12,11 @@ fn test_function_by_ref() {
 
     assert!(program.errors.is_empty());
     assert!(
-        !program.statements.is_empty(),
-        "Program should have at least 1 statement (function)"
+        program.statements.len() >= 2,
+        "Program should have at least 2 statements (open tag + function)"
     );
 
-    // Check the function
+    // Skip the Nop statement from <?php tag and check the function
     let func_stmt = program
         .statements
         .iter()
@@ -47,7 +47,7 @@ fn test_anonymous_class_modifiers() {
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    // Find the expression statement
+    // Find the expression statement (skip Nop from open tag)
     let expr_stmt = program
         .statements
         .iter()

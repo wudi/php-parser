@@ -28,6 +28,8 @@ pub struct Parser<'src, 'ast> {
     pub(super) current_token: Token,
     pub(super) next_token: Token,
     pub(super) errors: std::vec::Vec<ParseError>,
+    pub(super) current_doc_comment: Option<Span>,
+    pub(super) next_doc_comment: Option<Span>,
 }
 
 impl<'src, 'ast> Parser<'src, 'ast> {
@@ -44,6 +46,8 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 span: Span::default(),
             },
             errors: std::vec::Vec::new(),
+            current_doc_comment: None,
+            next_doc_comment: None,
         };
         parser.bump();
         parser.bump();
@@ -52,12 +56,16 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn bump(&mut self) {
         self.current_token = self.next_token;
+        self.current_doc_comment = self.next_doc_comment;
+        self.next_doc_comment = None;
         loop {
             let token = self.lexer.next().unwrap_or(Token {
                 kind: TokenKind::Eof,
                 span: Span::default(),
             });
-            if token.kind != TokenKind::Comment && token.kind != TokenKind::DocComment {
+            if token.kind == TokenKind::DocComment {
+                self.next_doc_comment = Some(token.span);
+            } else if token.kind != TokenKind::Comment {
                 self.next_token = token;
                 break;
             }
@@ -133,13 +141,6 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         let mut statements = std::vec::Vec::new(); // Temporary vec, will be moved to arena
 
         while self.current_token.kind != TokenKind::Eof {
-            if matches!(
-                self.current_token.kind,
-                TokenKind::OpenTag | TokenKind::CloseTag
-            ) {
-                self.bump();
-                continue;
-            }
             statements.push(self.parse_top_stmt());
         }
 

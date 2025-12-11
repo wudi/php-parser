@@ -1,9 +1,16 @@
 ---
 source: tests/recovery_tests.rs
+assertion_line: 16
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Echo {
             exprs: [
                 Integer {
@@ -32,7 +39,7 @@ Program {
         },
     ],
     span: Span {
-        start: 10,
+        start: 0,
         end: 33,
     },
 }

@@ -1,9 +1,16 @@
 ---
 source: tests/clone_syntax.rs
+assertion_line: 43
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Expression {
             expr: Assign {
                 var: Variable {
@@ -49,7 +56,7 @@ Program {
         },
     ],
     span: Span {
-        start: 6,
+        start: 0,
         end: 23,
     },
 }

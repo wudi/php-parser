@@ -1,9 +1,16 @@
 ---
 source: tests/recovery_tests.rs
+assertion_line: 47
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         If {
             condition: Boolean {
                 value: true,
@@ -71,7 +78,7 @@ Program {
         },
     ],
     span: Span {
-        start: 10,
+        start: 0,
         end: 66,
     },
 }

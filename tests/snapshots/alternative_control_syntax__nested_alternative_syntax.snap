@@ -1,9 +1,16 @@
 ---
 source: tests/alternative_control_syntax.rs
+assertion_line: 106
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         If {
             condition: Binary {
                 left: Variable {
@@ -89,7 +96,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 93,
     },
 }

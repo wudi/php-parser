@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Enum {
             attributes: [],
             name: Token {
@@ -54,6 +60,7 @@ Program {
                             },
                         },
                     ),
+                    doc_comment: None,
                     span: Span {
                         start: 32,
                         end: 66,
@@ -86,6 +93,7 @@ Program {
                             },
                         },
                     ),
+                    doc_comment: None,
                     span: Span {
                         start: 62,
                         end: 101,
@@ -254,12 +262,14 @@ Program {
                             },
                         },
                     ],
+                    doc_comment: None,
                     span: Span {
                         start: 95,
                         end: 253,
                     },
                 },
             ],
+            doc_comment: None,
             span: Span {
                 start: 6,
                 end: 256,
@@ -268,7 +278,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 256,
     },
 }

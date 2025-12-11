@@ -31,8 +31,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
         &mut self,
         attributes: &'ast [AttributeGroup<'ast>],
         modifiers: &'ast [Token],
+        doc_comment: Option<Span>,
     ) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else if let Some(first) = modifiers.first() {
             first.span.start
@@ -115,6 +118,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 extends,
                 implements: self.arena.alloc_slice_copy(&implements),
                 members: &[],
+                doc_comment,
                 span: Span::new(start, self.current_token.span.end),
             });
         }
@@ -152,6 +156,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             extends,
             implements: self.arena.alloc_slice_copy(&implements),
             members: self.arena.alloc_slice_copy(&members),
+            doc_comment,
             span: Span::new(start, end),
         })
     }
@@ -268,8 +273,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_interface(
         &mut self,
         attributes: &'ast [AttributeGroup<'ast>],
+        doc_comment: Option<Span>,
     ) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -332,6 +340,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 name,
                 extends: self.arena.alloc_slice_copy(&extends),
                 members: &[],
+                doc_comment,
                 span: Span::new(start, self.current_token.span.end),
             });
         }
@@ -360,12 +369,19 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             name,
             extends: self.arena.alloc_slice_copy(&extends),
             members: self.arena.alloc_slice_copy(&members),
+            doc_comment,
             span: Span::new(start, end),
         })
     }
 
-    pub(super) fn parse_trait(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+    pub(super) fn parse_trait(
+        &mut self,
+        attributes: &'ast [AttributeGroup<'ast>],
+        doc_comment: Option<Span>,
+    ) -> StmtId<'ast> {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -397,6 +413,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 attributes,
                 name,
                 members: &[],
+                doc_comment,
                 span: Span::new(start, self.current_token.span.end),
             });
         }
@@ -424,12 +441,19 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             attributes,
             name,
             members: self.arena.alloc_slice_copy(&members),
+            doc_comment,
             span: Span::new(start, end),
         })
     }
 
-    pub(super) fn parse_enum(&mut self, attributes: &'ast [AttributeGroup<'ast>]) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+    pub(super) fn parse_enum(
+        &mut self,
+        attributes: &'ast [AttributeGroup<'ast>],
+        doc_comment: Option<Span>,
+    ) -> StmtId<'ast> {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -498,6 +522,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 backed_type,
                 implements: self.arena.alloc_slice_copy(&implements),
                 members: &[],
+                doc_comment,
                 span: Span::new(start, self.current_token.span.end),
             });
         }
@@ -529,11 +554,13 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             backed_type,
             implements: self.arena.alloc_slice_copy(&implements),
             members: self.arena.alloc_slice_copy(&members),
+            doc_comment,
             span: Span::new(start, end),
         })
     }
 
     fn parse_class_member(&mut self, ctx: ClassMemberCtx) -> ClassMember<'ast> {
+        let doc_comment = self.current_doc_comment;
         let mut attributes = &[] as &'ast [AttributeGroup<'ast>];
         if self.current_token.kind == TokenKind::Attribute {
             attributes = self.parse_attributes();
@@ -611,6 +638,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 attributes,
                 name,
                 value,
+                doc_comment,
                 span: Span::new(start, end),
             };
         }
@@ -707,6 +735,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 attributes,
                 traits: self.arena.alloc_slice_copy(&traits),
                 adaptations: self.arena.alloc_slice_copy(&adaptations),
+                doc_comment,
                 span: Span::new(start, end),
             };
         }
@@ -892,6 +921,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 params,
                 return_type,
                 body,
+                doc_comment,
                 span: Span::new(start, end),
             }
         } else if self.current_token.kind == TokenKind::Const {
@@ -985,6 +1015,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 modifiers: self.arena.alloc_slice_copy(&modifiers),
                 ty: const_type,
                 consts: self.arena.alloc_slice_copy(&consts),
+                doc_comment,
                 span: Span::new(start, end),
             }
         } else {
@@ -1070,6 +1101,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     name,
                     default,
                     hooks: self.arena.alloc_slice_copy(&hooks),
+                    doc_comment,
                     span: Span::new(start, end),
                 }
             } else {
@@ -1137,6 +1169,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     modifiers: self.arena.alloc_slice_copy(&modifiers),
                     ty,
                     entries: self.arena.alloc_slice_copy(&entries),
+                    doc_comment,
                     span: Span::new(start, end),
                 }
             }
@@ -1587,8 +1620,11 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     pub(super) fn parse_function(
         &mut self,
         attributes: &'ast [AttributeGroup<'ast>],
+        doc_comment: Option<Span>,
     ) -> StmtId<'ast> {
-        let start = if let Some(first) = attributes.first() {
+        let start = if let Some(doc) = doc_comment {
+            doc.start
+        } else if let Some(first) = attributes.first() {
             first.span.start
         } else {
             self.current_token.span.start
@@ -1650,6 +1686,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             params,
             return_type,
             body,
+            doc_comment,
             span: Span::new(start, end),
         })
     }

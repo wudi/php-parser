@@ -4,6 +4,12 @@ expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Expression {
             expr: Call {
                 func: Variable {
@@ -282,6 +288,7 @@ Program {
             extends: None,
             implements: [],
             members: [],
+            doc_comment: None,
             span: Span {
                 start: 95,
                 end: 137,
@@ -290,7 +297,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 10,
+        start: 0,
         end: 137,
     },
 }

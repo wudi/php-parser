@@ -1,9 +1,16 @@
 ---
 source: tests/string_interpolation_tests.rs
+assertion_line: 29
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Echo {
             exprs: [
                 InterpolatedString {
@@ -142,7 +149,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 58,
     },
 }

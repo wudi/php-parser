@@ -1,9 +1,16 @@
 ---
 source: tests/additional_edge_cases.rs
+assertion_line: 232
 expression: program
 ---
 Program {
     statements: [
+        Nop {
+            span: Span {
+                start: 0,
+                end: 6,
+            },
+        },
         Expression {
             expr: Assign {
                 var: Variable {
@@ -543,7 +550,7 @@ Program {
     ],
     errors: [],
     span: Span {
-        start: 6,
+        start: 0,
         end: 214,
     },
 }
