@@ -138,9 +138,65 @@ fn run_repl(enable_pthreads: bool) -> anyhow::Result<()> {
 fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
     let script_name = path.to_string_lossy().into_owned();
-    let canonical_path = path.canonicalize().unwrap_or(path);
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.clone());
     let engine_context = create_engine(enable_pthreads)?;
     let mut vm = VM::new(engine_context);
+
+    // Fix $_SERVER variables to match the script being run
+    let server_sym = vm.context.interner.intern(b"_SERVER");
+    if let Some(server_handle) = vm.context.globals.get(&server_sym).copied() {
+        // 1. Get the array data Rc
+        let mut array_data_rc = if let Val::Array(rc) = &vm.arena.get(server_handle).value {
+            rc.clone()
+        } else {
+            Rc::new(ArrayData::new())
+        };
+
+        // 2. Prepare values to insert (allocating in arena)
+        // SCRIPT_FILENAME
+        let script_filename = canonical_path.to_string_lossy().into_owned();
+        let val_handle_filename = vm
+            .arena
+            .alloc(Val::String(Rc::new(script_filename.into_bytes())));
+
+        // SCRIPT_NAME
+        let script_name_str = path.to_string_lossy().into_owned();
+        let val_handle_script_name = vm
+            .arena
+            .alloc(Val::String(Rc::new(script_name_str.clone().into_bytes())));
+
+        // PHP_SELF
+        let val_handle_php_self = vm
+            .arena
+            .alloc(Val::String(Rc::new(script_name_str.into_bytes())));
+
+        // DOCUMENT_ROOT - Native PHP CLI leaves it empty
+        let val_handle_doc_root = vm.arena.alloc(Val::String(Rc::new(b"".to_vec())));
+
+        // 3. Modify the array data
+        let array_data = Rc::make_mut(&mut array_data_rc);
+
+        array_data.insert(
+            ArrayKey::Str(Rc::new(b"SCRIPT_FILENAME".to_vec())),
+            val_handle_filename,
+        );
+        array_data.insert(
+            ArrayKey::Str(Rc::new(b"SCRIPT_NAME".to_vec())),
+            val_handle_script_name,
+        );
+        array_data.insert(
+            ArrayKey::Str(Rc::new(b"PHP_SELF".to_vec())),
+            val_handle_php_self,
+        );
+        array_data.insert(
+            ArrayKey::Str(Rc::new(b"DOCUMENT_ROOT".to_vec())),
+            val_handle_doc_root,
+        );
+
+        // 4. Update the global variable with the new Rc
+        let slot = vm.arena.get_mut(server_handle);
+        slot.value = Val::Array(array_data_rc);
+    }
 
     // Populate $argv and $argc
     let mut argv_map = IndexMap::new();

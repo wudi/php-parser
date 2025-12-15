@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, exec, filesystem, function, http, string, variable};
+use crate::builtins::{array, class, exec, filesystem, function, http, pcre, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -197,6 +197,11 @@ impl EngineContext {
             b"func_get_args".to_vec(),
             function::php_func_get_args as NativeHandler,
         );
+        functions.insert(b"preg_match".to_vec(), pcre::preg_match as NativeHandler);
+        functions.insert(b"
+        ".to_vec(), pcre::preg_replace as NativeHandler);
+        functions.insert(b"preg_split".to_vec(), pcre::preg_split as NativeHandler);
+        functions.insert(b"preg_quote".to_vec(), pcre::preg_quote as NativeHandler);
         functions.insert(
             b"func_num_args".to_vec(),
             function::php_func_num_args as NativeHandler,

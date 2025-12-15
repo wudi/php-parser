@@ -82,6 +82,7 @@ impl<'src> Emitter<'src> {
             self.interner.intern(b"(unknown)")
         };
         self.chunk.name = chunk_name;
+        self.chunk.file_path = self.file_path.clone();
 
         (self.chunk, self.is_generator)
     }
@@ -1808,7 +1809,22 @@ impl<'src> Emitter<'src> {
                     if !name.starts_with(b"$") {
                         let sym = self.interner.intern(name);
                         self.chunk.code.push(OpCode::FetchProp(sym));
+                    } else {
+                         // Dynamic property fetch $this->$prop
+                         // We need to emit the property name expression (variable)
+                         // But here 'property' IS the variable expression.
+                         // We should emit it?
+                         // But emit_expr(property) would emit LoadVar($prop).
+                         // Then we need FetchPropDynamic.
+                         
+                         // For now, let's just debug print
+                         eprintln!("Property starts with $: {:?}", String::from_utf8_lossy(name));
                     }
+                } else {
+                    eprintln!("Property is not Variable: {:?}", property);
+                    // Handle dynamic property fetch with expression: $this->{$expr}
+                    self.emit_expr(property);
+                    self.chunk.code.push(OpCode::FetchPropDynamic);
                 }
             }
             Expr::MethodCall {

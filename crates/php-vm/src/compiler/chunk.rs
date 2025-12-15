@@ -39,6 +39,7 @@ pub struct CatchEntry {
 #[derive(Debug, Default)]
 pub struct CodeChunk {
     pub name: Symbol,        // File/Func name
+    pub file_path: Option<String>, // Source file path
     pub returns_ref: bool,   // Function returns by reference
     pub code: Vec<OpCode>,   // Instructions
     pub constants: Vec<Val>, // Literals (Ints, Strings)

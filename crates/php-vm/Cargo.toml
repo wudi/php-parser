@@ -12,6 +12,8 @@ rustyline = "14.0"
 smallvec = "1.13"
 anyhow = "1.0"
 tempfile = "3.23.0"
+regex = "1.12.2"
+pcre2 = "0.2.11"
 
 [[bin]]
 name = "php"

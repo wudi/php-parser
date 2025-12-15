@@ -459,6 +459,20 @@ impl VM {
             return Ok(candidate);
         }
 
+        // 1. Try relative to the directory of the currently executing script
+        if let Some(frame) = self.frames.last() {
+            if let Some(file_path) = &frame.chunk.file_path {
+                let current_dir = Path::new(file_path).parent();
+                if let Some(dir) = current_dir {
+                    let resolved = dir.join(&candidate);
+                    if resolved.exists() {
+                        return Ok(resolved);
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback to CWD
         let cwd = std::env::current_dir()
             .map_err(|e| VmError::RuntimeError(format!("Failed to resolve path {}: {}", raw, e)))?;
         Ok(cwd.join(candidate))
@@ -3917,11 +3931,10 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 let mut keys = Vec::with_capacity(depth as usize);
                 for _ in 0..depth {
-                    keys.push(
-                        self.operand_stack
+                    let k = self.operand_stack
                             .pop()
-                            .ok_or(VmError::RuntimeError("Stack underflow".into()))?,
-                    );
+                            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                    keys.push(k);
                 }
                 keys.reverse();
                 let array_handle = self
@@ -4986,6 +4999,89 @@ impl VM {
                     .operand_stack
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+                // Extract needed data to avoid holding borrow
+                let (class_name, prop_handle_opt) = {
+                    let obj_zval = self.arena.get(obj_handle);
+                    if let Val::Object(payload_handle) = obj_zval.value {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (obj_data.class, obj_data.properties.get(&prop_name).copied())
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    } else {
+                        return Err(VmError::RuntimeError(
+                            "Attempt to fetch property on non-object".into(),
+                        ));
+                    }
+                };
+
+                // Check visibility
+                let current_scope = self.get_current_class();
+                let visibility_check =
+                    self.check_prop_visibility(class_name, prop_name, current_scope);
+
+                let mut use_magic = false;
+
+                if let Some(prop_handle) = prop_handle_opt {
+                    if visibility_check.is_ok() {
+                        self.operand_stack.push(prop_handle);
+                    } else {
+                        use_magic = true;
+                    }
+                } else {
+                    use_magic = true;
+                }
+
+                if use_magic {
+                    let magic_get = self.context.interner.intern(b"__get");
+                    if let Some((method, _, _, defined_class)) =
+                        self.find_method(class_name, magic_get)
+                    {
+                        let prop_name_bytes = self
+                            .context
+                            .interner
+                            .lookup(prop_name)
+                            .unwrap_or(b"")
+                            .to_vec();
+                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(obj_handle);
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+
+                        if let Some(param) = method.params.get(0) {
+                            frame.locals.insert(param.name, name_handle);
+                        }
+
+                        self.frames.push(frame);
+                    } else {
+                        if let Err(e) = visibility_check {
+                            return Err(e);
+                        }
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
+                    }
+                }
+            }
+            OpCode::FetchPropDynamic => {
+                let name_handle = self
+                    .operand_stack
+                    .pop()
+                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let obj_handle = self
+                    .operand_stack
+                    .pop()
+                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+                let name_val = &self.arena.get(name_handle).value;
+                let prop_name = match name_val {
+                    Val::String(s) => self.context.interner.intern(s),
+                    _ => return Err(VmError::RuntimeError("Property name must be string".into())),
+                };
 
                 // Extract needed data to avoid holding borrow
                 let (class_name, prop_handle_opt) = {
@@ -8557,18 +8653,8 @@ impl VM {
             }
             Val::Null => Ok(ArrayKey::Str(Rc::new(Vec::new()))),
             Val::Object(payload_handle) => {
-                eprintln!(
-                    "[php-vm] Illegal offset object {} stack:",
-                    self.describe_object_class(*payload_handle)
-                );
-                for frame in self.frames.iter().rev() {
-                    if let Some(name_bytes) = self.context.interner.lookup(frame.chunk.name) {
-                        let line = frame.chunk.lines.get(frame.ip).copied().unwrap_or(0);
-                        eprintln!("    at {}:{}", String::from_utf8_lossy(name_bytes), line);
-                    }
-                }
                 Err(VmError::RuntimeError(format!(
-                    "Illegal offset type object ({})",
+                    "TypeError: Cannot access offset of type {} on array",
                     self.describe_object_class(*payload_handle)
                 )))
             }

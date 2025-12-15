@@ -4,6 +4,7 @@ pub mod exec;
 pub mod filesystem;
 pub mod function;
 pub mod http;
+pub mod pcre;
 pub mod spl;
 pub mod string;
 pub mod variable;

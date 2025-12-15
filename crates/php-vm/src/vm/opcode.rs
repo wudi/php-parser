@@ -130,6 +130,7 @@ pub enum OpCode {
     New(Symbol, u8),                      // Create instance, call constructor with N args
     NewDynamic(u8),     // [ClassName] -> Create instance, call constructor with N args
     FetchProp(Symbol),  // [Obj] -> [Val]
+    FetchPropDynamic,   // [Obj, Name] -> [Val]
     AssignProp(Symbol), // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
     UnsetObj,
