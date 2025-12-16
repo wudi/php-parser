@@ -9101,6 +9101,7 @@ impl VM {
     }
 
     /// Check if a value matches the expected return type
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_verify_internal_return_type, zend_check_type
     fn check_return_type(&mut self, val_handle: Handle, ret_type: &ReturnType) -> Result<bool, VmError> {
         let val = &self.arena.get(val_handle).value;
 
@@ -9117,8 +9118,21 @@ impl VM {
                 // mixed accepts any type
                 Ok(true)
             }
-            ReturnType::Int => Ok(matches!(val, Val::Int(_))),
-            ReturnType::Float => Ok(matches!(val, Val::Float(_))),
+            ReturnType::Int => {
+                // In strict mode, only exact type matches; in weak mode, coercion is attempted
+                match val {
+                    Val::Int(_) => Ok(true),
+                    _ => Ok(false),
+                }
+            }
+            ReturnType::Float => {
+                // Float accepts int or float in strict mode (int->float is allowed)
+                match val {
+                    Val::Float(_) => Ok(true),
+                    Val::Int(_) => Ok(true), // SSTH exception: int may be accepted as float
+                    _ => Ok(false),
+                }
+            }
             ReturnType::String => Ok(matches!(val, Val::String(_))),
             ReturnType::Bool => Ok(matches!(val, Val::Bool(_))),
             ReturnType::Array => Ok(matches!(val, Val::Array(_))),
@@ -9128,18 +9142,8 @@ impl VM {
             ReturnType::False => Ok(matches!(val, Val::Bool(false))),
             ReturnType::Callable => {
                 // Check if value is callable (string function name, closure, or array [obj, method])
-                match val {
-                    Val::String(_) => Ok(true), // Assume string is function name
-                    Val::Object(_) => {
-                        // Check if it's a Closure object
-                        Ok(true) // TODO: Check if object has __invoke
-                    }
-                    Val::Array(map) => {
-                        // Check if it's [class/object, method] format
-                        Ok(map.map.len() == 2)
-                    }
-                    _ => Ok(false),
-                }
+                // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_is_callable
+                Ok(self.is_callable(val_handle))
             }
             ReturnType::Iterable => {
                 // iterable accepts arrays and Traversable objects
@@ -9204,7 +9208,109 @@ impl VM {
         }
     }
 
+    /// Check if a value is callable
+    /// Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_is_callable
+    fn is_callable(&mut self, val_handle: Handle) -> bool {
+        let val = &self.arena.get(val_handle).value;
+        
+        match val {
+            // String: function name
+            Val::String(s) => {
+                if let Ok(_func_name) = std::str::from_utf8(s) {
+                    let func_sym = self.context.interner.intern(s);
+                    // Check if it's a registered function
+                    self.context.user_functions.contains_key(&func_sym)
+                        || self.context.engine.functions.contains_key(&s.to_vec())
+                } else {
+                    false
+                }
+            }
+            // Object: check for Closure or __invoke
+            Val::Object(payload_handle) => {
+                if let Val::ObjPayload(obj_data) = &self.arena.get(*payload_handle).value {
+                    // Check if it's a Closure
+                    let closure_sym = self.context.interner.intern(b"Closure");
+                    if self.is_instance_of_class(obj_data.class, closure_sym) {
+                        return true;
+                    }
+                    
+                    // Check if it has __invoke method
+                    let invoke_sym = self.context.interner.intern(b"__invoke");
+                    if let Some(_) = self.find_method(obj_data.class, invoke_sym) {
+                        return true;
+                    }
+                }
+                false
+            }
+            // Array: [object/class, method] or [class, static_method]
+            Val::Array(arr_data) => {
+                if arr_data.map.len() != 2 {
+                    return false;
+                }
+                
+                // Check if we have indices 0 and 1
+                let key0 = ArrayKey::Int(0);
+                let key1 = ArrayKey::Int(1);
+                
+                if let (Some(&class_or_obj_handle), Some(&method_handle)) = 
+                    (arr_data.map.get(&key0), arr_data.map.get(&key1)) {
+                    
+                    // Method name must be a string
+                    let method_val = &self.arena.get(method_handle).value;
+                    if let Val::String(method_name) = method_val {
+                        let method_sym = self.context.interner.intern(method_name);
+                        
+                        let class_or_obj_val = &self.arena.get(class_or_obj_handle).value;
+                        match class_or_obj_val {
+                            // [object, method]
+                            Val::Object(payload_handle) => {
+                                if let Val::ObjPayload(obj_data) = &self.arena.get(*payload_handle).value {
+                                    // Check if method exists
+                                    self.find_method(obj_data.class, method_sym).is_some()
+                                } else {
+                                    false
+                                }
+                            }
+                            // ["ClassName", "method"]
+                            Val::String(class_name) => {
+                                let class_sym = self.context.interner.intern(class_name);
+                                if let Ok(resolved_class) = self.resolve_class_name(class_sym) {
+                                    // Check if static method exists
+                                    self.find_method(resolved_class, method_sym).is_some()
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
     /// Get a human-readable type name for a value
+    /// Check if a class is a subclass of another (or the same class)
+    fn is_instance_of_class(&self, obj_class: Symbol, target_class: Symbol) -> bool {
+        if obj_class == target_class {
+            return true;
+        }
+        
+        // Check parent classes
+        if let Some(class_def) = self.context.classes.get(&obj_class) {
+            if let Some(parent) = class_def.parent {
+                return self.is_instance_of_class(parent, target_class);
+            }
+        }
+        
+        false
+    }
+
     fn get_type_name(&self, val_handle: Handle) -> String {
         let val = &self.arena.get(val_handle).value;
         match val {
