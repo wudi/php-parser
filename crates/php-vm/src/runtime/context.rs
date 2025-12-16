@@ -102,6 +102,10 @@ impl EngineContext {
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,
         );
+        functions.insert(
+            b"print_r".to_vec(),
+            variable::php_print_r as NativeHandler,
+        );
         functions.insert(b"count".to_vec(), array::php_count as NativeHandler);
         functions.insert(
             b"is_string".to_vec(),

@@ -12,6 +12,67 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
+/// Unescape a double-quoted string, processing escape sequences like \n, \r, \t, etc.
+fn unescape_string(s: &[u8]) -> Vec<u8> {
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < s.len() {
+        if s[i] == b'\\' && i + 1 < s.len() {
+            match s[i + 1] {
+                b'n' => result.push(b'\n'),
+                b'r' => result.push(b'\r'),
+                b't' => result.push(b'\t'),
+                b'\\' => result.push(b'\\'),
+                b'$' => result.push(b'$'),
+                b'"' => result.push(b'"'),
+                b'\'' => result.push(b'\''),
+                b'v' => result.push(b'\x0B'), // vertical tab
+                b'e' => result.push(b'\x1B'), // escape
+                b'f' => result.push(b'\x0C'), // form feed
+                b'0' => result.push(b'\0'),   // null byte
+                // Hexadecimal: \xHH
+                b'x' if i + 3 < s.len() => {
+                    if let (Some(h1), Some(h2)) = (
+                        char::from(s[i + 2]).to_digit(16),
+                        char::from(s[i + 3]).to_digit(16),
+                    ) {
+                        result.push((h1 * 16 + h2) as u8);
+                        i += 2; // Skip the two hex digits
+                    } else {
+                        result.push(b'\\');
+                        result.push(s[i + 1]);
+                    }
+                }
+                // Octal: \nnn (up to 3 digits)
+                b'0'..=b'7' => {
+                    let mut octal_val = (s[i + 1] - b'0') as u8;
+                    let mut consumed = 1;
+                    if i + 2 < s.len() && (b'0'..=b'7').contains(&s[i + 2]) {
+                        octal_val = octal_val * 8 + (s[i + 2] - b'0');
+                        consumed = 2;
+                        if i + 3 < s.len() && (b'0'..=b'7').contains(&s[i + 3]) {
+                            octal_val = octal_val * 8 + (s[i + 3] - b'0');
+                            consumed = 3;
+                        }
+                    }
+                    result.push(octal_val);
+                    i += consumed;
+                }
+                _ => {
+                    // Unknown escape, keep both characters
+                    result.push(b'\\');
+                    result.push(s[i + 1]);
+                }
+            }
+            i += 2;
+        } else {
+            result.push(s[i]);
+            i += 1;
+        }
+    }
+    result
+}
+
 struct LoopInfo {
     break_jumps: Vec<usize>,
     continue_jumps: Vec<usize>,
@@ -1028,11 +1089,37 @@ impl<'src> Emitter<'src> {
             }
             Expr::String { value, .. } => {
                 let s = if value.len() >= 2 {
-                    &value[1..value.len() - 1]
+                    let first = value[0];
+                    let last = value[value.len() - 1];
+                    if first == b'"' && last == b'"' {
+                        let inner = &value[1..value.len() - 1];
+                        unescape_string(inner)
+                    } else if first == b'\'' && last == b'\'' {
+                        let inner = &value[1..value.len() - 1];
+                        let mut result = Vec::new();
+                        let mut i = 0;
+                        while i < inner.len() {
+                            if inner[i] == b'\\' && i + 1 < inner.len() {
+                                if inner[i + 1] == b'\'' || inner[i + 1] == b'\\' {
+                                    result.push(inner[i + 1]);
+                                    i += 2;
+                                } else {
+                                    result.push(inner[i]);
+                                    i += 1;
+                                }
+                            } else {
+                                result.push(inner[i]);
+                                i += 1;
+                            }
+                        }
+                        result
+                    } else {
+                        value.to_vec()
+                    }
                 } else {
-                    value
+                    value.to_vec()
                 };
-                Some(Val::String(s.to_vec().into()))
+                Some(Val::String(s.into()))
             }
             Expr::Boolean { value, .. } => Some(Val::Bool(*value)),
             Expr::Null { .. } => Some(Val::Null),
@@ -1065,15 +1152,37 @@ impl<'src> Emitter<'src> {
                 let s = if value.len() >= 2 {
                     let first = value[0];
                     let last = value[value.len() - 1];
-                    if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
-                        &value[1..value.len() - 1]
+                    if first == b'"' && last == b'"' {
+                        // Double-quoted string: unescape escape sequences
+                        let inner = &value[1..value.len() - 1];
+                        unescape_string(inner)
+                    } else if first == b'\'' && last == b'\'' {
+                        // Single-quoted string: no escape processing (except \' and \\)
+                        let inner = &value[1..value.len() - 1];
+                        let mut result = Vec::new();
+                        let mut i = 0;
+                        while i < inner.len() {
+                            if inner[i] == b'\\' && i + 1 < inner.len() {
+                                if inner[i + 1] == b'\'' || inner[i + 1] == b'\\' {
+                                    result.push(inner[i + 1]);
+                                    i += 2;
+                                } else {
+                                    result.push(inner[i]);
+                                    i += 1;
+                                }
+                            } else {
+                                result.push(inner[i]);
+                                i += 1;
+                            }
+                        }
+                        result
                     } else {
-                        value
+                        value.to_vec()
                     }
                 } else {
-                    value
+                    value.to_vec()
                 };
-                let idx = self.add_constant(Val::String(s.to_vec().into()));
+                let idx = self.add_constant(Val::String(s.into()));
                 self.chunk.code.push(OpCode::Const(idx as u16));
             }
             Expr::InterpolatedString { parts, .. } => {
