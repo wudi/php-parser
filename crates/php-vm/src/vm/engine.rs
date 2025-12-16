@@ -455,7 +455,7 @@ impl VM {
         
         // Only report if the error level is enabled in error_reporting
         if (self.context.error_reporting & level_bitmask) != 0 {
-            self.report_error(level, message);
+            self.error_handler.report(level, message);
         }
     }
 
