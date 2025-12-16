@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, datetime, exec, filesystem, function, http, math, output_control, pcre, string, variable};
+use crate::builtins::{array, class, datetime, exception, exec, filesystem, function, http, math, output_control, pcre, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -17,6 +17,15 @@ pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 pub struct MethodEntry {
     pub name: Symbol,
     pub func: Rc<UserFunc>,
+    pub visibility: Visibility,
+    pub is_static: bool,
+    pub declaring_class: Symbol,
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeMethodEntry {
+    pub name: Symbol,
+    pub handler: NativeHandler,
     pub visibility: Visibility,
     pub is_static: bool,
     pub declaring_class: Symbol,
@@ -515,6 +524,7 @@ pub struct RequestContext {
     pub headers: Vec<HeaderEntry>,
     pub http_status: Option<i64>,
     pub max_execution_time: i64, // in seconds, 0 = unlimited
+    pub native_methods: HashMap<(Symbol, Symbol), NativeMethodEntry>, // (class_name, method_name) -> handler
 }
 
 impl RequestContext {
@@ -533,6 +543,7 @@ impl RequestContext {
             headers: Vec::new(),
             http_status: None,
             max_execution_time: 30, // Default 30 seconds
+            native_methods: HashMap::new(),
         };
         ctx.register_builtin_classes();
         ctx.register_builtin_constants();
@@ -542,12 +553,210 @@ impl RequestContext {
 
 impl RequestContext {
     fn register_builtin_classes(&mut self) {
+        // Helper to register a native method
+        let register_native_method = |ctx: &mut RequestContext, class_sym: Symbol, name: &[u8], handler: NativeHandler, visibility: Visibility, is_static: bool| {
+            let method_sym = ctx.interner.intern(name);
+            ctx.native_methods.insert(
+                (class_sym, method_sym),
+                NativeMethodEntry {
+                    name: method_sym,
+                    handler,
+                    visibility,
+                    is_static,
+                    declaring_class: class_sym,
+                },
+            );
+        };
+
+        // Throwable interface (base for all exceptions/errors)
+        let throwable_sym = self.interner.intern(b"Throwable");
+        self.classes.insert(
+            throwable_sym,
+            ClassDef {
+                name: throwable_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Exception class with methods
         let exception_sym = self.interner.intern(b"Exception");
+        
+        // Add default property values
+        let mut exception_props = IndexMap::new();
+        let message_prop_sym = self.interner.intern(b"message");
+        let code_prop_sym = self.interner.intern(b"code");
+        let file_prop_sym = self.interner.intern(b"file");
+        let line_prop_sym = self.interner.intern(b"line");
+        let trace_prop_sym = self.interner.intern(b"trace");
+        let previous_prop_sym = self.interner.intern(b"previous");
+        
+        exception_props.insert(message_prop_sym, (Val::String(Rc::new(Vec::new())), Visibility::Protected));
+        exception_props.insert(code_prop_sym, (Val::Int(0), Visibility::Protected));
+        exception_props.insert(file_prop_sym, (Val::String(Rc::new(b"unknown".to_vec())), Visibility::Protected));
+        exception_props.insert(line_prop_sym, (Val::Int(0), Visibility::Protected));
+        exception_props.insert(trace_prop_sym, (Val::Array(crate::core::value::ArrayData::new().into()), Visibility::Private));
+        exception_props.insert(previous_prop_sym, (Val::Null, Visibility::Private));
+        
         self.classes.insert(
             exception_sym,
             ClassDef {
                 name: exception_sym,
                 parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![throwable_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: exception_props,
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Register exception native methods
+        register_native_method(self, exception_sym, b"__construct", exception::exception_construct, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getMessage", exception::exception_get_message, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getCode", exception::exception_get_code, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getFile", exception::exception_get_file, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getLine", exception::exception_get_line, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getTrace", exception::exception_get_trace, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getTraceAsString", exception::exception_get_trace_as_string, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"getPrevious", exception::exception_get_previous, Visibility::Public, false);
+        register_native_method(self, exception_sym, b"__toString", exception::exception_to_string, Visibility::Public, false);
+
+        // Error class (PHP 7+) - has same methods as Exception
+        let error_sym = self.interner.intern(b"Error");
+        
+        // Error has same properties as Exception
+        let mut error_props = IndexMap::new();
+        error_props.insert(message_prop_sym, (Val::String(Rc::new(Vec::new())), Visibility::Protected));
+        error_props.insert(code_prop_sym, (Val::Int(0), Visibility::Protected));
+        error_props.insert(file_prop_sym, (Val::String(Rc::new(b"unknown".to_vec())), Visibility::Protected));
+        error_props.insert(line_prop_sym, (Val::Int(0), Visibility::Protected));
+        error_props.insert(trace_prop_sym, (Val::Array(crate::core::value::ArrayData::new().into()), Visibility::Private));
+        error_props.insert(previous_prop_sym, (Val::Null, Visibility::Private));
+        
+        self.classes.insert(
+            error_sym,
+            ClassDef {
+                name: error_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![throwable_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: error_props,
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Register Error native methods (same as Exception)
+        register_native_method(self, error_sym, b"__construct", exception::exception_construct, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getMessage", exception::exception_get_message, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getCode", exception::exception_get_code, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getFile", exception::exception_get_file, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getLine", exception::exception_get_line, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getTrace", exception::exception_get_trace, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getTraceAsString", exception::exception_get_trace_as_string, Visibility::Public, false);
+        register_native_method(self, error_sym, b"getPrevious", exception::exception_get_previous, Visibility::Public, false);
+        register_native_method(self, error_sym, b"__toString", exception::exception_to_string, Visibility::Public, false);
+
+        // RuntimeException
+        let runtime_exception_sym = self.interner.intern(b"RuntimeException");
+        self.classes.insert(
+            runtime_exception_sym,
+            ClassDef {
+                name: runtime_exception_sym,
+                parent: Some(exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // LogicException
+        let logic_exception_sym = self.interner.intern(b"LogicException");
+        self.classes.insert(
+            logic_exception_sym,
+            ClassDef {
+                name: logic_exception_sym,
+                parent: Some(exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // TypeError (extends Error)
+        let type_error_sym = self.interner.intern(b"TypeError");
+        self.classes.insert(
+            type_error_sym,
+            ClassDef {
+                name: type_error_sym,
+                parent: Some(error_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // ArithmeticError (extends Error)
+        let arithmetic_error_sym = self.interner.intern(b"ArithmeticError");
+        self.classes.insert(
+            arithmetic_error_sym,
+            ClassDef {
+                name: arithmetic_error_sym,
+                parent: Some(error_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // DivisionByZeroError (extends ArithmeticError)
+        let division_by_zero_sym = self.interner.intern(b"DivisionByZeroError");
+        self.classes.insert(
+            division_by_zero_sym,
+            ClassDef {
+                name: division_by_zero_sym,
+                parent: Some(arithmetic_error_sym),
                 is_interface: false,
                 is_trait: false,
                 interfaces: Vec::new(),

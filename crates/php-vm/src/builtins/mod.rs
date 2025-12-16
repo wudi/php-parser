@@ -1,6 +1,7 @@
 pub mod array;
 pub mod class;
 pub mod datetime;
+pub mod exception;
 pub mod exec;
 pub mod filesystem;
 pub mod function;

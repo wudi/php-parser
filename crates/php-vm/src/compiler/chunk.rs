@@ -33,7 +33,8 @@ pub struct CatchEntry {
     pub start: u32,
     pub end: u32,
     pub target: u32,
-    pub catch_type: Option<Symbol>, // None for catch-all or finally?
+    pub catch_type: Option<Symbol>, // None for catch-all
+    pub finally_target: Option<u32>, // Finally block target
 }
 
 #[derive(Debug, Default)]

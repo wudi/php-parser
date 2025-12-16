@@ -708,6 +708,31 @@ impl VM {
         None
     }
 
+    pub fn find_native_method(
+        &self,
+        class_name: Symbol,
+        method_name: Symbol,
+    ) -> Option<crate::runtime::context::NativeMethodEntry> {
+        // Walk the inheritance chain to find native methods
+        let mut current_class = Some(class_name);
+
+        while let Some(cls) = current_class {
+            // Check native_methods map
+            if let Some(entry) = self.context.native_methods.get(&(cls, method_name)) {
+                return Some(entry.clone());
+            }
+
+            // Move up the inheritance chain
+            if let Some(def) = self.context.classes.get(&cls) {
+                current_class = def.parent;
+            } else {
+                break;
+            }
+        }
+
+        None
+    }
+
     pub fn collect_methods(&self, class_name: Symbol, caller_scope: Option<Symbol>) -> Vec<Symbol> {
         // Collect methods from entire inheritance chain
         // Reference: $PHP_SRC_PATH/Zend/zend_API.c - reflection functions
@@ -1361,7 +1386,18 @@ impl VM {
     }
 
     fn handle_exception(&mut self, ex_handle: Handle) -> bool {
+        // Validate that the exception is a Throwable
+        let throwable_sym = self.context.interner.intern(b"Throwable");
+        if !self.is_instance_of(ex_handle, throwable_sym) {
+            // Not a valid exception object - this shouldn't happen if Throw validates properly
+            self.frames.clear();
+            return false;
+        }
+
         let mut frame_idx = self.frames.len();
+        let mut finally_blocks = Vec::new(); // Track finally blocks to execute
+
+        // Unwind stack, collecting finally blocks
         while frame_idx > 0 {
             frame_idx -= 1;
 
@@ -1371,24 +1407,61 @@ impl VM {
                 (ip, frame.chunk.clone())
             };
 
+            // Check for matching catch or finally blocks
+            let mut found_catch = false;
+            let mut finally_target = None;
+
             for entry in &chunk.catch_table {
                 if ip >= entry.start && ip < entry.end {
-                    let matches = if let Some(type_sym) = entry.catch_type {
-                        self.is_instance_of(ex_handle, type_sym)
-                    } else {
-                        true
-                    };
+                    // Check for finally block first
+                    if entry.catch_type.is_none() && entry.finally_target.is_none() {
+                        // This is a finally-only entry
+                        finally_target = Some(entry.target);
+                        continue;
+                    }
 
-                    if matches {
-                        self.frames.truncate(frame_idx + 1);
-                        let frame = &mut self.frames[frame_idx];
-                        frame.ip = entry.target as usize;
-                        self.operand_stack.push(ex_handle);
-                        return true;
+                    // Check for matching catch block
+                    if let Some(type_sym) = entry.catch_type {
+                        if self.is_instance_of(ex_handle, type_sym) {
+                            // Found matching catch block
+                            self.frames.truncate(frame_idx + 1);
+                            let frame = &mut self.frames[frame_idx];
+                            frame.ip = entry.target as usize;
+                            self.operand_stack.push(ex_handle);
+                            
+                            // If this catch has a finally, we'll execute it after the catch
+                            if let Some(_finally_tgt) = entry.finally_target {
+                                // Mark that we need to execute finally after catch completes
+                                // Store it for later execution
+                            }
+                            
+                            found_catch = true;
+                            break;
+                        }
+                    }
+
+                    // Track finally target if present
+                    if entry.finally_target.is_some() {
+                        finally_target = entry.finally_target;
                     }
                 }
             }
+
+            if found_catch {
+                return true;
+            }
+
+            // If we found a finally block, collect it for execution during unwinding
+            if let Some(target) = finally_target {
+                finally_blocks.push((frame_idx, target));
+            }
         }
+
+        // No catch found, but execute finally blocks during unwinding
+        // In PHP, finally blocks execute even when exception is not caught
+        // For now, we'll just track them but not execute (simplified implementation)
+        // Full implementation would require executing finally blocks and re-throwing
+        
         self.frames.clear();
         false
     }
@@ -2126,15 +2199,68 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                // Validate that the thrown value is an object (should implement Throwable)
-                let ex_val = &self.arena.get(ex_handle).value;
-                if !matches!(ex_val, Val::Object(_)) {
-                    // PHP requires thrown exceptions to be objects implementing Throwable
-                    return Err(VmError::RuntimeError("Can only throw objects".into()));
+                // Validate that the thrown value is an object
+                let (is_object, payload_handle_opt) = {
+                    let ex_val = &self.arena.get(ex_handle).value;
+                    match ex_val {
+                        Val::Object(ph) => (true, Some(*ph)),
+                        _ => (false, None),
+                    }
+                };
+
+                if !is_object {
+                    return Err(VmError::RuntimeError(
+                        "Can only throw objects".into(),
+                    ));
                 }
 
-                // TODO: In a full implementation, check that the object implements Throwable interface
-                // For now, we just check it's an object
+                let payload_handle = payload_handle_opt.unwrap();
+
+                // Validate that the object implements Throwable interface
+                let throwable_sym = self.context.interner.intern(b"Throwable");
+                if !self.is_instance_of(ex_handle, throwable_sym) {
+                    // Get the class name for error message
+                    let class_name = if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
+                        String::from_utf8_lossy(
+                            self.context.interner.lookup(obj_data.class).unwrap_or(b"Object")
+                        ).to_string()
+                    } else {
+                        "Object".to_string()
+                    };
+                    
+                    return Err(VmError::RuntimeError(
+                        format!("Cannot throw objects that do not implement Throwable ({})", class_name)
+                    ));
+                }
+
+                // Set exception properties (file, line, trace) at throw time
+                // This mimics PHP's behavior of capturing context when exception is thrown
+                let file_sym = self.context.interner.intern(b"file");
+                let line_sym = self.context.interner.intern(b"line");
+                
+                // Get current file and line from frame
+                let (file_path, line_no) = if let Some(frame) = self.frames.last() {
+                    let file = frame.chunk.file_path.clone().unwrap_or_else(|| "unknown".to_string());
+                    let line = if frame.ip > 0 && frame.ip <= frame.chunk.lines.len() {
+                        frame.chunk.lines[frame.ip - 1]
+                    } else {
+                        0
+                    };
+                    (file, line)
+                } else {
+                    ("unknown".to_string(), 0)
+                };
+                
+                // Allocate property values first
+                let file_val = self.arena.alloc(Val::String(file_path.into_bytes().into()));
+                let line_val = self.arena.alloc(Val::Int(line_no as i64));
+                
+                // Now mutate the object to set file and line
+                let payload = self.arena.get_mut(payload_handle);
+                if let Val::ObjPayload(ref mut obj_data) = payload.value {
+                    obj_data.properties.insert(file_sym, file_val);
+                    obj_data.properties.insert(line_sym, line_val);
+                }
 
                 return Err(VmError::Exception(ex_handle));
             }
@@ -5089,7 +5215,45 @@ impl VM {
                         frame.args = self.collect_call_args(arg_count)?;
                         self.push_frame(frame);
                     } else {
-                        if arg_count > 0 {
+                        // Check for native constructor
+                        let native_constructor = self.find_native_method(class_name, constructor_name);
+                        if let Some(native_entry) = native_constructor {
+                            // Call native constructor
+                            let args = self.collect_call_args(arg_count)?;
+                            
+                            // Set this in current frame temporarily
+                            let saved_this = self.frames.last().and_then(|f| f.this);
+                            if let Some(frame) = self.frames.last_mut() {
+                                frame.this = Some(obj_handle);
+                            }
+
+                            // Call native handler
+                            let _result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+
+                            // Restore previous this
+                            if let Some(frame) = self.frames.last_mut() {
+                                frame.this = saved_this;
+                            }
+
+                            self.operand_stack.push(obj_handle);
+                        } else {
+                        // No constructor found
+                        // For built-in exception/error classes, accept args silently (they have implicit constructors)
+                        let is_builtin_exception = {
+                            let class_name_bytes = self
+                                .context
+                                .interner
+                                .lookup(class_name)
+                                .unwrap_or(b"");
+                            matches!(
+                                class_name_bytes,
+                                b"Exception" | b"Error" | b"Throwable" | b"RuntimeException" |
+                                b"LogicException" | b"TypeError" | b"ArithmeticError" |
+                                b"DivisionByZeroError" | b"ParseError" | b"ArgumentCountError"
+                            )
+                        };
+
+                        if arg_count > 0 && !is_builtin_exception {
                             let class_name_bytes = self
                                 .context
                                 .interner
@@ -5098,7 +5262,14 @@ impl VM {
                             let class_name_str = String::from_utf8_lossy(class_name_bytes);
                             return Err(VmError::RuntimeError(format!("Class {} does not have a constructor, so you cannot pass any constructor arguments", class_name_str).into()));
                         }
+                        
+                        // Discard constructor arguments for built-in exceptions
+                        for _ in 0..arg_count {
+                            self.operand_stack.pop();
+                        }
+                        
                         self.operand_stack.push(obj_handle);
+                        }
                     }
                 } else {
                     return Err(VmError::RuntimeError("Class not found".into()));
@@ -5476,6 +5647,32 @@ impl VM {
                     ));
                 };
 
+                // Check for native method first
+                let native_method = self.find_native_method(class_name, method_name);
+                if let Some(native_entry) = native_method {
+                    self.check_method_visibility(native_entry.declaring_class, native_entry.visibility, Some(method_name))?;
+
+                    // Collect args and pop object
+                    let args = self.collect_call_args(arg_count)?;
+                    let obj_handle = self.operand_stack.pop().unwrap();
+
+                    // Set this in current frame temporarily for native method to access
+                    let saved_this = self.frames.last().and_then(|f| f.this);
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = Some(obj_handle);
+                    }
+
+                    // Call native handler
+                    let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+
+                    // Restore previous this
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = saved_this;
+                    }
+
+                    self.operand_stack.push(result);
+                } else {
+
                 let mut method_lookup = self.find_method(class_name, method_name);
 
                 if method_lookup.is_none() {
@@ -5574,6 +5771,7 @@ impl VM {
                             method_str
                         )));
                     }
+                }
                 }
             }
             OpCode::UnsetObj => {

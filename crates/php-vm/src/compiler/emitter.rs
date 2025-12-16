@@ -1009,8 +1009,9 @@ impl<'src> Emitter<'src> {
                 }
                 let try_end = self.chunk.code.len() as u32;
 
-                let jump_over_catches_idx = self.chunk.code.len();
-                self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                // Jump from successful try to finally (or end if no finally)
+                let jump_from_try = self.chunk.code.len();
+                self.chunk.code.push(OpCode::Jmp(0)); // Will patch to finally or end
 
                 let mut catch_jumps = Vec::new();
 
@@ -1026,6 +1027,7 @@ impl<'src> Emitter<'src> {
                             end: try_end,
                             target: catch_target,
                             catch_type: Some(type_sym),
+                            finally_target: None,
                         });
                     }
 
@@ -1043,20 +1045,34 @@ impl<'src> Emitter<'src> {
                         self.emit_stmt(stmt);
                     }
 
+                    // Jump from catch to finally (or end if no finally)
                     catch_jumps.push(self.chunk.code.len());
-                    self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                    self.chunk.code.push(OpCode::Jmp(0)); // Will patch to finally or end
                 }
 
-                let end_label = self.chunk.code.len() as u32;
-                self.patch_jump(jump_over_catches_idx, end_label as usize);
-
-                for idx in catch_jumps {
-                    self.patch_jump(idx, end_label as usize);
-                }
-
+                // Emit finally block if present
                 if let Some(finally_body) = finally {
+                    let finally_start = self.chunk.code.len();
+                    
+                    // Patch jump from try to finally
+                    self.patch_jump(jump_from_try, finally_start);
+                    
+                    // Patch all catch block jumps to finally
+                    for idx in &catch_jumps {
+                        self.patch_jump(*idx, finally_start);
+                    }
+
                     for stmt in *finally_body {
                         self.emit_stmt(stmt);
+                    }
+                    
+                    // Finally falls through to end
+                } else {
+                    // No finally - patch jumps directly to end
+                    let after_catches = self.chunk.code.len();
+                    self.patch_jump(jump_from_try, after_catches);
+                    for idx in &catch_jumps {
+                        self.patch_jump(*idx, after_catches);
                     }
                 }
             }
