@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, exec, filesystem, function, http, pcre, string, variable};
+use crate::builtins::{array, class, exec, filesystem, function, http, math, pcre, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -135,6 +135,11 @@ impl EngineContext {
         functions.insert(b"sprintf".to_vec(), string::php_sprintf as NativeHandler);
         functions.insert(b"printf".to_vec(), string::php_printf as NativeHandler);
         functions.insert(b"header".to_vec(), http::php_header as NativeHandler);
+        functions.insert(b"headers_sent".to_vec(), http::php_headers_sent as NativeHandler);
+        functions.insert(b"header_remove".to_vec(), http::php_header_remove as NativeHandler);
+        functions.insert(b"abs".to_vec(), math::php_abs as NativeHandler);
+        functions.insert(b"max".to_vec(), math::php_max as NativeHandler);
+        functions.insert(b"min".to_vec(), math::php_min as NativeHandler);
         functions.insert(b"define".to_vec(), variable::php_define as NativeHandler);
         functions.insert(b"defined".to_vec(), variable::php_defined as NativeHandler);
         functions.insert(

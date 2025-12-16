@@ -100,3 +100,30 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
         .unwrap_or(start);
     &bytes[start..end]
 }
+
+pub fn php_headers_sent(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    // headers_sent() returns false since we're not in a web context
+    // In CLI mode, headers are never "sent"
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_header_remove(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    // header_remove() - in CLI mode, just clear our header list or specific header
+    if args.is_empty() {
+        // Remove all headers
+        vm.context.headers.clear();
+    } else {
+        // Remove specific header by name
+        if let Val::String(name) = &vm.arena.get(args[0]).value {
+            let name_lower: Vec<u8> = name.iter().map(|b| b.to_ascii_lowercase()).collect();
+            vm.context.headers.retain(|entry| {
+                if let Some(ref key) = entry.key {
+                    key != &name_lower
+                } else {
+                    true
+                }
+            });
+        }
+    }
+    Ok(vm.arena.alloc(Val::Null))
+}
