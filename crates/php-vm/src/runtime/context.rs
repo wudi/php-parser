@@ -430,6 +430,10 @@ impl EngineContext {
             b"proc_terminate".to_vec(),
             exec::php_proc_terminate as NativeHandler,
         );
+        functions.insert(
+            b"set_time_limit".to_vec(),
+            exec::php_set_time_limit as NativeHandler,
+        );
 
         // Date/Time functions
         functions.insert(b"checkdate".to_vec(), datetime::php_checkdate as NativeHandler);
@@ -481,6 +485,7 @@ pub struct RequestContext {
     pub error_reporting: u32,
     pub headers: Vec<HeaderEntry>,
     pub http_status: Option<i64>,
+    pub max_execution_time: i64, // in seconds, 0 = unlimited
 }
 
 impl RequestContext {
@@ -497,6 +502,7 @@ impl RequestContext {
             error_reporting: 32767, // E_ALL
             headers: Vec::new(),
             http_status: None,
+            max_execution_time: 30, // Default 30 seconds
         };
         ctx.register_builtin_classes();
         ctx.register_builtin_constants();

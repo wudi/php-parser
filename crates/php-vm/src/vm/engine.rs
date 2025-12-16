@@ -155,6 +155,7 @@ pub struct VM {
     pub error_handler: Box<dyn ErrorHandler>,
     trace_includes: bool,
     superglobal_map: HashMap<Symbol, SuperglobalKind>,
+    pub execution_start_time: SystemTime,
 }
 
 impl VM {
@@ -175,6 +176,7 @@ impl VM {
             error_handler: Box::new(StderrErrorHandler::default()),
             trace_includes,
             superglobal_map: HashMap::new(),
+            execution_start_time: SystemTime::now(),
         };
         vm.initialize_superglobals();
         vm
@@ -382,9 +384,35 @@ impl VM {
             error_handler: Box::new(StderrErrorHandler::default()),
             trace_includes,
             superglobal_map: HashMap::new(),
+            execution_start_time: SystemTime::now(),
         };
         vm.initialize_superglobals();
         vm
+    }
+
+    /// Check if execution time limit has been exceeded
+    /// Returns an error if the time limit is exceeded and not unlimited (0)
+    fn check_execution_timeout(&self) -> Result<(), VmError> {
+        if self.context.max_execution_time <= 0 {
+            // 0 or negative means unlimited
+            return Ok(());
+        }
+
+        let elapsed = self.execution_start_time
+            .elapsed()
+            .map_err(|e| VmError::RuntimeError(format!("Time error: {}", e)))?;
+        
+        let elapsed_secs = elapsed.as_secs() as i64;
+        
+        if elapsed_secs >= self.context.max_execution_time {
+            return Err(VmError::RuntimeError(format!(
+                "Maximum execution time of {} second{} exceeded",
+                self.context.max_execution_time,
+                if self.context.max_execution_time == 1 { "" } else { "s" }
+            )));
+        }
+
+        Ok(())
     }
 
     pub fn with_output_writer(mut self, writer: Box<dyn OutputWriter>) -> Self {
@@ -1791,7 +1819,16 @@ impl VM {
     }
 
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
+        let mut instruction_count = 0u64;
+        const TIMEOUT_CHECK_INTERVAL: u64 = 1000; // Check every 1000 instructions
+        
         while self.frames.len() > target_depth {
+            // Periodically check execution timeout
+            instruction_count += 1;
+            if instruction_count % TIMEOUT_CHECK_INTERVAL == 0 {
+                self.check_execution_timeout()?;
+            }
+
             let op = {
                 let frame = self.current_frame_mut()?;
                 if frame.ip >= frame.chunk.code.len() {

@@ -656,13 +656,13 @@ pub fn php_ini_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     // Return commonly expected ini values
     let value = match option.as_str() {
-        "display_errors" => "1",
-        "error_reporting" => "32767", // E_ALL
-        "memory_limit" => "128M",
-        "max_execution_time" => "30",
-        "upload_max_filesize" => "2M",
-        "post_max_size" => "8M",
-        _ => "", // Unknown settings return empty string
+        "display_errors" => "1".to_string(),
+        "error_reporting" => "32767".to_string(), // E_ALL
+        "memory_limit" => "128M".to_string(),
+        "max_execution_time" => vm.context.max_execution_time.to_string(),
+        "upload_max_filesize" => "2M".to_string(),
+        "post_max_size" => "8M".to_string(),
+        _ => "".to_string(), // Unknown settings return empty string
     };
 
     Ok(vm.arena.alloc(Val::String(Rc::new(value.as_bytes().to_vec()))))

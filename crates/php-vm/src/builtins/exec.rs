@@ -516,3 +516,63 @@ pub fn php_proc_terminate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         Err("proc_terminate(): supplied argument is not a valid process resource".into())
     }
 }
+
+// ============================================================================
+// Execution Time Limit
+// ============================================================================
+
+/// set_time_limit(seconds) - Limits the maximum execution time
+///
+/// Sets the maximum time in seconds a script is allowed to run.
+/// When the limit is reached, the script will be terminated with a fatal error.
+/// 
+/// A value of 0 means unlimited execution time.
+/// Negative values are treated as valid and set the limit (PHP allows this).
+///
+/// Returns: bool - Always returns true on success
+///
+/// Note: The execution timer is reset when set_time_limit is called.
+/// In native PHP, this also resets the timeout counter.
+pub fn php_set_time_limit(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("set_time_limit() expects exactly 1 argument, 0 given".into());
+    }
+
+    let seconds = match &vm.arena.get(args[0]).value {
+        Val::Int(i) => *i,
+        Val::Float(f) => *f as i64,
+        Val::Bool(b) => if *b { 1 } else { 0 },
+        Val::String(s) => {
+            let s_str = String::from_utf8_lossy(s);
+            let trimmed = s_str.trim();
+            // Try parsing as int first, then as float
+            if let Ok(i) = trimmed.parse::<i64>() {
+                i
+            } else if let Ok(f) = trimmed.parse::<f64>() {
+                f as i64
+            } else {
+                0
+            }
+        }
+        _ => {
+            return Err(format!(
+                "set_time_limit(): Argument #1 ($seconds) must be of type int, {} given",
+                match &vm.arena.get(args[0]).value {
+                    Val::Array(_) => "array",
+                    Val::Object(_) => "object",
+                    Val::Null => "null",
+                    _ => "unknown",
+                }
+            ));
+        }
+    };
+
+    // Set the new execution time limit
+    vm.context.max_execution_time = seconds;
+    
+    // Reset the execution start time (resets the timeout counter)
+    vm.execution_start_time = std::time::SystemTime::now();
+
+    // Always returns true in PHP
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
