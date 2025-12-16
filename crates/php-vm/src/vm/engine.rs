@@ -153,6 +153,9 @@ pub struct VM {
     pub pending_calls: Vec<PendingCall>,
     pub output_writer: Box<dyn OutputWriter>,
     pub error_handler: Box<dyn ErrorHandler>,
+    pub output_buffers: Vec<crate::builtins::output_control::OutputBuffer>,
+    pub implicit_flush: bool,
+    pub url_rewrite_vars: HashMap<Rc<Vec<u8>>, Rc<Vec<u8>>>,
     trace_includes: bool,
     superglobal_map: HashMap<Symbol, SuperglobalKind>,
     pub execution_start_time: SystemTime,
@@ -174,6 +177,9 @@ impl VM {
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
             error_handler: Box::new(StderrErrorHandler::default()),
+            output_buffers: Vec::new(),
+            implicit_flush: false,
+            url_rewrite_vars: HashMap::new(),
             trace_includes,
             superglobal_map: HashMap::new(),
             execution_start_time: SystemTime::now(),
@@ -382,6 +388,9 @@ impl VM {
             pending_calls: Vec::new(),
             output_writer: Box::new(StdoutWriter::default()),
             error_handler: Box::new(StderrErrorHandler::default()),
+            output_buffers: Vec::new(),
+            implicit_flush: false,
+            url_rewrite_vars: HashMap::new(),
             trace_includes,
             superglobal_map: HashMap::new(),
             execution_start_time: SystemTime::now(),
@@ -428,11 +437,72 @@ impl VM {
         self.error_handler = handler;
     }
 
-    fn write_output(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.output_writer.write(bytes)
+    pub(crate) fn write_output(&mut self, bytes: &[u8]) -> Result<(), VmError> {
+        // If output buffering is active, write to the buffer
+        if let Some(buffer) = self.output_buffers.last_mut() {
+            buffer.content.extend_from_slice(bytes);
+            
+            // Check if we need to flush based on chunk_size
+            if buffer.chunk_size > 0 && buffer.content.len() >= buffer.chunk_size {
+                // Auto-flush when chunk size is reached
+                if buffer.is_flushable() {
+                    // This is tricky - we need to flush without recursion
+                    // For now, just let it accumulate
+                }
+            }
+            Ok(())
+        } else {
+            // No buffering, write directly
+            self.output_writer.write(bytes)
+        }
     }
 
-    pub(crate) fn print_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+    pub fn flush_output(&mut self) -> Result<(), VmError> {
+        self.output_writer.flush()
+    }
+
+    /// Trigger an error/warning/notice
+    pub fn trigger_error(&mut self, level: ErrorLevel, message: &str) {
+        self.error_handler.report(level, message);
+    }
+
+    /// Call a user-defined function
+    pub fn call_user_function(&mut self, callable: Handle, args: &[Handle]) -> Result<Handle, String> {
+        // This is a simplified version - the actual implementation would need to handle
+        // different callable types (closures, function names, arrays with [object, method], etc.)
+        match &self.arena.get(callable).value {
+            Val::String(name) => {
+                // Function name as string
+                let name_bytes = name.as_ref();
+                if let Some(func) = self.context.engine.functions.get(name_bytes) {
+                    func(self, args)
+                } else {
+                    Err(format!("Call to undefined function {}", String::from_utf8_lossy(name_bytes)))
+                }
+            }
+            _ => {
+                // For now, simplified - would need full callable handling
+                Err("Invalid callback".into())
+            }
+        }
+    }
+
+    /// Convert a value to string
+    pub fn value_to_string(&self, handle: Handle) -> Result<Vec<u8>, String> {
+        match &self.arena.get(handle).value {
+            Val::String(s) => Ok(s.as_ref().clone()),
+            Val::Int(i) => Ok(i.to_string().into_bytes()),
+            Val::Float(f) => Ok(f.to_string().into_bytes()),
+            Val::Bool(true) => Ok(b"1".to_vec()),
+            Val::Bool(false) => Ok(Vec::new()),
+            Val::Null => Ok(Vec::new()),
+            Val::Array(_) => Ok(b"Array".to_vec()),
+            Val::Object(_) => Ok(b"Object".to_vec()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    pub fn print_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
         self.write_output(bytes).map_err(|err| match err {
             VmError::RuntimeError(msg) => msg,
             VmError::Exception(_) => "Output aborted by exception".into(),

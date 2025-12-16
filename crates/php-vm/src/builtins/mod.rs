@@ -6,6 +6,7 @@ pub mod filesystem;
 pub mod function;
 pub mod http;
 pub mod math;
+pub mod output_control;
 pub mod pcre;
 pub mod spl;
 pub mod string;

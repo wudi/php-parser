@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, datetime, exec, filesystem, function, http, math, pcre, string, variable};
+use crate::builtins::{array, class, datetime, exec, filesystem, function, http, math, output_control, pcre, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -465,6 +465,24 @@ impl EngineContext {
             datetime::php_date_parse_from_format as NativeHandler,
         );
 
+        // Output Control functions
+        functions.insert(b"ob_start".to_vec(), output_control::php_ob_start as NativeHandler);
+        functions.insert(b"ob_clean".to_vec(), output_control::php_ob_clean as NativeHandler);
+        functions.insert(b"ob_flush".to_vec(), output_control::php_ob_flush as NativeHandler);
+        functions.insert(b"ob_end_clean".to_vec(), output_control::php_ob_end_clean as NativeHandler);
+        functions.insert(b"ob_end_flush".to_vec(), output_control::php_ob_end_flush as NativeHandler);
+        functions.insert(b"ob_get_clean".to_vec(), output_control::php_ob_get_clean as NativeHandler);
+        functions.insert(b"ob_get_contents".to_vec(), output_control::php_ob_get_contents as NativeHandler);
+        functions.insert(b"ob_get_flush".to_vec(), output_control::php_ob_get_flush as NativeHandler);
+        functions.insert(b"ob_get_length".to_vec(), output_control::php_ob_get_length as NativeHandler);
+        functions.insert(b"ob_get_level".to_vec(), output_control::php_ob_get_level as NativeHandler);
+        functions.insert(b"ob_get_status".to_vec(), output_control::php_ob_get_status as NativeHandler);
+        functions.insert(b"ob_implicit_flush".to_vec(), output_control::php_ob_implicit_flush as NativeHandler);
+        functions.insert(b"ob_list_handlers".to_vec(), output_control::php_ob_list_handlers as NativeHandler);
+        functions.insert(b"flush".to_vec(), output_control::php_flush as NativeHandler);
+        functions.insert(b"output_add_rewrite_var".to_vec(), output_control::php_output_add_rewrite_var as NativeHandler);
+        functions.insert(b"output_reset_rewrite_vars".to_vec(), output_control::php_output_reset_rewrite_vars as NativeHandler);
+
         Self {
             registry: ExtensionRegistry::new(),
             functions,
@@ -556,6 +574,26 @@ impl RequestContext {
 
         let path_sep_byte = if cfg!(windows) { b';' } else { b':' };
         self.insert_builtin_constant(b"PATH_SEPARATOR", Val::String(Rc::new(vec![path_sep_byte])));
+
+        // Output Control constants - Phase flags
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_START", Val::Int(output_control::PHP_OUTPUT_HANDLER_START));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_WRITE", Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FLUSH", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CLEAN", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FINAL", Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CONT", Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_END", Val::Int(output_control::PHP_OUTPUT_HANDLER_END));
+
+        // Output Control constants - Control flags
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CLEANABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FLUSHABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_REMOVABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_STDFLAGS", Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS));
+
+        // Output Control constants - Status flags
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_STARTED", Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_DISABLED", Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED));
+        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_PROCESSED", Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED));
     }
 
     fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
