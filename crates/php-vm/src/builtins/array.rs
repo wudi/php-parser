@@ -187,3 +187,122 @@ pub fn php_ksort(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Err("ksort() expects parameter 1 to be array".into())
     }
 }
+
+pub fn php_array_unshift(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("array_unshift() expects at least 1 parameter".into());
+    }
+
+    let arr_handle = args[0];
+    let arr_val = vm.arena.get(arr_handle);
+    
+    if let Val::Array(arr_rc) = &arr_val.value {
+        let mut arr_data = (**arr_rc).clone();
+        let old_len = arr_data.map.len() as i64;
+        
+        // Rebuild array with new elements prepended
+        let mut new_map = IndexMap::new();
+        
+        // Add new elements first (from args[1..])
+        for (i, &arg) in args[1..].iter().enumerate() {
+            new_map.insert(ArrayKey::Int(i as i64), arg);
+        }
+        
+        // Then add existing elements with shifted indices
+        let shift_by = (args.len() - 1) as i64;
+        for (key, val_handle) in &arr_data.map {
+            match key {
+                ArrayKey::Int(idx) => {
+                    new_map.insert(ArrayKey::Int(idx + shift_by), *val_handle);
+                }
+                ArrayKey::Str(s) => {
+                    new_map.insert(ArrayKey::Str(s.clone()), *val_handle);
+                }
+            }
+        }
+        
+        arr_data.map = new_map;
+        arr_data.next_free += shift_by;
+        
+        let slot = vm.arena.get_mut(arr_handle);
+        slot.value = Val::Array(std::rc::Rc::new(arr_data));
+        
+        let new_len = old_len + shift_by;
+        Ok(vm.arena.alloc(Val::Int(new_len)))
+    } else {
+        Err("array_unshift() expects parameter 1 to be array".into())
+    }
+}
+
+pub fn php_current(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("current() expects exactly 1 parameter".into());
+    }
+
+    let arr_handle = args[0];
+    let arr_val = vm.arena.get(arr_handle);
+    
+    if let Val::Array(arr_rc) = &arr_val.value {
+        // Get the first element (current element at internal pointer position 0)
+        if let Some((_, val_handle)) = arr_rc.map.get_index(0) {
+            Ok(*val_handle)
+        } else {
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_next(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("next() expects exactly 1 parameter".into());
+    }
+
+    // For now, return false to indicate end of array
+    // Full implementation would need to track array internal pointers
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_reset(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("reset() expects exactly 1 parameter".into());
+    }
+
+    let arr_handle = args[0];
+    let arr_val = vm.arena.get(arr_handle);
+    
+    if let Val::Array(arr_rc) = &arr_val.value {
+        if let Some((_, val_handle)) = arr_rc.map.get_index(0) {
+            Ok(*val_handle)
+        } else {
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_end(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("end() expects exactly 1 parameter".into());
+    }
+
+    let arr_handle = args[0];
+    let arr_val = vm.arena.get(arr_handle);
+    
+    if let Val::Array(arr_rc) = &arr_val.value {
+        let len = arr_rc.map.len();
+        if len > 0 {
+            if let Some((_, val_handle)) = arr_rc.map.get_index(len - 1) {
+                Ok(*val_handle)
+            } else {
+                Ok(vm.arena.alloc(Val::Bool(false)))
+            }
+        } else {
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}

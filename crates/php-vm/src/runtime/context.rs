@@ -93,6 +93,11 @@ impl EngineContext {
         );
         functions.insert(b"in_array".to_vec(), array::php_in_array as NativeHandler);
         functions.insert(b"ksort".to_vec(), array::php_ksort as NativeHandler);
+        functions.insert(b"array_unshift".to_vec(), array::php_array_unshift as NativeHandler);
+        functions.insert(b"current".to_vec(), array::php_current as NativeHandler);
+        functions.insert(b"next".to_vec(), array::php_next as NativeHandler);
+        functions.insert(b"reset".to_vec(), array::php_reset as NativeHandler);
+        functions.insert(b"end".to_vec(), array::php_end as NativeHandler);
         functions.insert(
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,

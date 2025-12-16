@@ -1,5 +1,6 @@
 <?php
 // Simulate the actual WordPress pattern more closely
+require_once 'test_repos/wordpress-develop/src/wp-includes/plugin.php';
 require_once 'test_repos/wordpress-develop/src/wp-includes/class-wp-hook.php';
 
 $wp_filter = [];
