@@ -64,6 +64,10 @@ impl EngineContext {
         functions.insert(b"substr".to_vec(), string::php_substr as NativeHandler);
         functions.insert(b"strpos".to_vec(), string::php_strpos as NativeHandler);
         functions.insert(
+            b"str_replace".to_vec(),
+            string::php_str_replace as NativeHandler,
+        );
+        functions.insert(
             b"strtolower".to_vec(),
             string::php_strtolower as NativeHandler,
         );
@@ -88,6 +92,7 @@ impl EngineContext {
             array::php_array_values as NativeHandler,
         );
         functions.insert(b"in_array".to_vec(), array::php_in_array as NativeHandler);
+        functions.insert(b"ksort".to_vec(), array::php_ksort as NativeHandler);
         functions.insert(
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,
@@ -185,6 +190,8 @@ impl EngineContext {
         functions.insert(b"getenv".to_vec(), variable::php_getenv as NativeHandler);
         functions.insert(b"putenv".to_vec(), variable::php_putenv as NativeHandler);
         functions.insert(b"getopt".to_vec(), variable::php_getopt as NativeHandler);
+        functions.insert(b"ini_get".to_vec(), variable::php_ini_get as NativeHandler);
+        functions.insert(b"ini_set".to_vec(), variable::php_ini_set as NativeHandler);
         functions.insert(
             b"sys_get_temp_dir".to_vec(),
             filesystem::php_sys_get_temp_dir as NativeHandler,
@@ -217,6 +224,10 @@ impl EngineContext {
         functions.insert(
             b"is_callable".to_vec(),
             function::php_is_callable as NativeHandler,
+        );
+        functions.insert(
+            b"call_user_func".to_vec(),
+            function::php_call_user_func as NativeHandler,
         );
         functions.insert(
             b"extension_loaded".to_vec(),

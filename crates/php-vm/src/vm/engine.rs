@@ -492,6 +492,39 @@ impl VM {
             .into_owned()
     }
 
+    fn trigger_autoload(&mut self, class_name: Symbol) -> Result<(), VmError> {
+        // Get class name bytes
+        let class_name_bytes = self
+            .context
+            .interner
+            .lookup(class_name)
+            .ok_or_else(|| VmError::RuntimeError("Invalid class name".into()))?;
+        
+        // Create a string handle for the class name
+        let class_name_handle = self.arena.alloc(Val::String(Rc::new(class_name_bytes.to_vec())));
+        
+        // Call each autoloader
+        let autoloaders = self.context.autoloaders.clone();
+        for autoloader_handle in autoloaders {
+            let args = smallvec::smallvec![class_name_handle];
+            // Try to invoke the autoloader
+            if let Ok(()) = self.invoke_callable_value(autoloader_handle, args) {
+                // Run until the frame completes
+                let depth = self.frames.len();
+                if depth > 0 {
+                    self.run_loop(depth - 1)?;
+                }
+                
+                // Check if the class was loaded
+                if self.context.classes.contains_key(&class_name) {
+                    return Ok(());
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     pub fn find_method(
         &self,
         class_name: Symbol,
@@ -1550,6 +1583,16 @@ impl VM {
         self.run_loop(depth)?;
         self.last_return_value
             .ok_or(VmError::RuntimeError("No return value".into()))
+    }
+
+    /// Call a callable (function, closure, method) and return its result
+    pub fn call_callable(&mut self, callable_handle: Handle, args: ArgList) -> Result<Handle, VmError> {
+        self.invoke_callable_value(callable_handle, args)?;
+        let depth = self.frames.len();
+        if depth > 0 {
+            self.run_loop(depth - 1)?;
+        }
+        Ok(self.last_return_value.unwrap_or_else(|| self.arena.alloc(Val::Null)))
     }
 
     fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
@@ -4829,6 +4872,11 @@ impl VM {
                 self.operand_stack.push(handle);
             }
             OpCode::New(class_name, arg_count) => {
+                // Try autoloading if class doesn't exist
+                if !self.context.classes.contains_key(&class_name) {
+                    self.trigger_autoload(class_name)?;
+                }
+                
                 if self.context.classes.contains_key(&class_name) {
                     let properties =
                         self.collect_properties(class_name, PropertyCollectionMode::All);

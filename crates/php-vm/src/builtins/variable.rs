@@ -510,3 +510,49 @@ pub fn php_getopt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let map = crate::core::value::ArrayData::new();
     Ok(vm.arena.alloc(Val::Array(map.into())))
 }
+
+pub fn php_ini_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("ini_get() expects exactly 1 parameter".into());
+    }
+
+    let option = match &vm.arena.get(args[0]).value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        _ => return Err("ini_get() expects string parameter".into()),
+    };
+
+    // Return commonly expected ini values
+    let value = match option.as_str() {
+        "display_errors" => "1",
+        "error_reporting" => "32767", // E_ALL
+        "memory_limit" => "128M",
+        "max_execution_time" => "30",
+        "upload_max_filesize" => "2M",
+        "post_max_size" => "8M",
+        _ => "", // Unknown settings return empty string
+    };
+
+    Ok(vm.arena.alloc(Val::String(Rc::new(value.as_bytes().to_vec()))))
+}
+
+pub fn php_ini_set(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("ini_set() expects exactly 2 parameters".into());
+    }
+
+    let _option = match &vm.arena.get(args[0]).value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        _ => return Err("ini_set() expects string parameter".into()),
+    };
+
+    let _new_value = match &vm.arena.get(args[1]).value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        Val::Int(i) => i.to_string(),
+        _ => return Err("ini_set() value must be string or int".into()),
+    };
+
+    // TODO: Actually store ini settings in context
+    // For now, just return false to indicate setting couldn't be changed
+    Ok(vm.arena.alloc(Val::String(Rc::new(b"".to_vec()))))
+}
+

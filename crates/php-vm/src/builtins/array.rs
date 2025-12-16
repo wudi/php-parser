@@ -153,3 +153,37 @@ fn values_equal(a: &Val, b: &Val, strict: bool) -> bool {
         _ => a == b,
     }
 }
+
+pub fn php_ksort(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("ksort() expects at least 1 parameter".into());
+    }
+
+    let arr_handle = args[0];
+    let arr_slot = vm.arena.get(arr_handle);
+    
+    if let Val::Array(arr_rc) = &arr_slot.value {
+        let mut arr_data = (**arr_rc).clone();
+        
+        // Sort keys: collect entries, sort, and rebuild
+        let mut entries: Vec<_> = arr_data.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        entries.sort_by(|(a, _), (b, _)| {
+            match (a, b) {
+                (ArrayKey::Int(i1), ArrayKey::Int(i2)) => i1.cmp(i2),
+                (ArrayKey::Str(s1), ArrayKey::Str(s2)) => s1.cmp(s2),
+                (ArrayKey::Int(_), ArrayKey::Str(_)) => std::cmp::Ordering::Less,
+                (ArrayKey::Str(_), ArrayKey::Int(_)) => std::cmp::Ordering::Greater,
+            }
+        });
+        
+        let sorted_map: IndexMap<_, _> = entries.into_iter().collect();
+        arr_data.map = sorted_map;
+        
+        let slot = vm.arena.get_mut(arr_handle);
+        slot.value = Val::Array(std::rc::Rc::new(arr_data));
+        
+        Ok(vm.arena.alloc(Val::Bool(true)))
+    } else {
+        Err("ksort() expects parameter 1 to be array".into())
+    }
+}

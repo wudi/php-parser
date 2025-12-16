@@ -774,3 +774,60 @@ fn apply_numeric_width(value: String, spec: &FormatSpec) -> String {
     }
     value
 }
+
+pub fn php_str_replace(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 3 {
+        return Err("str_replace() expects at least 3 parameters".into());
+    }
+
+    let search_handle = args[0];
+    let replace_handle = args[1];
+    let subject_handle = args[2];
+
+    // Simple implementation: for now, handle string search/replace only
+    let search = match &vm.arena.get(search_handle).value {
+        Val::String(s) => s.clone(),
+        _ => return Ok(subject_handle), // Return subject unchanged for non-string search
+    };
+
+    let replace = match &vm.arena.get(replace_handle).value {
+        Val::String(s) => s.clone(),
+        _ => std::rc::Rc::new(vec![]),
+    };
+
+    // Clone subject value first to avoid borrow issues
+    let subject_val = vm.arena.get(subject_handle).value.clone();
+
+    // Handle subject as string or array
+    match &subject_val {
+        Val::String(subject) => {
+            // Do the replacement
+            let subject_str = String::from_utf8_lossy(&subject);
+            let search_str = String::from_utf8_lossy(&search);
+            let replace_str = String::from_utf8_lossy(&replace);
+            
+            let result = subject_str.replace(&*search_str, &*replace_str);
+
+            Ok(vm.arena.alloc(Val::String(std::rc::Rc::new(result.into_bytes()))))
+        }
+        Val::Array(arr) => {
+            // Apply str_replace to each element
+            let mut result_map = indexmap::IndexMap::new();
+            for (key, val_handle) in arr.map.iter() {
+                let val = vm.arena.get(*val_handle).value.clone();
+                let new_val = if let Val::String(s) = &val {
+                    let subject_str = String::from_utf8_lossy(s);
+                    let search_str = String::from_utf8_lossy(&search);
+                    let replace_str = String::from_utf8_lossy(&replace);
+                    let result = subject_str.replace(&*search_str, &*replace_str);
+                    vm.arena.alloc(Val::String(std::rc::Rc::new(result.into_bytes())))
+                } else {
+                    *val_handle
+                };
+                result_map.insert(key.clone(), new_val);
+            }
+            Ok(vm.arena.alloc(Val::Array(std::rc::Rc::new(crate::core::value::ArrayData::from(result_map)))))
+        }
+        _ => Ok(subject_handle), // Return unchanged for other types
+    }
+}

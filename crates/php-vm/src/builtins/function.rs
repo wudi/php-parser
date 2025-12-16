@@ -220,3 +220,16 @@ pub fn php_assert(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     Ok(vm.arena.alloc(Val::Bool(passed)))
 }
+
+/// call_user_func() - Call a user function given in the first parameter
+pub fn php_call_user_func(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("call_user_func() expects at least 1 parameter".to_string());
+    }
+
+    let callback_handle = args[0];
+    let func_args: smallvec::SmallVec<[Handle; 8]> = args[1..].iter().copied().collect();
+    
+    vm.call_callable(callback_handle, func_args)
+        .map_err(|e| format!("call_user_func error: {:?}", e))
+}
