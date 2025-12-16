@@ -43,6 +43,14 @@ pub struct HeaderEntry {
     pub line: Vec<u8>,        // Original header line bytes
 }
 
+#[derive(Debug, Clone)]
+pub struct ErrorInfo {
+    pub error_type: i64,
+    pub message: String,
+    pub file: String,
+    pub line: i64,
+}
+
 pub struct EngineContext {
     pub registry: ExtensionRegistry,
     // Deprecated: use registry.functions() instead
@@ -206,6 +214,8 @@ impl EngineContext {
         functions.insert(b"getopt".to_vec(), variable::php_getopt as NativeHandler);
         functions.insert(b"ini_get".to_vec(), variable::php_ini_get as NativeHandler);
         functions.insert(b"ini_set".to_vec(), variable::php_ini_set as NativeHandler);
+        functions.insert(b"error_reporting".to_vec(), variable::php_error_reporting as NativeHandler);
+        functions.insert(b"error_get_last".to_vec(), variable::php_error_get_last as NativeHandler);
         functions.insert(
             b"sys_get_temp_dir".to_vec(),
             filesystem::php_sys_get_temp_dir as NativeHandler,
@@ -501,6 +511,7 @@ pub struct RequestContext {
     pub autoloaders: Vec<Handle>,
     pub interner: Interner,
     pub error_reporting: u32,
+    pub last_error: Option<ErrorInfo>,
     pub headers: Vec<HeaderEntry>,
     pub http_status: Option<i64>,
     pub max_execution_time: i64, // in seconds, 0 = unlimited
@@ -518,6 +529,7 @@ impl RequestContext {
             autoloaders: Vec::new(),
             interner: Interner::new(),
             error_reporting: 32767, // E_ALL
+            last_error: None,
             headers: Vec::new(),
             http_status: None,
             max_execution_time: 30, // Default 30 seconds
@@ -594,6 +606,24 @@ impl RequestContext {
         self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_STARTED", Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED));
         self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_DISABLED", Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED));
         self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_PROCESSED", Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED));
+
+        // Error reporting constants
+        self.insert_builtin_constant(b"E_ERROR", Val::Int(1));
+        self.insert_builtin_constant(b"E_WARNING", Val::Int(2));
+        self.insert_builtin_constant(b"E_PARSE", Val::Int(4));
+        self.insert_builtin_constant(b"E_NOTICE", Val::Int(8));
+        self.insert_builtin_constant(b"E_CORE_ERROR", Val::Int(16));
+        self.insert_builtin_constant(b"E_CORE_WARNING", Val::Int(32));
+        self.insert_builtin_constant(b"E_COMPILE_ERROR", Val::Int(64));
+        self.insert_builtin_constant(b"E_COMPILE_WARNING", Val::Int(128));
+        self.insert_builtin_constant(b"E_USER_ERROR", Val::Int(256));
+        self.insert_builtin_constant(b"E_USER_WARNING", Val::Int(512));
+        self.insert_builtin_constant(b"E_USER_NOTICE", Val::Int(1024));
+        self.insert_builtin_constant(b"E_STRICT", Val::Int(2048));
+        self.insert_builtin_constant(b"E_RECOVERABLE_ERROR", Val::Int(4096));
+        self.insert_builtin_constant(b"E_DEPRECATED", Val::Int(8192));
+        self.insert_builtin_constant(b"E_USER_DEPRECATED", Val::Int(16384));
+        self.insert_builtin_constant(b"E_ALL", Val::Int(32767));
     }
 
     fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {

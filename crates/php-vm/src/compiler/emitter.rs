@@ -1427,6 +1427,12 @@ impl<'src> Emitter<'src> {
                             }
                         }
                     }
+                    UnaryOp::ErrorSuppress => {
+                        // @ operator: suppress errors for the expression
+                        self.chunk.code.push(OpCode::BeginSilence);
+                        self.emit_expr(expr);
+                        self.chunk.code.push(OpCode::EndSilence);
+                    }
                     _ => {
                         self.emit_expr(expr);
                     }

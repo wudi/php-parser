@@ -35,6 +35,22 @@ pub enum ErrorLevel {
     Deprecated,  // E_DEPRECATED
 }
 
+impl ErrorLevel {
+    /// Convert error level to the corresponding bitmask value
+    pub fn to_bitmask(self) -> u32 {
+        match self {
+            ErrorLevel::Error => 1,       // E_ERROR
+            ErrorLevel::Warning => 2,     // E_WARNING
+            ErrorLevel::ParseError => 4,  // E_PARSE
+            ErrorLevel::Notice => 8,      // E_NOTICE
+            ErrorLevel::UserError => 256,   // E_USER_ERROR
+            ErrorLevel::UserWarning => 512, // E_USER_WARNING
+            ErrorLevel::UserNotice => 1024, // E_USER_NOTICE
+            ErrorLevel::Deprecated => 8192, // E_DEPRECATED
+        }
+    }
+}
+
 pub trait ErrorHandler {
     /// Report an error/warning/notice at runtime
     fn report(&mut self, level: ErrorLevel, message: &str);
@@ -424,6 +440,25 @@ impl VM {
         Ok(())
     }
 
+    /// Report an error respecting the error_reporting level
+    /// Also stores the error in context.last_error for error_get_last()
+    fn report_error(&mut self, level: ErrorLevel, message: &str) {
+        let level_bitmask = level.to_bitmask();
+        
+        // Store this as the last error regardless of error_reporting level
+        self.context.last_error = Some(crate::runtime::context::ErrorInfo {
+            error_type: level_bitmask as i64,
+            message: message.to_string(),
+            file: "Unknown".to_string(),
+            line: 0,
+        });
+        
+        // Only report if the error level is enabled in error_reporting
+        if (self.context.error_reporting & level_bitmask) != 0 {
+            self.report_error(level, message);
+        }
+    }
+
     pub fn with_output_writer(mut self, writer: Box<dyn OutputWriter>) -> Self {
         self.output_writer = writer;
         self
@@ -463,7 +498,7 @@ impl VM {
 
     /// Trigger an error/warning/notice
     pub fn trigger_error(&mut self, level: ErrorLevel, message: &str) {
-        self.error_handler.report(level, message);
+        self.report_error(level, message);
     }
 
     /// Call a user-defined function
@@ -1291,7 +1326,7 @@ impl VM {
                 .map(|b| String::from_utf8_lossy(b).to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
-            self.error_handler.report(
+            self.report_error(
                 ErrorLevel::Deprecated,
                 &format!(
                     "Creation of dynamic property {}::${} is deprecated",
@@ -2152,7 +2187,7 @@ impl VM {
                     } else {
                         let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
                         let msg = format!("Undefined variable: ${}", var_name);
-                        self.error_handler.report(ErrorLevel::Notice, &msg);
+                        self.report_error(ErrorLevel::Notice, &msg);
                         let null = self.arena.alloc(Val::Null);
                         self.operand_stack.push(null);
                     }
@@ -2186,7 +2221,7 @@ impl VM {
                 } else {
                     let var_name = String::from_utf8_lossy(&name_bytes);
                     let msg = format!("Undefined variable: ${}", var_name);
-                    self.error_handler.report(ErrorLevel::Notice, &msg);
+                    self.report_error(ErrorLevel::Notice, &msg);
                     let null = self.arena.alloc(Val::Null);
                     self.operand_stack.push(null);
                 }
@@ -3738,7 +3773,7 @@ impl VM {
                                 ArrayKey::Int(i) => i.to_string(),
                                 ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
                             };
-                            self.error_handler.report(
+                            self.report_error(
                                 ErrorLevel::Notice,
                                 &format!("Undefined array key \"{}\"", key_str),
                             );
@@ -3755,7 +3790,7 @@ impl VM {
                             Val::String(_) => "string",
                             _ => "value",
                         };
-                        self.error_handler.report(
+                        self.report_error(
                             ErrorLevel::Warning,
                             &format!(
                                 "Trying to access array offset on value of type {}",
@@ -5956,7 +5991,7 @@ impl VM {
                                         "include({}): Failed to open stream: {}",
                                         path_str, e
                                     );
-                                    self.error_handler.report(ErrorLevel::Warning, &msg);
+                                    self.report_error(ErrorLevel::Warning, &msg);
                                     let false_val = self.arena.alloc(Val::Bool(false));
                                     self.operand_stack.push(false_val);
                                 }
@@ -5977,7 +6012,7 @@ impl VM {
                         self.context.interner.lookup(sym).unwrap_or(b"unknown"),
                     );
                     let msg = format!("Undefined variable: ${}", var_name);
-                    self.error_handler.report(ErrorLevel::Notice, &msg);
+                    self.report_error(ErrorLevel::Notice, &msg);
                     let null = self.arena.alloc(Val::Null);
                     self.operand_stack.push(null);
                 }
@@ -6003,12 +6038,13 @@ impl VM {
                 if let Some(handle) = frame.locals.get(&sym) {
                     self.operand_stack.push(*handle);
                 } else {
+                    // Release the mutable borrow before calling report_error
+                    let null = self.arena.alloc(Val::Null);
                     let var_name = String::from_utf8_lossy(
                         self.context.interner.lookup(sym).unwrap_or(b"unknown"),
                     );
                     let msg = format!("Undefined variable: ${}", var_name);
                     self.error_handler.report(ErrorLevel::Notice, &msg);
-                    let null = self.arena.alloc(Val::Null);
                     frame.locals.insert(sym, null);
                     self.operand_stack.push(null);
                 }
@@ -6282,7 +6318,7 @@ impl VM {
                                     ArrayKey::Int(i) => i.to_string(),
                                     ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
                                 };
-                                self.error_handler.report(
+                                self.report_error(
                                     ErrorLevel::Notice,
                                     &format!("Undefined array key \"{}\"", key_str),
                                 );
@@ -6303,7 +6339,7 @@ impl VM {
                             self.operand_stack.push(val);
                         } else {
                             if is_fetch_r {
-                                self.error_handler.report(
+                                self.report_error(
                                     ErrorLevel::Notice,
                                     &format!("Undefined string offset: {}", idx),
                                 );
@@ -6321,7 +6357,7 @@ impl VM {
                                 Val::Float(_) => "float",
                                 _ => "value",
                             };
-                            self.error_handler.report(
+                            self.report_error(
                                 ErrorLevel::Warning,
                                 &format!(
                                     "Trying to access array offset on value of type {}",
@@ -8575,7 +8611,7 @@ impl VM {
                             ArrayKey::Int(i) => i.to_string(),
                             ArrayKey::Str(s) => String::from_utf8_lossy(s).to_string(),
                         };
-                        self.error_handler.report(
+                        self.report_error(
                             ErrorLevel::Notice,
                             &format!("Undefined array key \"{}\"", key_str),
                         );
@@ -8595,7 +8631,7 @@ impl VM {
 
                     if actual_offset < 0 || actual_offset >= len {
                         // Out of bounds
-                        self.error_handler.report(
+                        self.report_error(
                             ErrorLevel::Warning,
                             &format!("Uninitialized string offset {}", offset),
                         );
@@ -8616,7 +8652,7 @@ impl VM {
                         Val::Float(_) => "float",
                         _ => "value",
                     };
-                    self.error_handler.report(
+                    self.report_error(
                         ErrorLevel::Warning,
                         &format!(
                             "Trying to access array offset on value of type {}",

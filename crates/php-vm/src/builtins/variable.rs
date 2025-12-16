@@ -689,3 +689,54 @@ pub fn php_ini_set(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(Rc::new(b"".to_vec()))))
 }
 
+pub fn php_error_reporting(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let old_level = vm.context.error_reporting as i64;
+
+    if args.is_empty() {
+        // No arguments: return current level
+        return Ok(vm.arena.alloc(Val::Int(old_level)));
+    }
+
+    // Set new error reporting level
+    let new_level = match &vm.arena.get(args[0]).value {
+        Val::Int(i) => *i as u32,
+        Val::Null => 0, // null means disable all errors
+        _ => return Err("error_reporting() expects int parameter".into()),
+    };
+
+    vm.context.error_reporting = new_level;
+    Ok(vm.arena.alloc(Val::Int(old_level)))
+}
+
+pub fn php_error_get_last(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if !args.is_empty() {
+        return Err("error_get_last() expects no parameters".into());
+    }
+
+    if let Some(error_info) = &vm.context.last_error {
+        // Build array with error information
+        let mut map = crate::core::value::ArrayData::new();
+        
+        let type_key = crate::core::value::ArrayKey::Str(b"type".to_vec().into());
+        let type_val = vm.arena.alloc(Val::Int(error_info.error_type));
+        map.map.insert(type_key, type_val);
+
+        let message_key = crate::core::value::ArrayKey::Str(b"message".to_vec().into());
+        let message_val = vm.arena.alloc(Val::String(Rc::new(error_info.message.as_bytes().to_vec())));
+        map.map.insert(message_key, message_val);
+
+        let file_key = crate::core::value::ArrayKey::Str(b"file".to_vec().into());
+        let file_val = vm.arena.alloc(Val::String(Rc::new(error_info.file.as_bytes().to_vec())));
+        map.map.insert(file_key, file_val);
+
+        let line_key = crate::core::value::ArrayKey::Str(b"line".to_vec().into());
+        let line_val = vm.arena.alloc(Val::Int(error_info.line));
+        map.map.insert(line_key, line_val);
+
+        Ok(vm.arena.alloc(Val::Array(map.into())))
+    } else {
+        // No error recorded yet, return null
+        Ok(vm.arena.alloc(Val::Null))
+    }
+}
+
