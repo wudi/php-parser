@@ -230,6 +230,10 @@ impl EngineContext {
             function::php_call_user_func as NativeHandler,
         );
         functions.insert(
+            b"call_user_func_array".to_vec(),
+            function::php_call_user_func_array as NativeHandler,
+        );
+        functions.insert(
             b"extension_loaded".to_vec(),
             function::php_extension_loaded as NativeHandler,
         );

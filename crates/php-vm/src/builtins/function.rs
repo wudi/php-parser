@@ -233,3 +233,24 @@ pub fn php_call_user_func(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     vm.call_callable(callback_handle, func_args)
         .map_err(|e| format!("call_user_func error: {:?}", e))
 }
+
+/// call_user_func_array() - Call a user function with parameters as an array
+pub fn php_call_user_func_array(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("call_user_func_array() expects exactly 2 parameters".to_string());
+    }
+
+    let callback_handle = args[0];
+    let params_handle = args[1];
+    
+    // Extract array elements as arguments
+    let func_args: smallvec::SmallVec<[Handle; 8]> = match &vm.arena.get(params_handle).value {
+        Val::Array(arr) => {
+            arr.map.values().copied().collect()
+        }
+        _ => return Err("call_user_func_array() expects parameter 2 to be array".to_string()),
+    };
+    
+    vm.call_callable(callback_handle, func_args)
+        .map_err(|e| format!("call_user_func_array error: {:?}", e))
+}
