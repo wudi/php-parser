@@ -1268,22 +1268,53 @@ impl<'src> Emitter<'src> {
                         self.chunk.code.push(OpCode::BitwiseNot);
                     }
                     UnaryOp::PreInc => {
-                        if let Expr::Variable { span, .. } = expr {
-                            let name = self.get_text(*span);
-                            if name.starts_with(b"$") {
-                                let sym = self.interner.intern(&name[1..]);
-                                self.chunk.code.push(OpCode::MakeVarRef(sym));
-                                self.chunk.code.push(OpCode::PreInc);
+                        match expr {
+                            Expr::Variable { span, .. } => {
+                                let name = self.get_text(*span);
+                                if name.starts_with(b"$") {
+                                    let sym = self.interner.intern(&name[1..]);
+                                    self.chunk.code.push(OpCode::MakeVarRef(sym));
+                                    self.chunk.code.push(OpCode::PreInc);
+                                }
+                            }
+                            Expr::PropertyFetch {
+                                target, property, ..
+                            } => {
+                                // ++$obj->prop
+                                self.emit_expr(target);
+                                // Property name (could be identifier or expression)
+                                let prop_name = self.get_text(property.span());
+                                let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                                self.chunk.code.push(OpCode::Const(const_idx as u16));
+                                self.chunk.code.push(OpCode::PreIncObj);
+                            }
+                            _ => {
+                                self.emit_expr(expr);
                             }
                         }
                     }
                     UnaryOp::PreDec => {
-                        if let Expr::Variable { span, .. } = expr {
-                            let name = self.get_text(*span);
-                            if name.starts_with(b"$") {
-                                let sym = self.interner.intern(&name[1..]);
-                                self.chunk.code.push(OpCode::MakeVarRef(sym));
-                                self.chunk.code.push(OpCode::PreDec);
+                        match expr {
+                            Expr::Variable { span, .. } => {
+                                let name = self.get_text(*span);
+                                if name.starts_with(b"$") {
+                                    let sym = self.interner.intern(&name[1..]);
+                                    self.chunk.code.push(OpCode::MakeVarRef(sym));
+                                    self.chunk.code.push(OpCode::PreDec);
+                                }
+                            }
+                            Expr::PropertyFetch {
+                                target, property, ..
+                            } => {
+                                // --$obj->prop
+                                self.emit_expr(target);
+                                let prop_name = self.get_text(property.span());
+                                let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                                self.chunk.code.push(OpCode::Const(const_idx as u16));
+                                self.chunk.code.push(OpCode::PreDecObj);
+                            }
+                            _ => {
+                                self.emit_expr(expr);
                             }
                         }
                     }
@@ -1293,22 +1324,54 @@ impl<'src> Emitter<'src> {
                 }
             }
             Expr::PostInc { var, .. } => {
-                if let Expr::Variable { span, .. } = var {
-                    let name = self.get_text(*span);
-                    if name.starts_with(b"$") {
-                        let sym = self.interner.intern(&name[1..]);
-                        self.chunk.code.push(OpCode::MakeVarRef(sym));
-                        self.chunk.code.push(OpCode::PostInc);
+                match var {
+                    Expr::Variable { span, .. } => {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            let sym = self.interner.intern(&name[1..]);
+                            self.chunk.code.push(OpCode::MakeVarRef(sym));
+                            self.chunk.code.push(OpCode::PostInc);
+                        }
+                    }
+                    Expr::PropertyFetch {
+                        target, property, ..
+                    } => {
+                        // $obj->prop++
+                        self.emit_expr(target);
+                        let prop_name = self.get_text(property.span());
+                        let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                        self.chunk.code.push(OpCode::Const(const_idx as u16));
+                        self.chunk.code.push(OpCode::PostIncObj);
+                    }
+                    _ => {
+                        // Unsupported post-increment target
+                        self.emit_expr(var);
                     }
                 }
             }
             Expr::PostDec { var, .. } => {
-                if let Expr::Variable { span, .. } = var {
-                    let name = self.get_text(*span);
-                    if name.starts_with(b"$") {
-                        let sym = self.interner.intern(&name[1..]);
-                        self.chunk.code.push(OpCode::MakeVarRef(sym));
-                        self.chunk.code.push(OpCode::PostDec);
+                match var {
+                    Expr::Variable { span, .. } => {
+                        let name = self.get_text(*span);
+                        if name.starts_with(b"$") {
+                            let sym = self.interner.intern(&name[1..]);
+                            self.chunk.code.push(OpCode::MakeVarRef(sym));
+                            self.chunk.code.push(OpCode::PostDec);
+                        }
+                    }
+                    Expr::PropertyFetch {
+                        target, property, ..
+                    } => {
+                        // $obj->prop--
+                        self.emit_expr(target);
+                        let prop_name = self.get_text(property.span());
+                        let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                        self.chunk.code.push(OpCode::Const(const_idx as u16));
+                        self.chunk.code.push(OpCode::PostDecObj);
+                    }
+                    _ => {
+                        // Unsupported post-decrement target
+                        self.emit_expr(var);
                     }
                 }
             }
