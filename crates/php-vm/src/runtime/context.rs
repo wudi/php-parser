@@ -1,5 +1,5 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, exec, filesystem, function, http, math, pcre, string, variable};
+use crate::builtins::{array, class, datetime, exec, filesystem, function, http, math, pcre, string, variable};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -425,6 +425,36 @@ impl EngineContext {
         functions.insert(
             b"proc_terminate".to_vec(),
             exec::php_proc_terminate as NativeHandler,
+        );
+
+        // Date/Time functions
+        functions.insert(b"checkdate".to_vec(), datetime::php_checkdate as NativeHandler);
+        functions.insert(b"date".to_vec(), datetime::php_date as NativeHandler);
+        functions.insert(b"gmdate".to_vec(), datetime::php_gmdate as NativeHandler);
+        functions.insert(b"time".to_vec(), datetime::php_time as NativeHandler);
+        functions.insert(b"microtime".to_vec(), datetime::php_microtime as NativeHandler);
+        functions.insert(b"mktime".to_vec(), datetime::php_mktime as NativeHandler);
+        functions.insert(b"gmmktime".to_vec(), datetime::php_gmmktime as NativeHandler);
+        functions.insert(b"strtotime".to_vec(), datetime::php_strtotime as NativeHandler);
+        functions.insert(b"getdate".to_vec(), datetime::php_getdate as NativeHandler);
+        functions.insert(b"idate".to_vec(), datetime::php_idate as NativeHandler);
+        functions.insert(b"gettimeofday".to_vec(), datetime::php_gettimeofday as NativeHandler);
+        functions.insert(b"localtime".to_vec(), datetime::php_localtime as NativeHandler);
+        functions.insert(
+            b"date_default_timezone_get".to_vec(),
+            datetime::php_date_default_timezone_get as NativeHandler,
+        );
+        functions.insert(
+            b"date_default_timezone_set".to_vec(),
+            datetime::php_date_default_timezone_set as NativeHandler,
+        );
+        functions.insert(b"date_sunrise".to_vec(), datetime::php_date_sunrise as NativeHandler);
+        functions.insert(b"date_sunset".to_vec(), datetime::php_date_sunset as NativeHandler);
+        functions.insert(b"date_sun_info".to_vec(), datetime::php_date_sun_info as NativeHandler);
+        functions.insert(b"date_parse".to_vec(), datetime::php_date_parse as NativeHandler);
+        functions.insert(
+            b"date_parse_from_format".to_vec(),
+            datetime::php_date_parse_from_format as NativeHandler,
         );
 
         Self {
