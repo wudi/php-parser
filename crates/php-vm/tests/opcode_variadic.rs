@@ -53,12 +53,14 @@ fn recv_variadic_counts_args() {
         params: vec![FuncParam {
             name: sym_args,
             by_ref: false,
+            param_type: None,
         }],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),
         is_static: false,
         is_generator: false,
         statics: Rc::new(RefCell::new(HashMap::new())),
+        return_type: None,
     };
 
     // Main chunk: call varcnt(1, 2, 3)
@@ -120,14 +122,17 @@ fn send_unpack_passes_array_elements() {
             FuncParam {
                 name: sym_a,
                 by_ref: false,
+                param_type: None,
             },
             FuncParam {
                 name: sym_b,
                 by_ref: false,
+                param_type: None,
             },
             FuncParam {
                 name: sym_c,
                 by_ref: false,
+                param_type: None,
             },
         ],
         uses: Vec::new(),
@@ -135,6 +140,7 @@ fn send_unpack_passes_array_elements() {
         is_static: false,
         is_generator: false,
         statics: Rc::new(RefCell::new(HashMap::new())),
+        return_type: None,
     };
 
     // Main chunk builds $arr = [1,2,3]; sum3(...$arr);

@@ -75,12 +75,14 @@ fn send_ref_mutates_caller() {
         params: vec![FuncParam {
             name: sym_x,
             by_ref: true,
+            param_type: None,
         }],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),
         is_static: false,
         is_generator: false,
         statics: Rc::new(RefCell::new(HashMap::new())),
+        return_type: None,
     };
 
     // Main chunk:

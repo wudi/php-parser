@@ -1,4 +1,4 @@
-use crate::compiler::chunk::{ClosureData, CodeChunk, UserFunc};
+use crate::compiler::chunk::{ClosureData, CodeChunk, ReturnType, UserFunc};
 use crate::core::heap::Arena;
 use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val, Visibility};
 use crate::runtime::context::{ClassDef, EngineContext, MethodEntry, RequestContext};
@@ -1934,6 +1934,34 @@ impl VM {
             self.arena.alloc(Val::Null)
         };
 
+        // Verify return type BEFORE popping the frame
+        // Extract type info first to avoid borrow checker issues
+        let return_type_check = {
+            let frame = self.current_frame()?;
+            frame.func.as_ref().and_then(|f| {
+                f.return_type.as_ref().map(|rt| {
+                    let func_name = self.context
+                        .interner
+                        .lookup(f.chunk.name)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    (rt.clone(), func_name)
+                })
+            })
+        };
+
+        if let Some((ret_type, func_name)) = return_type_check {
+            if !self.check_return_type(ret_val, &ret_type)? {
+                let val_type = self.get_type_name(ret_val);
+                let expected_type = self.return_type_to_string(&ret_type);
+
+                return Err(VmError::RuntimeError(format!(
+                    "{}(): Return value must be of type {}, {} returned",
+                    func_name, expected_type, val_type
+                )));
+            }
+        }
+
         while self.operand_stack.len() > frame_base {
             self.operand_stack.pop();
         }
@@ -3204,7 +3232,8 @@ impl VM {
             OpCode::Return => self.handle_return(false, target_depth)?,
             OpCode::ReturnByRef => self.handle_return(true, target_depth)?,
             OpCode::VerifyReturnType => {
-                // TODO: Enforce declared return types; for now, act as a nop.
+                // Return type verification is now handled in handle_return
+                // This opcode is a no-op
             }
             OpCode::VerifyNeverType => {
                 return Err(VmError::RuntimeError(
@@ -9070,6 +9099,176 @@ impl VM {
             ))),
         }
     }
+
+    /// Check if a value matches the expected return type
+    fn check_return_type(&mut self, val_handle: Handle, ret_type: &ReturnType) -> Result<bool, VmError> {
+        let val = &self.arena.get(val_handle).value;
+
+        match ret_type {
+            ReturnType::Void => {
+                // void must return null
+                Ok(matches!(val, Val::Null))
+            }
+            ReturnType::Never => {
+                // never-returning function must not return at all (should have exited or thrown)
+                Ok(false)
+            }
+            ReturnType::Mixed => {
+                // mixed accepts any type
+                Ok(true)
+            }
+            ReturnType::Int => Ok(matches!(val, Val::Int(_))),
+            ReturnType::Float => Ok(matches!(val, Val::Float(_))),
+            ReturnType::String => Ok(matches!(val, Val::String(_))),
+            ReturnType::Bool => Ok(matches!(val, Val::Bool(_))),
+            ReturnType::Array => Ok(matches!(val, Val::Array(_))),
+            ReturnType::Object => Ok(matches!(val, Val::Object(_))),
+            ReturnType::Null => Ok(matches!(val, Val::Null)),
+            ReturnType::True => Ok(matches!(val, Val::Bool(true))),
+            ReturnType::False => Ok(matches!(val, Val::Bool(false))),
+            ReturnType::Callable => {
+                // Check if value is callable (string function name, closure, or array [obj, method])
+                match val {
+                    Val::String(_) => Ok(true), // Assume string is function name
+                    Val::Object(_) => {
+                        // Check if it's a Closure object
+                        Ok(true) // TODO: Check if object has __invoke
+                    }
+                    Val::Array(map) => {
+                        // Check if it's [class/object, method] format
+                        Ok(map.map.len() == 2)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            ReturnType::Iterable => {
+                // iterable accepts arrays and Traversable objects
+                match val {
+                    Val::Array(_) => Ok(true),
+                    Val::Object(_) => {
+                        // Check if object implements Traversable
+                        let traversable_sym = self.context.interner.intern(b"Traversable");
+                        Ok(self.is_instance_of(val_handle, traversable_sym))
+                    }
+                    _ => Ok(false),
+                }
+            }
+            ReturnType::Named(class_sym) => {
+                // Check if value is instance of the named class
+                match val {
+                    Val::Object(_) => Ok(self.is_instance_of(val_handle, *class_sym)),
+                    _ => Ok(false),
+                }
+            }
+            ReturnType::Union(types) => {
+                // Check if value matches any of the union types
+                for ty in types {
+                    if self.check_return_type(val_handle, ty)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            ReturnType::Intersection(types) => {
+                // Check if value matches all intersection types
+                for ty in types {
+                    if !self.check_return_type(val_handle, ty)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
+            ReturnType::Nullable(inner) => {
+                // Nullable accepts null or the inner type
+                if matches!(val, Val::Null) {
+                    Ok(true)
+                } else {
+                    self.check_return_type(val_handle, inner)
+                }
+            }
+            ReturnType::Static => {
+                // static return type means it must return an instance of the called class
+                match val {
+                    Val::Object(_) => {
+                        // Get the called scope from the current frame
+                        let frame = self.current_frame()?;
+                        if let Some(called_scope) = frame.called_scope {
+                            Ok(self.is_instance_of(val_handle, called_scope))
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    _ => Ok(false),
+                }
+            }
+        }
+    }
+
+    /// Get a human-readable type name for a value
+    fn get_type_name(&self, val_handle: Handle) -> String {
+        let val = &self.arena.get(val_handle).value;
+        match val {
+            Val::Null => "null".to_string(),
+            Val::Bool(_) => "bool".to_string(),
+            Val::Int(_) => "int".to_string(),
+            Val::Float(_) => "float".to_string(),
+            Val::String(_) => "string".to_string(),
+            Val::Array(_) => "array".to_string(),
+            Val::Object(payload_handle) => {
+                if let Val::ObjPayload(obj_data) = &self.arena.get(*payload_handle).value {
+                    self.context.interner.lookup(obj_data.class)
+                        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                        .unwrap_or_else(|| "object".to_string())
+                } else {
+                    "object".to_string()
+                }
+            }
+            Val::Resource(_) => "resource".to_string(),
+            Val::ObjPayload(_) => "object".to_string(),
+            Val::AppendPlaceholder => "unknown".to_string(),
+        }
+    }
+
+    /// Convert a ReturnType to a human-readable string
+    fn return_type_to_string(&self, ret_type: &ReturnType) -> String {
+        match ret_type {
+            ReturnType::Int => "int".to_string(),
+            ReturnType::Float => "float".to_string(),
+            ReturnType::String => "string".to_string(),
+            ReturnType::Bool => "bool".to_string(),
+            ReturnType::Array => "array".to_string(),
+            ReturnType::Object => "object".to_string(),
+            ReturnType::Void => "void".to_string(),
+            ReturnType::Never => "never".to_string(),
+            ReturnType::Mixed => "mixed".to_string(),
+            ReturnType::Null => "null".to_string(),
+            ReturnType::True => "true".to_string(),
+            ReturnType::False => "false".to_string(),
+            ReturnType::Callable => "callable".to_string(),
+            ReturnType::Iterable => "iterable".to_string(),
+            ReturnType::Named(sym) => {
+                self.context.interner.lookup(*sym)
+                    .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                    .unwrap_or_else(|| "object".to_string())
+            }
+            ReturnType::Union(types) => {
+                types.iter()
+                    .map(|t| self.return_type_to_string(t))
+                    .collect::<Vec<_>>()
+                    .join("|")
+            }
+            ReturnType::Intersection(types) => {
+                types.iter()
+                    .map(|t| self.return_type_to_string(t))
+                    .collect::<Vec<_>>()
+                    .join("&")
+            }
+            ReturnType::Nullable(inner) => {
+                format!("?{}", self.return_type_to_string(inner))
+            }
+            ReturnType::Static => "static".to_string(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -9110,10 +9309,12 @@ mod tests {
                 FuncParam {
                     name: sym_a,
                     by_ref: false,
+                    param_type: None,
                 },
                 FuncParam {
                     name: sym_b,
                     by_ref: false,
+                    param_type: None,
                 },
             ],
             uses: Vec::new(),
@@ -9121,6 +9322,7 @@ mod tests {
             is_static: false,
             is_generator: false,
             statics: Rc::new(RefCell::new(HashMap::new())),
+            return_type: None,
         })
     }
 

@@ -13,12 +13,43 @@ pub struct UserFunc {
     pub is_static: bool,
     pub is_generator: bool,
     pub statics: Rc<RefCell<HashMap<Symbol, Handle>>>,
+    pub return_type: Option<ReturnType>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ReturnType {
+    // Simple types
+    Int,
+    Float,
+    String,
+    Bool,
+    Array,
+    Object,
+    Void,
+    Never,
+    Mixed,
+    Null,
+    True,
+    False,
+    Callable,
+    Iterable,
+    // Named class/interface
+    Named(Symbol),
+    // Union type (e.g., int|string)
+    Union(Vec<ReturnType>),
+    // Intersection type (e.g., A&B)
+    Intersection(Vec<ReturnType>),
+    // Nullable type (e.g., ?int)
+    Nullable(Box<ReturnType>),
+    // Static return type
+    Static,
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncParam {
     pub name: Symbol,
     pub by_ref: bool,
+    pub param_type: Option<ReturnType>,
 }
 
 #[derive(Debug, Clone)]

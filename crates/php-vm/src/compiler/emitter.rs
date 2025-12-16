@@ -1,10 +1,10 @@
-use crate::compiler::chunk::{CatchEntry, CodeChunk, FuncParam, UserFunc};
+use crate::compiler::chunk::{CatchEntry, CodeChunk, FuncParam, ReturnType, UserFunc};
 use crate::core::interner::Interner;
 use crate::core::value::{Symbol, Val, Visibility};
 use crate::vm::opcode::OpCode;
 use php_parser::ast::{
     AssignOp, BinaryOp, CastKind, ClassMember, Expr, IncludeKind, MagicConstKind, Stmt, StmtId,
-    UnaryOp,
+    Type, UnaryOp,
 };
 use php_parser::lexer::token::{Token, TokenKind};
 use std::cell::RefCell;
@@ -133,6 +133,7 @@ impl<'src> Emitter<'src> {
         // Implicit return null
         let null_idx = self.add_constant(Val::Null);
         self.chunk.code.push(OpCode::Const(null_idx as u16));
+        // Return type checking is now done in the Return handler
         self.chunk.code.push(OpCode::Return);
 
         let chunk_name = if let Some(func_sym) = self.current_function {
@@ -156,6 +157,7 @@ impl<'src> Emitter<'src> {
                     body,
                     params,
                     modifiers,
+                    return_type,
                     ..
                 } => {
                     let method_name_str = self.get_text(name.span);
@@ -204,6 +206,7 @@ impl<'src> Emitter<'src> {
                             param_syms.push(FuncParam {
                                 name: sym,
                                 by_ref: info.by_ref,
+                                param_type: None, // TODO: Extract from AST params
                             });
 
                             if let Some(default_expr) = info.default {
@@ -221,6 +224,9 @@ impl<'src> Emitter<'src> {
 
                     let (method_chunk, is_generator) = method_emitter.compile(body);
 
+                    // Convert return type
+                    let ret_type = return_type.and_then(|rt| self.convert_type(rt));
+
                     let user_func = UserFunc {
                         params: param_syms,
                         uses: Vec::new(),
@@ -228,6 +234,7 @@ impl<'src> Emitter<'src> {
                         is_static,
                         is_generator,
                         statics: Rc::new(RefCell::new(HashMap::new())),
+                        return_type: ret_type,
                     };
 
                     // Store in constants
@@ -336,6 +343,7 @@ impl<'src> Emitter<'src> {
                     let idx = self.add_constant(Val::Null);
                     self.chunk.code.push(OpCode::Const(idx as u16));
                 }
+                // Return type checking is now done in the Return handler
                 self.chunk.code.push(OpCode::Return);
             }
             Stmt::Const { consts, .. } => {
@@ -543,6 +551,7 @@ impl<'src> Emitter<'src> {
                 params,
                 body,
                 by_ref,
+                return_type,
                 ..
             } => {
                 let func_name_str = self.get_text(name.span);
@@ -579,6 +588,7 @@ impl<'src> Emitter<'src> {
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
+                            param_type: None, // TODO: Extract from AST params
                         });
 
                         if let Some(default_expr) = info.default {
@@ -597,6 +607,9 @@ impl<'src> Emitter<'src> {
                 let (mut func_chunk, is_generator) = func_emitter.compile(body);
                 func_chunk.returns_ref = *by_ref;
 
+                // Convert return type
+                let ret_type = return_type.and_then(|rt| self.convert_type(rt));
+
                 let user_func = UserFunc {
                     params: param_syms,
                     uses: Vec::new(),
@@ -604,6 +617,7 @@ impl<'src> Emitter<'src> {
                     is_static: false,
                     is_generator,
                     statics: Rc::new(RefCell::new(HashMap::new())),
+                    return_type: ret_type,
                 };
 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -1811,6 +1825,7 @@ impl<'src> Emitter<'src> {
                 body,
                 by_ref,
                 is_static,
+                return_type,
                 ..
             } => {
                 // 1. Collect param info
@@ -1846,6 +1861,7 @@ impl<'src> Emitter<'src> {
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
+                            param_type: None, // TODO: Extract from AST params
                         });
 
                         if let Some(default_expr) = info.default {
@@ -1882,6 +1898,9 @@ impl<'src> Emitter<'src> {
                     }
                 }
 
+                // Convert return type
+                let ret_type = return_type.and_then(|rt| self.convert_type(rt));
+
                 let user_func = UserFunc {
                     params: param_syms,
                     uses: use_syms.clone(),
@@ -1889,6 +1908,7 @@ impl<'src> Emitter<'src> {
                     is_static: *is_static,
                     is_generator,
                     statics: Rc::new(RefCell::new(HashMap::new())),
+                    return_type: ret_type,
                 };
 
                 let func_res = Val::Resource(Rc::new(user_func));
@@ -2868,5 +2888,53 @@ impl<'src> Emitter<'src> {
             }
         }
         line
+    }
+
+    /// Convert AST Type to ReturnType
+    fn convert_type(&mut self, ty: &Type) -> Option<ReturnType> {
+        match ty {
+            Type::Simple(tok) => match tok.kind {
+                TokenKind::TypeInt => Some(ReturnType::Int),
+                TokenKind::TypeFloat => Some(ReturnType::Float),
+                TokenKind::TypeString => Some(ReturnType::String),
+                TokenKind::TypeBool => Some(ReturnType::Bool),
+                TokenKind::Array => Some(ReturnType::Array),
+                TokenKind::TypeObject => Some(ReturnType::Object),
+                TokenKind::TypeVoid => Some(ReturnType::Void),
+                TokenKind::TypeNever => Some(ReturnType::Never),
+                TokenKind::TypeMixed => Some(ReturnType::Mixed),
+                TokenKind::TypeNull => Some(ReturnType::Null),
+                TokenKind::TypeTrue => Some(ReturnType::True),
+                TokenKind::TypeFalse => Some(ReturnType::False),
+                TokenKind::TypeCallable => Some(ReturnType::Callable),
+                TokenKind::TypeIterable => Some(ReturnType::Iterable),
+                TokenKind::Static => Some(ReturnType::Static),
+                _ => None,
+            },
+            Type::Name(name) => {
+                let name_str = self.get_text(name.span);
+                let sym = self.interner.intern(name_str);
+                Some(ReturnType::Named(sym))
+            }
+            Type::Union(types) => {
+                let converted: Vec<_> = types.iter().filter_map(|t| self.convert_type(t)).collect();
+                if converted.is_empty() {
+                    None
+                } else {
+                    Some(ReturnType::Union(converted))
+                }
+            }
+            Type::Intersection(types) => {
+                let converted: Vec<_> = types.iter().filter_map(|t| self.convert_type(t)).collect();
+                if converted.is_empty() {
+                    None
+                } else {
+                    Some(ReturnType::Intersection(converted))
+                }
+            }
+            Type::Nullable(inner) => {
+                self.convert_type(inner).map(|t| ReturnType::Nullable(Box::new(t)))
+            }
+        }
     }
 }
