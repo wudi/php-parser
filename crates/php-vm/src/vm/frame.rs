@@ -20,6 +20,7 @@ pub struct CallFrame {
     pub generator: Option<Handle>,
     pub discard_return: bool,
     pub args: ArgList,
+    pub stack_base: Option<usize>,
 }
 
 impl CallFrame {
@@ -36,6 +37,7 @@ impl CallFrame {
             generator: None,
             discard_return: false,
             args: ArgList::new(),
+            stack_base: None,
         }
     }
 }

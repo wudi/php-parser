@@ -29,6 +29,7 @@ fn verify_never_type_errors_on_return() {
         constants: vec![php_vm::core::value::Val::Null],
         lines: vec![],
         catch_table: vec![],
+        file_path: None,
     };
     let result = vm.run(Rc::new(chunk));
     match result {

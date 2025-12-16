@@ -37,6 +37,7 @@ fn run_fetch(op: OpCode) -> (VM, i64) {
         constants: Vec::new(),
         lines: Vec::new(),
         catch_table: Vec::new(),
+        file_path: None,
     };
 
     let default_idx = chunk.constants.len();

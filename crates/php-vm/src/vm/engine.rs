@@ -440,6 +440,13 @@ impl VM {
             .ok_or_else(|| VmError::RuntimeError("Operand stack empty".into()))
     }
 
+    fn push_frame(&mut self, mut frame: CallFrame) {
+        if frame.stack_base.is_none() {
+            frame.stack_base = Some(self.operand_stack.len());
+        }
+        self.frames.push(frame);
+    }
+
     fn collect_call_args<T>(&mut self, arg_count: T) -> Result<ArgList, VmError>
     where
         T: Into<usize>,
@@ -1271,7 +1278,7 @@ impl VM {
                         }
                     }
 
-                    self.frames.push(frame);
+                    self.push_frame(frame);
                 } else {
                     let name_str =
                         String::from_utf8_lossy(self.context.interner.lookup(name).unwrap_or(b""));
@@ -1356,7 +1363,7 @@ impl VM {
                 }
             }
 
-            self.frames.push(frame);
+            self.push_frame(frame);
             Ok(())
         } else {
             Err(VmError::RuntimeError(format!(
@@ -1391,7 +1398,7 @@ impl VM {
                             }
 
                             frame.this = closure.this;
-                            self.frames.push(frame);
+                            self.push_frame(frame);
                             return Ok(());
                         }
                     }
@@ -1409,7 +1416,7 @@ impl VM {
                         frame.called_scope = Some(obj_data.class);
                         frame.args = args;
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                         Ok(())
                     } else {
                         Err(VmError::RuntimeError(
@@ -1465,7 +1472,7 @@ impl VM {
                                 // Allow but do not provide $this; PHP would emit a notice.
                             }
 
-                            self.frames.push(frame);
+                            self.push_frame(frame);
                             Ok(())
                         } else {
                             let class_str = String::from_utf8_lossy(class_name_bytes);
@@ -1495,7 +1502,7 @@ impl VM {
                                 frame.called_scope = Some(obj_data.class);
                                 frame.args = args;
 
-                                self.frames.push(frame);
+                                self.push_frame(frame);
                                 Ok(())
                             } else {
                                 let class_str = String::from_utf8_lossy(
@@ -1533,13 +1540,13 @@ impl VM {
             initial_frame.locals.insert(*symbol, *handle);
         }
 
-        self.frames.push(initial_frame);
+        self.push_frame(initial_frame);
         self.run_loop(0)
     }
 
     pub fn run_frame(&mut self, frame: CallFrame) -> Result<Handle, VmError> {
         let depth = self.frames.len();
-        self.frames.push(frame);
+        self.push_frame(frame);
         self.run_loop(depth)?;
         self.last_return_value
             .ok_or(VmError::RuntimeError("No return value".into()))
@@ -1571,7 +1578,7 @@ impl VM {
                         frame.called_scope = Some(obj_data.class);
 
                         let depth = self.frames.len();
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                         self.run_loop(depth)?;
 
                         let ret_handle = self.last_return_value.ok_or(VmError::RuntimeError(
@@ -1667,11 +1674,20 @@ impl VM {
     }
 
     fn handle_return(&mut self, force_by_ref: bool, target_depth: usize) -> Result<(), VmError> {
-        let ret_val = if self.operand_stack.is_empty() {
-            self.arena.alloc(Val::Null)
-        } else {
-            self.pop_operand()?
+        let frame_base = {
+            let frame = self.current_frame()?;
+            frame.stack_base.unwrap_or(0)
         };
+
+        let ret_val = if self.operand_stack.len() > frame_base {
+            self.pop_operand()?
+        } else {
+            self.arena.alloc(Val::Null)
+        };
+
+        while self.operand_stack.len() > frame_base {
+            self.operand_stack.pop();
+        }
 
         let popped_frame = self.pop_frame()?;
 
@@ -1956,12 +1972,12 @@ impl VM {
             | OpCode::BoolNot => self.exec_math_op(op)?,
 
             OpCode::LoadVar(sym) => {
-                let existing = {
+                let handle = {
                     let frame = self.current_frame()?;
                     frame.locals.get(&sym).copied()
                 };
 
-                if let Some(handle) = existing {
+                if let Some(handle) = handle {
                     self.operand_stack.push(handle);
                 } else {
                     let name = self.context.interner.lookup(sym);
@@ -2870,6 +2886,7 @@ impl VM {
                     .operand_stack
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
                 self.invoke_callable_value(func_handle, args)?;
             }
 
@@ -3257,7 +3274,7 @@ impl VM {
                                                         }
                                                     }
 
-                                                    self.frames.push(f);
+                                                    self.push_frame(f);
 
                                                     // If Resuming, we leave the sent value on stack for GenB
                                                     // If Initial, we push null (dummy sent value)
@@ -3469,7 +3486,7 @@ impl VM {
                     frame.called_scope = caller.called_scope;
                 }
 
-                self.frames.push(frame);
+                self.push_frame(frame);
                 let depth = self.frames.len();
 
                 // Execute the included file (inlining run_loop to capture locals before pop)
@@ -4021,7 +4038,7 @@ impl VM {
                                         GeneratorState::Created(frame) => {
                                             let mut frame = frame.clone();
                                             frame.generator = Some(iterable_handle);
-                                            self.frames.push(frame);
+                                            self.push_frame(frame);
                                             data.state = GeneratorState::Running;
 
                                             // Push dummy index to maintain [Iterable, Index] stack shape
@@ -4171,7 +4188,7 @@ impl VM {
                                     if let GeneratorState::Suspended(frame) = &data.state {
                                         let mut frame = frame.clone();
                                         frame.generator = Some(iterable_handle);
-                                        self.frames.push(frame);
+                                        self.push_frame(frame);
                                         data.state = GeneratorState::Running;
                                         // Push dummy index
                                         let idx_handle = self.arena.alloc(Val::Null);
@@ -4182,7 +4199,7 @@ impl VM {
                                     } else if let GeneratorState::Delegating(frame) = &data.state {
                                         let mut frame = frame.clone();
                                         frame.generator = Some(iterable_handle);
-                                        self.frames.push(frame);
+                                        self.push_frame(frame);
                                         data.state = GeneratorState::Running;
                                         // Push dummy index
                                         let idx_handle = self.arena.alloc(Val::Null);
@@ -4880,7 +4897,7 @@ impl VM {
                         frame.is_constructor = true;
                         frame.class_scope = Some(defined_class);
                         frame.args = self.collect_call_args(arg_count)?;
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         if arg_count > 0 {
                             let class_name_bytes = self
@@ -4977,7 +4994,7 @@ impl VM {
                         frame.is_constructor = true;
                         frame.class_scope = Some(defined_class);
                         frame.args = args;
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         if arg_count > 0 {
                             let class_name_bytes = self
@@ -5057,7 +5074,7 @@ impl VM {
                             frame.locals.insert(param.name, name_handle);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         if let Err(e) = visibility_check {
                             return Err(e);
@@ -5140,7 +5157,7 @@ impl VM {
                             frame.locals.insert(param.name, name_handle);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         if let Err(e) = visibility_check {
                             return Err(e);
@@ -5219,8 +5236,8 @@ impl VM {
                             frame.locals.insert(param.name, val_handle);
                         }
 
-                        self.frames.push(frame);
                         self.operand_stack.push(val_handle);
+                        self.push_frame(frame);
                     } else {
                         if let Err(e) = visibility_check {
                             return Err(e);
@@ -5301,7 +5318,7 @@ impl VM {
                     frame.called_scope = Some(class_name);
                     frame.args = args;
 
-                    self.frames.push(frame);
+                    self.push_frame(frame);
                 } else {
                     // Method not found. Check for __call.
                     let call_magic = self.context.interner.intern(b"__call");
@@ -5354,7 +5371,7 @@ impl VM {
                             frame.locals.insert(param.name, frame.args[1]);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         let method_str = String::from_utf8_lossy(
                             self.context
@@ -5452,7 +5469,7 @@ impl VM {
                             frame.locals.insert(param.name, name_handle);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     }
                     // If no __unset, do nothing (standard PHP behavior)
                 }
@@ -5576,7 +5593,7 @@ impl VM {
                         frame.called_scope = caller.called_scope;
                     }
 
-                    self.frames.push(frame);
+                    self.push_frame(frame);
                     let depth = self.frames.len();
 
                     // Execute eval'd code (inline run_loop to capture locals before pop)
@@ -5704,7 +5721,7 @@ impl VM {
                                     frame.called_scope = caller.called_scope;
                                 }
 
-                                self.frames.push(frame);
+                                self.push_frame(frame);
                                 let depth = self.frames.len();
 
                                 // Execute included file (inline run_loop to capture locals before pop)
@@ -7382,7 +7399,7 @@ impl VM {
                             frame.class_scope = Some(class_name);
                             frame.discard_return = true;
 
-                            self.frames.push(frame);
+                            self.push_frame(frame);
                         }
                     }
                 } else {
@@ -7529,7 +7546,7 @@ impl VM {
                             frame.locals.insert(param.name, name_handle);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         // No __isset, return false
                         let res_handle = self.arena.alloc(Val::Bool(false));
@@ -7602,7 +7619,7 @@ impl VM {
                     frame.called_scope = Some(resolved_class);
                     frame.args = args;
 
-                    self.frames.push(frame);
+                    self.push_frame(frame);
                 } else {
                     // Method not found. Check for __callStatic.
                     let call_static_magic = self.context.interner.intern(b"__callStatic");
@@ -7657,7 +7674,7 @@ impl VM {
                             frame.locals.insert(param.name, frame.args[1]);
                         }
 
-                        self.frames.push(frame);
+                        self.push_frame(frame);
                     } else {
                         let method_str = String::from_utf8_lossy(
                             self.context
@@ -7869,8 +7886,8 @@ impl VM {
                             frame.locals.insert(param.name, val_handle);
                         }
 
-                        self.frames.push(frame);
                         self.operand_stack.push(val_handle);
+                        self.push_frame(frame);
                     } else {
                         if let Err(e) = visibility_check {
                             return Err(e);
@@ -8905,6 +8922,35 @@ mod tests {
         vm.run(Rc::new(chunk)).unwrap();
 
         assert!(vm.operand_stack.is_empty());
+    }
+
+    #[test]
+    fn test_handle_return_trims_stack_to_frame_base() {
+        let mut vm = create_vm();
+
+        // Simulate caller data already on the operand stack.
+        let caller_sentinel = vm.arena.alloc(Val::Int(123));
+        vm.operand_stack.push(caller_sentinel);
+
+        // Prepare a callee frame with a minimal chunk.
+        let mut chunk = CodeChunk::default();
+        chunk.code.push(OpCode::Return);
+        let frame = CallFrame::new(Rc::new(chunk));
+        vm.push_frame(frame);
+
+        // The callee leaves an extra stray value in addition to the return value.
+        let stray = vm.arena.alloc(Val::Int(999));
+        let return_handle = vm.arena.alloc(Val::String(b"ok".to_vec().into()));
+        vm.operand_stack.push(stray);
+        vm.operand_stack.push(return_handle);
+
+        vm.handle_return(false, 0).unwrap();
+
+        // Frame stack unwound and operand stack restored to caller state.
+        assert_eq!(vm.frames.len(), 0);
+        assert_eq!(vm.operand_stack.len(), 1);
+        assert_eq!(vm.operand_stack.peek(), Some(caller_sentinel));
+        assert_eq!(vm.last_return_value, Some(return_handle));
     }
 
     #[test]
