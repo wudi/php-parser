@@ -101,7 +101,7 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
     &bytes[start..end]
 }
 
-pub fn php_headers_sent(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn php_headers_sent(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // headers_sent() returns false since we're not in a web context
     // In CLI mode, headers are never "sent"
     Ok(vm.arena.alloc(Val::Bool(false)))
