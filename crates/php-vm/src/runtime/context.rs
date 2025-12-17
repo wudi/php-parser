@@ -568,12 +568,112 @@ impl RequestContext {
             );
         };
 
-        // Throwable interface (base for all exceptions/errors)
+        //=====================================================================
+        // Predefined Interfaces and Classes
+        // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c
+        //=====================================================================
+        
+        // Stringable interface (PHP 8.0+) - must be defined before Throwable
+        let stringable_sym = self.interner.intern(b"Stringable");
+        self.classes.insert(
+            stringable_sym,
+            ClassDef {
+                name: stringable_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        
+        // Throwable interface (base for all exceptions/errors, extends Stringable)
         let throwable_sym = self.interner.intern(b"Throwable");
         self.classes.insert(
             throwable_sym,
             ClassDef {
                 name: throwable_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: vec![stringable_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Traversable interface (root iterator interface)
+        let traversable_sym = self.interner.intern(b"Traversable");
+        self.classes.insert(
+            traversable_sym,
+            ClassDef {
+                name: traversable_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Iterator interface
+        let iterator_sym = self.interner.intern(b"Iterator");
+        self.classes.insert(
+            iterator_sym,
+            ClassDef {
+                name: iterator_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: vec![traversable_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // IteratorAggregate interface
+        let iterator_aggregate_sym = self.interner.intern(b"IteratorAggregate");
+        self.classes.insert(
+            iterator_aggregate_sym,
+            ClassDef {
+                name: iterator_aggregate_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: vec![traversable_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // Countable interface
+        let countable_sym = self.interner.intern(b"Countable");
+        self.classes.insert(
+            countable_sym,
+            ClassDef {
+                name: countable_sym,
                 parent: None,
                 is_interface: true,
                 is_trait: false,
@@ -588,7 +688,6 @@ impl RequestContext {
         );
 
         // ArrayAccess interface (allows objects to be accessed like arrays)
-        // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - zend_register_interfaces
         let array_access_sym = self.interner.intern(b"ArrayAccess");
         self.classes.insert(
             array_access_sym,
@@ -606,6 +705,259 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
+
+        // Serializable interface (deprecated since PHP 8.1)
+        let serializable_sym = self.interner.intern(b"Serializable");
+        self.classes.insert(
+            serializable_sym,
+            ClassDef {
+                name: serializable_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // UnitEnum interface (PHP 8.1+)
+        let unit_enum_sym = self.interner.intern(b"UnitEnum");
+        self.classes.insert(
+            unit_enum_sym,
+            ClassDef {
+                name: unit_enum_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // BackedEnum interface (PHP 8.1+)
+        let backed_enum_sym = self.interner.intern(b"BackedEnum");
+        self.classes.insert(
+            backed_enum_sym,
+            ClassDef {
+                name: backed_enum_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: vec![unit_enum_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        //=====================================================================
+        // Internal Classes
+        //=====================================================================
+
+        // Closure class (final)
+        let closure_sym = self.interner.intern(b"Closure");
+        self.classes.insert(
+            closure_sym,
+            ClassDef {
+                name: closure_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, closure_sym, b"bind", class::closure_bind, Visibility::Public, true);
+        register_native_method(self, closure_sym, b"bindTo", class::closure_bind_to, Visibility::Public, false);
+        register_native_method(self, closure_sym, b"call", class::closure_call, Visibility::Public, false);
+        register_native_method(self, closure_sym, b"fromCallable", class::closure_from_callable, Visibility::Public, true);
+
+        // stdClass - empty class for generic objects
+        let stdclass_sym = self.interner.intern(b"stdClass");
+        self.classes.insert(
+            stdclass_sym,
+            ClassDef {
+                name: stdclass_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: true, // stdClass always allows dynamic properties
+            },
+        );
+
+        // Generator class (final, implements Iterator)
+        let generator_sym = self.interner.intern(b"Generator");
+        self.classes.insert(
+            generator_sym,
+            ClassDef {
+                name: generator_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![iterator_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, generator_sym, b"current", class::generator_current, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"key", class::generator_key, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"next", class::generator_next, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"rewind", class::generator_rewind, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"valid", class::generator_valid, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"send", class::generator_send, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"throw", class::generator_throw, Visibility::Public, false);
+        register_native_method(self, generator_sym, b"getReturn", class::generator_get_return, Visibility::Public, false);
+
+        // Fiber class (final, PHP 8.1+)
+        let fiber_sym = self.interner.intern(b"Fiber");
+        self.classes.insert(
+            fiber_sym,
+            ClassDef {
+                name: fiber_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, fiber_sym, b"__construct", class::fiber_construct, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"start", class::fiber_start, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"resume", class::fiber_resume, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"suspend", class::fiber_suspend, Visibility::Public, true);
+        register_native_method(self, fiber_sym, b"throw", class::fiber_throw, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"isStarted", class::fiber_is_started, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"isSuspended", class::fiber_is_suspended, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"isRunning", class::fiber_is_running, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"isTerminated", class::fiber_is_terminated, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"getReturn", class::fiber_get_return, Visibility::Public, false);
+        register_native_method(self, fiber_sym, b"getCurrent", class::fiber_get_current, Visibility::Public, true);
+
+        // WeakReference class (final, PHP 7.4+)
+        let weak_reference_sym = self.interner.intern(b"WeakReference");
+        self.classes.insert(
+            weak_reference_sym,
+            ClassDef {
+                name: weak_reference_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, weak_reference_sym, b"__construct", class::weak_reference_construct, Visibility::Private, false);
+        register_native_method(self, weak_reference_sym, b"create", class::weak_reference_create, Visibility::Public, true);
+        register_native_method(self, weak_reference_sym, b"get", class::weak_reference_get, Visibility::Public, false);
+
+        // WeakMap class (final, PHP 8.0+, implements ArrayAccess, Countable, IteratorAggregate)
+        let weak_map_sym = self.interner.intern(b"WeakMap");
+        self.classes.insert(
+            weak_map_sym,
+            ClassDef {
+                name: weak_map_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![array_access_sym, countable_sym, iterator_aggregate_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, weak_map_sym, b"__construct", class::weak_map_construct, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"offsetExists", class::weak_map_offset_exists, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"offsetGet", class::weak_map_offset_get, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"offsetSet", class::weak_map_offset_set, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"offsetUnset", class::weak_map_offset_unset, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"count", class::weak_map_count, Visibility::Public, false);
+        register_native_method(self, weak_map_sym, b"getIterator", class::weak_map_get_iterator, Visibility::Public, false);
+
+        // SensitiveParameterValue class (final, PHP 8.2+)
+        let sensitive_param_sym = self.interner.intern(b"SensitiveParameterValue");
+        self.classes.insert(
+            sensitive_param_sym,
+            ClassDef {
+                name: sensitive_param_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        register_native_method(self, sensitive_param_sym, b"__construct", class::sensitive_parameter_value_construct, Visibility::Public, false);
+        register_native_method(self, sensitive_param_sym, b"getValue", class::sensitive_parameter_value_get_value, Visibility::Public, false);
+        register_native_method(self, sensitive_param_sym, b"__debugInfo", class::sensitive_parameter_value_debug_info, Visibility::Public, false);
+
+        // __PHP_Incomplete_Class (used during unserialization)
+        let incomplete_class_sym = self.interner.intern(b"__PHP_Incomplete_Class");
+        self.classes.insert(
+            incomplete_class_sym,
+            ClassDef {
+                name: incomplete_class_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: true,
+            },
+        );
+
+        //=====================================================================
+        // Exception and Error Classes
+        //=====================================================================
 
         // Exception class with methods
         let exception_sym = self.interner.intern(b"Exception");
