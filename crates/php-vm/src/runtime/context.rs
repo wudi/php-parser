@@ -587,6 +587,26 @@ impl RequestContext {
             },
         );
 
+        // ArrayAccess interface (allows objects to be accessed like arrays)
+        // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - zend_register_interfaces
+        let array_access_sym = self.interner.intern(b"ArrayAccess");
+        self.classes.insert(
+            array_access_sym,
+            ClassDef {
+                name: array_access_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
         // Exception class with methods
         let exception_sym = self.interner.intern(b"Exception");
         

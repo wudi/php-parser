@@ -853,6 +853,243 @@ impl VM {
         false
     }
 
+    /// Check if an object implements the ArrayAccess interface
+    /// Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - instanceof_function_ex
+    fn implements_array_access(&mut self, class_name: Symbol) -> bool {
+        let array_access_sym = self.context.interner.intern(b"ArrayAccess");
+        self.is_subclass_of(class_name, array_access_sym)
+    }
+
+    /// Call ArrayAccess::offsetExists($offset)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_call_method
+    fn call_array_access_offset_exists(
+        &mut self,
+        obj_handle: Handle,
+        offset_handle: Handle,
+    ) -> Result<bool, VmError> {
+        let method_name = self.context.interner.intern(b"offsetExists");
+        
+        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
+            let payload = self.arena.get(payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                obj_data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError("Not an object".into()));
+        };
+
+        // Try to find and call the method
+        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
+            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
+            let mut frame = CallFrame::new(user_func.chunk.clone());
+            frame.func = Some(user_func.clone());
+            frame.this = Some(obj_handle);
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(class_name);
+            frame.args = args;
+            
+            self.push_frame(frame);
+            
+            // Execute method by running its opcode loop
+            let target_depth = self.frames.len() - 1;
+            loop {
+                if self.frames.len() <= target_depth {
+                    break;
+                }
+                let frame = self.frames.last_mut().unwrap();
+                if frame.ip >= frame.chunk.code.len() {
+                    self.pop_frame();
+                    break;
+                }
+                let op = frame.chunk.code[frame.ip].clone();
+                frame.ip += 1;
+                self.execute_opcode(op, target_depth)?;
+            }
+            
+            // Get result
+            let result_handle = self.last_return_value.take()
+                .unwrap_or_else(|| self.arena.alloc(Val::Null));
+            let result_val = &self.arena.get(result_handle).value;
+            Ok(result_val.to_bool())
+        } else {
+            // Method not found - this should not happen for proper ArrayAccess implementation
+            Err(VmError::RuntimeError(format!(
+                "ArrayAccess::offsetExists not found in class"
+            )))
+        }
+    }
+
+    /// Call ArrayAccess::offsetGet($offset)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
+    fn call_array_access_offset_get(
+        &mut self,
+        obj_handle: Handle,
+        offset_handle: Handle,
+    ) -> Result<Handle, VmError> {
+        let method_name = self.context.interner.intern(b"offsetGet");
+        
+        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
+            let payload = self.arena.get(payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                obj_data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError("Not an object".into()));
+        };
+
+        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
+            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
+            let mut frame = CallFrame::new(user_func.chunk.clone());
+            frame.func = Some(user_func.clone());
+            frame.this = Some(obj_handle);
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(class_name);
+            frame.args = args;
+            
+            self.push_frame(frame);
+            
+            let target_depth = self.frames.len() - 1;
+            loop {
+                if self.frames.len() <= target_depth {
+                    break;
+                }
+                let frame = self.frames.last_mut().unwrap();
+                if frame.ip >= frame.chunk.code.len() {
+                    self.pop_frame();
+                    break;
+                }
+                let op = frame.chunk.code[frame.ip].clone();
+                frame.ip += 1;
+                self.execute_opcode(op, target_depth)?;
+            }
+            
+            let result_handle = self.last_return_value.take()
+                .unwrap_or_else(|| self.arena.alloc(Val::Null));
+            Ok(result_handle)
+        } else {
+            Err(VmError::RuntimeError(format!(
+                "ArrayAccess::offsetGet not found in class"
+            )))
+        }
+    }
+
+    /// Call ArrayAccess::offsetSet($offset, $value)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
+    fn call_array_access_offset_set(
+        &mut self,
+        obj_handle: Handle,
+        offset_handle: Handle,
+        value_handle: Handle,
+    ) -> Result<(), VmError> {
+        let method_name = self.context.interner.intern(b"offsetSet");
+        
+        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
+            let payload = self.arena.get(payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                obj_data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError("Not an object".into()));
+        };
+
+        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
+            let args = smallvec::SmallVec::from_vec(vec![offset_handle, value_handle]);
+            let mut frame = CallFrame::new(user_func.chunk.clone());
+            frame.func = Some(user_func.clone());
+            frame.this = Some(obj_handle);
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(class_name);
+            frame.args = args;
+            
+            self.push_frame(frame);
+            
+            let target_depth = self.frames.len() - 1;
+            loop {
+                if self.frames.len() <= target_depth {
+                    break;
+                }
+                let frame = self.frames.last_mut().unwrap();
+                if frame.ip >= frame.chunk.code.len() {
+                    self.pop_frame();
+                    break;
+                }
+                let op = frame.chunk.code[frame.ip].clone();
+                frame.ip += 1;
+                self.execute_opcode(op, target_depth)?;
+            }
+            
+            // offsetSet returns void, discard result
+            self.last_return_value = None;
+            Ok(())
+        } else {
+            Err(VmError::RuntimeError(format!(
+                "ArrayAccess::offsetSet not found in class"
+            )))
+        }
+    }
+
+    /// Call ArrayAccess::offsetUnset($offset)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
+    fn call_array_access_offset_unset(
+        &mut self,
+        obj_handle: Handle,
+        offset_handle: Handle,
+    ) -> Result<(), VmError> {
+        let method_name = self.context.interner.intern(b"offsetUnset");
+        
+        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
+            let payload = self.arena.get(payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                obj_data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError("Not an object".into()));
+        };
+
+        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
+            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
+            let mut frame = CallFrame::new(user_func.chunk.clone());
+            frame.func = Some(user_func.clone());
+            frame.this = Some(obj_handle);
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(class_name);
+            frame.args = args;
+            
+            self.push_frame(frame);
+            
+            let target_depth = self.frames.len() - 1;
+            loop {
+                if self.frames.len() <= target_depth {
+                    break;
+                }
+                let frame = self.frames.last_mut().unwrap();
+                if frame.ip >= frame.chunk.code.len() {
+                    self.pop_frame();
+                    break;
+                }
+                let op = frame.chunk.code[frame.ip].clone();
+                frame.ip += 1;
+                self.execute_opcode(op, target_depth)?;
+            }
+            
+            // offsetUnset returns void, discard result
+            self.last_return_value = None;
+            Ok(())
+        } else {
+            Err(VmError::RuntimeError(format!(
+                "ArrayAccess::offsetUnset not found in class"
+            )))
+        }
+    }
+
     fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
         let name_bytes = self
             .context
@@ -3978,6 +4215,53 @@ impl VM {
                             self.operand_stack.push(empty);
                         }
                     }
+                    Val::Object(payload_handle) => {
+                        // Check if object implements ArrayAccess
+                        let payload_val = self.arena.get(*payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_val.value {
+                            let class_name = obj_data.class;
+
+                            if self.implements_array_access(class_name) {
+                                // Call offsetGet method
+                                let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                                self.operand_stack.push(result);
+                            } else {
+                                // Object doesn't implement ArrayAccess
+                                self.report_error(
+                                    ErrorLevel::Warning,
+                                    "Trying to access array offset on value of type object",
+                                );
+                                let null_handle = self.arena.alloc(Val::Null);
+                                self.operand_stack.push(null_handle);
+                            }
+                        } else {
+                            // Shouldn't happen, but handle it
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                "Trying to access array offset on value of type object",
+                            );
+                            let null_handle = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null_handle);
+                        }
+                    }
+                    Val::ObjPayload(obj_data) => {
+                        // Direct ObjPayload (shouldn't normally happen in FetchDim context)
+                        let class_name = obj_data.class;
+
+                        if self.implements_array_access(class_name) {
+                            // Call offsetGet method
+                            let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                            self.operand_stack.push(result);
+                        } else {
+                            // Object doesn't implement ArrayAccess
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                "Trying to access array offset on value of type object",
+                            );
+                            let null_handle = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null_handle);
+                        }
+                    }
                     _ => {
                         let type_str = match array_val {
                             Val::Null => "null",
@@ -4054,17 +4338,37 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                let key_val = &self.arena.get(key_handle).value;
-                let key = self.array_key_from_value(key_val)?;
-
+                // Get current value
                 let current_val = {
                     let array_val = &self.arena.get(array_handle).value;
                     match array_val {
                         Val::Array(map) => {
+                            let key_val = &self.arena.get(key_handle).value;
+                            let key = self.array_key_from_value(key_val)?;
                             if let Some(val_handle) = map.map.get(&key) {
                                 self.arena.get(*val_handle).value.clone()
                             } else {
                                 Val::Null
+                            }
+                        }
+                        Val::Object(payload_handle) => {
+                            // Check if it's ArrayAccess
+                            let payload = self.arena.get(*payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload.value {
+                                let class_name = obj_data.class;
+                                if self.implements_array_access(class_name) {
+                                    // Call offsetGet
+                                    let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                                    self.arena.get(result).value.clone()
+                                } else {
+                                    return Err(VmError::RuntimeError(
+                                        "Trying to access offset on non-array".into(),
+                                    ))
+                                }
+                            } else {
+                                return Err(VmError::RuntimeError(
+                                    "Trying to access offset on non-array".into(),
+                                ))
                             }
                         }
                         _ => {
@@ -4266,6 +4570,23 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
+                // Check if this is an ArrayAccess object
+                // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_UNSET_DIM_SPEC
+                let array_val = &self.arena.get(array_handle).value;
+                
+                if let Val::Object(payload_handle) = array_val {
+                    let payload = self.arena.get(*payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload.value {
+                        let class_name = obj_data.class;
+                        if self.implements_array_access(class_name) {
+                            // Call ArrayAccess::offsetUnset($offset)
+                            self.call_array_access_offset_unset(array_handle, key_handle)?;
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Standard array unset logic
                 let key_val = &self.arena.get(key_handle).value;
                 let key = self.array_key_from_value(key_val)?;
 
@@ -6570,7 +6891,7 @@ impl VM {
 
                 let container = &self.arena.get(container_handle).value;
                 let is_fetch_r = matches!(op, OpCode::FetchDimR);
-                let is_unset = matches!(op, OpCode::FetchDimUnset);
+                let _is_unset = matches!(op, OpCode::FetchDimUnset);
 
                 match container {
                     Val::Array(map) => {
@@ -6670,17 +6991,55 @@ impl VM {
                         let null = self.arena.alloc(Val::Null);
                         self.operand_stack.push(null);
                     }
-                    Val::Object(_) | Val::ObjPayload(_) => {
-                        // Objects with ArrayAccess can be accessed, but for now treat as error
-                        // TODO: Implement ArrayAccess interface support
-                        if is_fetch_r {
-                            self.report_error(
-                                ErrorLevel::Warning,
-                                "Trying to access array offset on value of type object",
-                            );
+                    &Val::Object(_) | &Val::ObjPayload(_) => {
+                        // Check if object implements ArrayAccess interface
+                        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_FETCH_DIM_R_SPEC
+                        let class_name = match container {
+                            &Val::Object(payload_handle) => {
+                                let payload = self.arena.get(payload_handle);
+                                if let Val::ObjPayload(obj_data) = &payload.value {
+                                    Some(obj_data.class)
+                                } else {
+                                    None
+                                }
+                            }
+                            &Val::ObjPayload(ref obj_data) => {
+                                Some(obj_data.class)
+                            }
+                            _ => None,
+                        };
+
+                        if let Some(cls) = class_name {
+                            if self.implements_array_access(cls) {
+                                // Call ArrayAccess::offsetGet($offset)
+                                match self.call_array_access_offset_get(container_handle, dim) {
+                                    Ok(result) => {
+                                        self.operand_stack.push(result);
+                                    }
+                                    Err(e) => return Err(e),
+                                }
+                            } else {
+                                // Object doesn't implement ArrayAccess
+                                if is_fetch_r {
+                                    self.report_error(
+                                        ErrorLevel::Warning,
+                                        "Trying to access array offset on value of type object",
+                                    );
+                                }
+                                let null = self.arena.alloc(Val::Null);
+                                self.operand_stack.push(null);
+                            }
+                        } else {
+                            // Invalid object structure
+                            if is_fetch_r {
+                                self.report_error(
+                                    ErrorLevel::Warning,
+                                    "Trying to access array offset on value of type object",
+                                );
+                            }
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
                         }
-                        let null = self.arena.alloc(Val::Null);
-                        self.operand_stack.push(null);
                     }
                     _ => {
                         if is_fetch_r {
@@ -7020,64 +7379,106 @@ impl VM {
                     _ => 0,
                 };
 
-                let container = &self.arena.get(container_handle).value;
-                let val_handle = match container {
-                    Val::Array(map) => {
-                        let key = match &self.arena.get(dim_handle).value {
-                            Val::Int(i) => ArrayKey::Int(*i),
-                            Val::String(s) => ArrayKey::Str(s.clone()),
-                            _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
-                        };
-                        map.map.get(&key).cloned()
-                    }
-                    Val::String(s) => {
-                        // String offset access for isset/empty
-                        let offset = self.arena.get(dim_handle).value.to_int();
-                        let len = s.len() as i64;
-                        
-                        // Handle negative offsets
-                        let actual_offset = if offset < 0 {
-                            let adjusted = len + offset;
-                            if adjusted < 0 {
-                                None // Out of bounds
+                // Pre-check: extract object class and check ArrayAccess
+                // before doing any operation to avoid borrow issues
+                let (is_object, is_array_access, class_name_opt) = {
+                    match &self.arena.get(container_handle).value {
+                        Val::Object(payload_handle) => {
+                            let payload = self.arena.get(*payload_handle);
+                            if let Val::ObjPayload(obj_data) = &payload.value {
+                                let cn = obj_data.class;
+                                let is_aa = self.implements_array_access(cn);
+                                (true, is_aa, Some(cn))
                             } else {
-                                Some(adjusted as usize)
+                                (true, false, None)
                             }
-                        } else {
-                            Some(offset as usize)
-                        };
-                        
-                        // For strings, if offset is valid, create a temp string value
-                        if let Some(idx) = actual_offset {
-                            if idx < s.len() {
-                                let char_val = vec![s[idx]];
-                                Some(self.arena.alloc(Val::String(char_val.into())))
+                        }
+                        _ => (false, false, None),
+                    }
+                };
+
+                // Check for ArrayAccess objects first
+                // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ_SPEC
+                let val_handle = if is_object && is_array_access {
+                    // Handle ArrayAccess
+                    match self.call_array_access_offset_exists(container_handle, dim_handle) {
+                        Ok(exists) => {
+                            if !exists {
+                                None
+                            } else if type_val == 0 {
+                                // isset: offsetExists returned true
+                                Some(self.arena.alloc(Val::Bool(true)))
+                            } else {
+                                // empty: need to check the actual value via offsetGet
+                                match self.call_array_access_offset_get(container_handle, dim_handle) {
+                                    Ok(h) => Some(h),
+                                    Err(_) => None,
+                                }
+                            }
+                        }
+                        Err(_) => None,
+                    }
+                } else {
+                    // Handle non-ArrayAccess types
+                    let container = &self.arena.get(container_handle).value;
+                    match container {
+                        Val::Array(map) => {
+                            let key = match &self.arena.get(dim_handle).value {
+                                Val::Int(i) => ArrayKey::Int(*i),
+                                Val::String(s) => ArrayKey::Str(s.clone()),
+                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
+                            };
+                            map.map.get(&key).cloned()
+                        }
+                        Val::String(s) => {
+                            // String offset access for isset/empty
+                            let offset = self.arena.get(dim_handle).value.to_int();
+                            let len = s.len() as i64;
+                            
+                            // Handle negative offsets
+                            let actual_offset = if offset < 0 {
+                                let adjusted = len + offset;
+                                if adjusted < 0 {
+                                    None // Out of bounds
+                                } else {
+                                    Some(adjusted as usize)
+                                }
+                            } else {
+                                Some(offset as usize)
+                            };
+                            
+                            // For strings, if offset is valid, create a temp string value
+                            if let Some(idx) = actual_offset {
+                                if idx < s.len() {
+                                    let char_val = vec![s[idx]];
+                                    Some(self.arena.alloc(Val::String(char_val.into())))
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
-                        } else {
-                            None
                         }
-                    }
-                    Val::Object(obj_handle) => {
-                        // Property check
-                        let prop_name = match &self.arena.get(dim_handle).value {
-                            Val::String(s) => s.clone(),
-                            _ => vec![].into(),
-                        };
-                        if prop_name.is_empty() {
-                            None
-                        } else {
-                            let sym = self.context.interner.intern(&prop_name);
-                            let payload = self.arena.get(*obj_handle);
-                            if let Val::ObjPayload(data) = &payload.value {
-                                data.properties.get(&sym).cloned()
-                            } else {
+                        Val::Object(payload_handle) => {
+                            // Regular object property access (not ArrayAccess)
+                            let prop_name = match &self.arena.get(dim_handle).value {
+                                Val::String(s) => s.clone(),
+                                _ => vec![].into(),
+                            };
+                            if prop_name.is_empty() {
                                 None
+                            } else {
+                                let sym = self.context.interner.intern(&prop_name);
+                                let payload = self.arena.get(*payload_handle);
+                                if let Val::ObjPayload(obj_data) = &payload.value {
+                                    obj_data.properties.get(&sym).cloned()
+                                } else {
+                                    None
+                                }
                             }
                         }
+                        _ => None,
                     }
-                    _ => None,
                 };
 
                 let result = if type_val == 0 {
@@ -8018,6 +8419,36 @@ impl VM {
                             false
                         }
                     }
+                    Val::Object(payload_handle) => {
+                        // Check if it's ArrayAccess
+                        let payload = self.arena.get(*payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload.value {
+                            let class_name = obj_data.class;
+                            if self.implements_array_access(class_name) {
+                                // Call offsetExists
+                                match self.call_array_access_offset_exists(array_handle, key_handle) {
+                                    Ok(exists) => {
+                                        if !exists {
+                                            false
+                                        } else {
+                                            // offsetExists returned true, now check if value is not null
+                                            match self.call_array_access_offset_get(array_handle, key_handle) {
+                                                Ok(val_handle) => {
+                                                    !matches!(self.arena.get(val_handle).value, Val::Null)
+                                                }
+                                                Err(_) => false,
+                                            }
+                                        }
+                                    }
+                                    Err(_) => false,
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
                     Val::String(s) => {
                         // String offset access - check if offset is valid
                         // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ
@@ -8845,6 +9276,24 @@ impl VM {
         key_handle: Handle,
         val_handle: Handle,
     ) -> Result<(), VmError> {
+        // Check if this is an ArrayAccess object
+        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ASSIGN_DIM_SPEC
+        let array_val = &self.arena.get(array_handle).value;
+        
+        if let Val::Object(payload_handle) = array_val {
+            let payload = self.arena.get(*payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                let class_name = obj_data.class;
+                if self.implements_array_access(class_name) {
+                    // Call ArrayAccess::offsetSet($offset, $value)
+                    self.call_array_access_offset_set(array_handle, key_handle, val_handle)?;
+                    self.operand_stack.push(array_handle);
+                    return Ok(());
+                }
+            }
+        }
+
+        // Standard array assignment logic
         let key_val = &self.arena.get(key_handle).value;
         let key = self.array_key_from_value(key_val)?;
 
@@ -8996,6 +9445,30 @@ impl VM {
                         return Ok(self.arena.alloc(Val::Null));
                     }
                 }
+                Val::Object(payload_handle) => {
+                    // Check if it's ArrayAccess
+                    let payload = self.arena.get(*payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload.value {
+                        let class_name = obj_data.class;
+                        if self.implements_array_access(class_name) {
+                            // Call offsetGet
+                            current_handle = self.call_array_access_offset_get(current_handle, *key_handle)?;
+                        } else {
+                            // Object doesn't implement ArrayAccess
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                "Trying to access array offset on value of type object",
+                            );
+                            return Ok(self.arena.alloc(Val::Null));
+                        }
+                    } else {
+                        self.report_error(
+                            ErrorLevel::Warning,
+                            "Trying to access array offset on value of type object",
+                        );
+                        return Ok(self.arena.alloc(Val::Null));
+                    }
+                }
                 Val::String(s) => {
                     // String offset access
                     // Reference: $PHP_SRC_PATH/Zend/zend_operators.c - string offset handlers
@@ -9053,6 +9526,39 @@ impl VM {
     ) -> Result<Handle, VmError> {
         if keys.is_empty() {
             return Ok(val_handle);
+        }
+
+        // Check if current handle is an ArrayAccess object
+        let current_val = &self.arena.get(current_handle).value;
+        if let Val::Object(payload_handle) = current_val {
+            let payload = self.arena.get(*payload_handle);
+            if let Val::ObjPayload(obj_data) = &payload.value {
+                let class_name = obj_data.class;
+                if self.implements_array_access(class_name) {
+                    // If there's only one key, call offsetSet directly
+                    if keys.len() == 1 {
+                        self.call_array_access_offset_set(current_handle, keys[0], val_handle)?;
+                        return Ok(current_handle);
+                    } else {
+                        // Multiple keys: fetch the intermediate value and recurse
+                        let first_key = keys[0];
+                        let remaining_keys = &keys[1..];
+                        
+                        // Call offsetGet to get the intermediate value
+                        let intermediate = self.call_array_access_offset_get(current_handle, first_key)?;
+                        
+                        // Recurse on the intermediate value
+                        let new_intermediate = self.assign_nested_recursive(intermediate, remaining_keys, val_handle)?;
+                        
+                        // If the intermediate value changed, call offsetSet to update it
+                        if new_intermediate != intermediate {
+                            self.call_array_access_offset_set(current_handle, first_key, new_intermediate)?;
+                        }
+                        
+                        return Ok(current_handle);
+                    }
+                }
+            }
         }
 
         let key_handle = keys[0];
