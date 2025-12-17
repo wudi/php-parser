@@ -7134,17 +7134,80 @@ impl VM {
                 let obj = &self.arena.get(obj_handle).value;
                 if let Val::Object(obj_data_handle) = obj {
                     let sym = self.context.interner.intern(&prop_name);
-                    let payload = self.arena.get(*obj_data_handle);
-                    if let Val::ObjPayload(data) = &payload.value {
-                        if let Some(val_handle) = data.properties.get(&sym) {
-                            self.operand_stack.push(*val_handle);
+                    
+                    // Extract class name and check property
+                    let (class_name, prop_handle_opt, has_prop) = {
+                        let payload = self.arena.get(*obj_data_handle);
+                        if let Val::ObjPayload(data) = &payload.value {
+                            (
+                                data.class,
+                                data.properties.get(&sym).copied(),
+                                data.properties.contains_key(&sym),
+                            )
+                        } else {
+                            let null = self.arena.alloc(Val::Null);
+                            self.operand_stack.push(null);
+                            return Ok(());
+                        }
+                    };
+
+                    // Check visibility
+                    let current_scope = self.get_current_class();
+                    let visibility_ok = has_prop
+                        && self
+                            .check_prop_visibility(class_name, sym, current_scope)
+                            .is_ok();
+
+                    if let Some(val_handle) = prop_handle_opt {
+                        if visibility_ok {
+                            self.operand_stack.push(val_handle);
+                        } else {
+                            // Try __get for inaccessible property
+                            let magic_get = self.context.interner.intern(b"__get");
+                            if let Some((method, _, _, defined_class)) =
+                                self.find_method(class_name, magic_get)
+                            {
+                                let name_handle = self.arena.alloc(Val::String(prop_name.clone()));
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(obj_handle);
+                                frame.class_scope = Some(defined_class);
+                                frame.called_scope = Some(class_name);
+
+                                if let Some(param) = method.params.get(0) {
+                                    frame.locals.insert(param.name, name_handle);
+                                }
+
+                                self.push_frame(frame);
+                            } else {
+                                let null = self.arena.alloc(Val::Null);
+                                self.operand_stack.push(null);
+                            }
+                        }
+                    } else {
+                        // Property doesn't exist, try __get
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(class_name, magic_get)
+                        {
+                            let name_handle = self.arena.alloc(Val::String(prop_name));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(class_name);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
                         } else {
                             let null = self.arena.alloc(Val::Null);
                             self.operand_stack.push(null);
                         }
-                    } else {
-                        let null = self.arena.alloc(Val::Null);
-                        self.operand_stack.push(null);
                     }
                 } else {
                     let null = self.arena.alloc(Val::Null);
@@ -7536,25 +7599,95 @@ impl VM {
                 };
 
                 let container = &self.arena.get(container_handle).value;
-                let val_handle = match container {
+                
+                // Check for __isset first
+                let (val_handle_opt, should_check_isset_magic) = match container {
                     Val::Object(obj_handle) => {
                         let prop_name = match &self.arena.get(prop_handle).value {
                             Val::String(s) => s.clone(),
                             _ => vec![].into(),
                         };
                         if prop_name.is_empty() {
-                            None
+                            (None, false)
                         } else {
                             let sym = self.context.interner.intern(&prop_name);
-                            let payload = self.arena.get(*obj_handle);
-                            if let Val::ObjPayload(data) = &payload.value {
-                                data.properties.get(&sym).cloned()
+                            let (class_name, has_prop, prop_val_opt) = {
+                                let payload = self.arena.get(*obj_handle);
+                                if let Val::ObjPayload(data) = &payload.value {
+                                    (
+                                        data.class,
+                                        data.properties.contains_key(&sym),
+                                        data.properties.get(&sym).cloned(),
+                                    )
+                                } else {
+                                    (self.context.interner.intern(b""), false, None)
+                                }
+                            };
+
+                            let current_scope = self.get_current_class();
+                            let visibility_ok = has_prop
+                                && self
+                                    .check_prop_visibility(class_name, sym, current_scope)
+                                    .is_ok();
+
+                            if has_prop && visibility_ok {
+                                (prop_val_opt, false)
                             } else {
-                                None
+                                // Property doesn't exist or is inaccessible - check for __isset
+                                (None, true)
                             }
                         }
                     }
-                    _ => None,
+                    _ => (None, false),
+                };
+
+                let val_handle = if should_check_isset_magic {
+                    // Try __isset
+                    if let Val::Object(obj_handle) = container {
+                        let prop_name = match &self.arena.get(prop_handle).value {
+                            Val::String(s) => s.clone(),
+                            _ => vec![].into(),
+                        };
+                        let sym = self.context.interner.intern(&prop_name);
+                        
+                        let class_name = {
+                            let payload = self.arena.get(*obj_handle);
+                            if let Val::ObjPayload(data) = &payload.value {
+                                data.class
+                            } else {
+                                self.context.interner.intern(b"")
+                            }
+                        };
+
+                        let magic_isset = self.context.interner.intern(b"__isset");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(class_name, magic_isset)
+                        {
+                            let name_handle = self.arena.alloc(Val::String(prop_name));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(container_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(class_name);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
+                            
+
+                            // __isset returns a boolean value
+                            self.last_return_value
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    val_handle_opt
                 };
 
                 let result = if type_val == 0 {
@@ -7945,18 +8078,103 @@ impl VM {
                     ));
                 };
 
-                // 1. Get current value
+                // 1. Get current value (with __get support)
                 let current_val = {
-                    let payload_zval = self.arena.get(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                        if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                            self.arena.get(*val_handle).value.clone()
+                    let (class_name, prop_handle_opt, has_prop) = {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (
+                                obj_data.class,
+                                obj_data.properties.get(&prop_name).copied(),
+                                obj_data.properties.contains_key(&prop_name),
+                            )
                         } else {
-                            // TODO: __get
-                            Val::Null
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    };
+
+                    // Check if we should use __get
+                    let current_scope = self.get_current_class();
+                    let visibility_ok = has_prop
+                        && self
+                            .check_prop_visibility(class_name, prop_name, current_scope)
+                            .is_ok();
+
+                    if let Some(val_handle) = prop_handle_opt {
+                        if visibility_ok {
+                            self.arena.get(val_handle).value.clone()
+                        } else {
+                            // Try __get for inaccessible property
+                            let magic_get = self.context.interner.intern(b"__get");
+                            if let Some((method, _, _, defined_class)) =
+                                self.find_method(class_name, magic_get)
+                            {
+                                let prop_name_bytes = self
+                                    .context
+                                    .interner
+                                    .lookup(prop_name)
+                                    .unwrap_or(b"")
+                                    .to_vec();
+                                let name_handle =
+                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(obj_handle);
+                                frame.class_scope = Some(defined_class);
+                                frame.called_scope = Some(class_name);
+
+                                if let Some(param) = method.params.get(0) {
+                                    frame.locals.insert(param.name, name_handle);
+                                }
+
+                                self.push_frame(frame);
+                                
+
+                                if let Some(ret_val) = self.last_return_value {
+                                    self.arena.get(ret_val).value.clone()
+                                } else {
+                                    Val::Null
+                                }
+                            } else {
+                                Val::Null
+                            }
                         }
                     } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        // Property doesn't exist, try __get
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(class_name, magic_get)
+                        {
+                            let prop_name_bytes = self
+                                .context
+                                .interner
+                                .lookup(prop_name)
+                                .unwrap_or(b"")
+                                .to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(class_name);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
+                            
+
+                            if let Some(ret_val) = self.last_return_value {
+                                self.arena.get(ret_val).value.clone()
+                            } else {
+                                Val::Null
+                            }
+                        } else {
+                            Val::Null
+                        }
                     }
                 };
 
@@ -8038,6 +8256,16 @@ impl VM {
                     ));
                 };
 
+                // Get class_name first
+                let class_name = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        obj_data.class
+                    } else {
+                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    }
+                };
+
                 let current_val = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
@@ -8056,10 +8284,66 @@ impl VM {
                     _ => Val::Null,
                 };
 
-                let res_handle = self.arena.alloc(new_val);
-                let payload_zval = self.arena.get_mut(payload_handle);
-                if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                    obj_data.properties.insert(prop_name, res_handle);
+                let res_handle = self.arena.alloc(new_val.clone());
+
+                // Check if we should use __set
+                let current_scope = self.get_current_class();
+                let (has_prop, visibility_ok) = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        let has = obj_data.properties.contains_key(&prop_name);
+                        let vis_ok = has
+                            && self
+                                .check_prop_visibility(class_name, prop_name, current_scope)
+                                .is_ok();
+                        (has, vis_ok)
+                    } else {
+                        (false, false)
+                    }
+                };
+
+                if has_prop && visibility_ok {
+                    // Direct assignment
+                    let payload_zval = self.arena.get_mut(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                        obj_data.properties.insert(prop_name, res_handle);
+                    }
+                } else {
+                    // Try __set
+                    let magic_set = self.context.interner.intern(b"__set");
+                    if let Some((method, _, _, defined_class)) =
+                        self.find_method(class_name, magic_set)
+                    {
+                        let prop_name_bytes = self
+                            .context
+                            .interner
+                            .lookup(prop_name)
+                            .unwrap_or(b"")
+                            .to_vec();
+                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(obj_handle);
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+                        frame.discard_return = true;
+
+                        if let Some(param) = method.params.get(0) {
+                            frame.locals.insert(param.name, name_handle);
+                        }
+                        if let Some(param) = method.params.get(1) {
+                            frame.locals.insert(param.name, res_handle);
+                        }
+
+                        self.push_frame(frame);
+                    } else {
+                        // No __set, do direct assignment
+                        let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.insert(prop_name, res_handle);
+                        }
+                    }
                 }
                 self.operand_stack.push(res_handle);
             }
@@ -8086,17 +8370,104 @@ impl VM {
                     ));
                 };
 
-                let current_val = {
-                    let payload_zval = self.arena.get(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                        if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                            self.arena.get(*val_handle).value.clone()
+                // Get current val with __get support
+                let (class_name, current_val) = {
+                    let (cn, prop_handle_opt, has_prop) = {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (
+                                obj_data.class,
+                                obj_data.properties.get(&prop_name).copied(),
+                                obj_data.properties.contains_key(&prop_name),
+                            )
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    };
+
+                    let current_scope = self.get_current_class();
+                    let visibility_ok = has_prop
+                        && self
+                            .check_prop_visibility(cn, prop_name, current_scope)
+                            .is_ok();
+
+                    let val = if let Some(val_handle) = prop_handle_opt {
+                        if visibility_ok {
+                            self.arena.get(val_handle).value.clone()
+                        } else {
+                            // Try __get
+                            let magic_get = self.context.interner.intern(b"__get");
+                            if let Some((method, _, _, defined_class)) =
+                                self.find_method(cn, magic_get)
+                            {
+                                let prop_name_bytes = self
+                                    .context
+                                    .interner
+                                    .lookup(prop_name)
+                                    .unwrap_or(b"")
+                                    .to_vec();
+                                let name_handle =
+                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(obj_handle);
+                                frame.class_scope = Some(defined_class);
+                                frame.called_scope = Some(cn);
+
+                                if let Some(param) = method.params.get(0) {
+                                    frame.locals.insert(param.name, name_handle);
+                                }
+
+                                self.push_frame(frame);
+                                
+
+                                if let Some(ret_val) = self.last_return_value {
+                                    self.arena.get(ret_val).value.clone()
+                                } else {
+                                    Val::Null
+                                }
+                            } else {
+                                Val::Null
+                            }
+                        }
+                    } else {
+                        // Try __get
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(cn, magic_get)
+                        {
+                            let prop_name_bytes = self
+                                .context
+                                .interner
+                                .lookup(prop_name)
+                                .unwrap_or(b"")
+                                .to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(cn);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
+                            
+
+                            if let Some(ret_val) = self.last_return_value {
+                                self.arena.get(ret_val).value.clone()
+                            } else {
+                                Val::Null
+                            }
                         } else {
                             Val::Null
                         }
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
-                    }
+                    };
+                    (cn, val)
                 };
 
                 let new_val = match current_val {
@@ -8104,10 +8475,67 @@ impl VM {
                     _ => Val::Null,
                 };
 
-                let res_handle = self.arena.alloc(new_val);
-                let payload_zval = self.arena.get_mut(payload_handle);
-                if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                    obj_data.properties.insert(prop_name, res_handle);
+                let res_handle = self.arena.alloc(new_val.clone());
+
+                // Check if we should use __set
+                let current_scope = self.get_current_class();
+                let (has_prop, visibility_ok) = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        let has = obj_data.properties.contains_key(&prop_name);
+                        let vis_ok = has
+                            && self
+                                .check_prop_visibility(class_name, prop_name, current_scope)
+                                .is_ok();
+                        (has, vis_ok)
+                    } else {
+                        (false, false)
+                    }
+                };
+
+                if has_prop && visibility_ok {
+                    // Direct assignment
+                    let payload_zval = self.arena.get_mut(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                        obj_data.properties.insert(prop_name, res_handle);
+                    }
+                } else {
+                    // Try __set
+                    let magic_set = self.context.interner.intern(b"__set");
+                    if let Some((method, _, _, defined_class)) =
+                        self.find_method(class_name, magic_set)
+                    {
+                        let prop_name_bytes = self
+                            .context
+                            .interner
+                            .lookup(prop_name)
+                            .unwrap_or(b"")
+                            .to_vec();
+                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(obj_handle);
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+                        frame.discard_return = true;
+
+                        if let Some(param) = method.params.get(0) {
+                            frame.locals.insert(param.name, name_handle);
+                        }
+                        if let Some(param) = method.params.get(1) {
+                            frame.locals.insert(param.name, res_handle);
+                        }
+
+                        self.push_frame(frame);
+                        
+                    } else {
+                        // No __set, do direct assignment
+                        let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.insert(prop_name, res_handle);
+                        }
+                    }
                 }
                 self.operand_stack.push(res_handle);
             }
@@ -8134,17 +8562,104 @@ impl VM {
                     ));
                 };
 
-                let current_val = {
-                    let payload_zval = self.arena.get(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                        if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                            self.arena.get(*val_handle).value.clone()
+                // Get current val with __get support
+                let (class_name, current_val) = {
+                    let (cn, prop_handle_opt, has_prop) = {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (
+                                obj_data.class,
+                                obj_data.properties.get(&prop_name).copied(),
+                                obj_data.properties.contains_key(&prop_name),
+                            )
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    };
+
+                    let current_scope = self.get_current_class();
+                    let visibility_ok = has_prop
+                        && self
+                            .check_prop_visibility(cn, prop_name, current_scope)
+                            .is_ok();
+
+                    let val = if let Some(val_handle) = prop_handle_opt {
+                        if visibility_ok {
+                            self.arena.get(val_handle).value.clone()
+                        } else {
+                            // Try __get
+                            let magic_get = self.context.interner.intern(b"__get");
+                            if let Some((method, _, _, defined_class)) =
+                                self.find_method(cn, magic_get)
+                            {
+                                let prop_name_bytes = self
+                                    .context
+                                    .interner
+                                    .lookup(prop_name)
+                                    .unwrap_or(b"")
+                                    .to_vec();
+                                let name_handle =
+                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(obj_handle);
+                                frame.class_scope = Some(defined_class);
+                                frame.called_scope = Some(cn);
+
+                                if let Some(param) = method.params.get(0) {
+                                    frame.locals.insert(param.name, name_handle);
+                                }
+
+                                self.push_frame(frame);
+                                
+
+                                if let Some(ret_val) = self.last_return_value {
+                                    self.arena.get(ret_val).value.clone()
+                                } else {
+                                    Val::Null
+                                }
+                            } else {
+                                Val::Null
+                            }
+                        }
+                    } else {
+                        // Try __get
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(cn, magic_get)
+                        {
+                            let prop_name_bytes = self
+                                .context
+                                .interner
+                                .lookup(prop_name)
+                                .unwrap_or(b"")
+                                .to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(cn);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
+                            
+
+                            if let Some(ret_val) = self.last_return_value {
+                                self.arena.get(ret_val).value.clone()
+                            } else {
+                                Val::Null
+                            }
                         } else {
                             Val::Null
                         }
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
-                    }
+                    };
+                    (cn, val)
                 };
 
                 let new_val = match current_val.clone() {
@@ -8153,11 +8668,67 @@ impl VM {
                 };
 
                 let res_handle = self.arena.alloc(current_val); // Return old value
-                let new_val_handle = self.arena.alloc(new_val);
+                let new_val_handle = self.arena.alloc(new_val.clone());
 
-                let payload_zval = self.arena.get_mut(payload_handle);
-                if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                    obj_data.properties.insert(prop_name, new_val_handle);
+                // Check if we should use __set
+                let current_scope = self.get_current_class();
+                let (has_prop, visibility_ok) = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        let has = obj_data.properties.contains_key(&prop_name);
+                        let vis_ok = has
+                            && self
+                                .check_prop_visibility(class_name, prop_name, current_scope)
+                                .is_ok();
+                        (has, vis_ok)
+                    } else {
+                        (false, false)
+                    }
+                };
+
+                if has_prop && visibility_ok {
+                    // Direct assignment
+                    let payload_zval = self.arena.get_mut(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                        obj_data.properties.insert(prop_name, new_val_handle);
+                    }
+                } else {
+                    // Try __set
+                    let magic_set = self.context.interner.intern(b"__set");
+                    if let Some((method, _, _, defined_class)) =
+                        self.find_method(class_name, magic_set)
+                    {
+                        let prop_name_bytes = self
+                            .context
+                            .interner
+                            .lookup(prop_name)
+                            .unwrap_or(b"")
+                            .to_vec();
+                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(obj_handle);
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+                        frame.discard_return = true;
+
+                        if let Some(param) = method.params.get(0) {
+                            frame.locals.insert(param.name, name_handle);
+                        }
+                        if let Some(param) = method.params.get(1) {
+                            frame.locals.insert(param.name, new_val_handle);
+                        }
+
+                        self.push_frame(frame);
+                        
+                    } else {
+                        // No __set, do direct assignment
+                        let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.insert(prop_name, new_val_handle);
+                        }
+                    }
                 }
                 self.operand_stack.push(res_handle);
             }
@@ -8184,17 +8755,104 @@ impl VM {
                     ));
                 };
 
-                let current_val = {
-                    let payload_zval = self.arena.get(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                        if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                            self.arena.get(*val_handle).value.clone()
+                // Get current val with __get support
+                let (class_name, current_val) = {
+                    let (cn, prop_handle_opt, has_prop) = {
+                        let payload_zval = self.arena.get(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                            (
+                                obj_data.class,
+                                obj_data.properties.get(&prop_name).copied(),
+                                obj_data.properties.contains_key(&prop_name),
+                            )
+                        } else {
+                            return Err(VmError::RuntimeError("Invalid object payload".into()));
+                        }
+                    };
+
+                    let current_scope = self.get_current_class();
+                    let visibility_ok = has_prop
+                        && self
+                            .check_prop_visibility(cn, prop_name, current_scope)
+                            .is_ok();
+
+                    let val = if let Some(val_handle) = prop_handle_opt {
+                        if visibility_ok {
+                            self.arena.get(val_handle).value.clone()
+                        } else {
+                            // Try __get
+                            let magic_get = self.context.interner.intern(b"__get");
+                            if let Some((method, _, _, defined_class)) =
+                                self.find_method(cn, magic_get)
+                            {
+                                let prop_name_bytes = self
+                                    .context
+                                    .interner
+                                    .lookup(prop_name)
+                                    .unwrap_or(b"")
+                                    .to_vec();
+                                let name_handle =
+                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                                let mut frame = CallFrame::new(method.chunk.clone());
+                                frame.func = Some(method.clone());
+                                frame.this = Some(obj_handle);
+                                frame.class_scope = Some(defined_class);
+                                frame.called_scope = Some(cn);
+
+                                if let Some(param) = method.params.get(0) {
+                                    frame.locals.insert(param.name, name_handle);
+                                }
+
+                                self.push_frame(frame);
+                                
+
+                                if let Some(ret_val) = self.last_return_value {
+                                    self.arena.get(ret_val).value.clone()
+                                } else {
+                                    Val::Null
+                                }
+                            } else {
+                                Val::Null
+                            }
+                        }
+                    } else {
+                        // Try __get
+                        let magic_get = self.context.interner.intern(b"__get");
+                        if let Some((method, _, _, defined_class)) =
+                            self.find_method(cn, magic_get)
+                        {
+                            let prop_name_bytes = self
+                                .context
+                                .interner
+                                .lookup(prop_name)
+                                .unwrap_or(b"")
+                                .to_vec();
+                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                            let mut frame = CallFrame::new(method.chunk.clone());
+                            frame.func = Some(method.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(defined_class);
+                            frame.called_scope = Some(cn);
+
+                            if let Some(param) = method.params.get(0) {
+                                frame.locals.insert(param.name, name_handle);
+                            }
+
+                            self.push_frame(frame);
+                            
+
+                            if let Some(ret_val) = self.last_return_value {
+                                self.arena.get(ret_val).value.clone()
+                            } else {
+                                Val::Null
+                            }
                         } else {
                             Val::Null
                         }
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
-                    }
+                    };
+                    (cn, val)
                 };
 
                 let new_val = match current_val.clone() {
@@ -8203,11 +8861,67 @@ impl VM {
                 };
 
                 let res_handle = self.arena.alloc(current_val); // Return old value
-                let new_val_handle = self.arena.alloc(new_val);
+                let new_val_handle = self.arena.alloc(new_val.clone());
 
-                let payload_zval = self.arena.get_mut(payload_handle);
-                if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                    obj_data.properties.insert(prop_name, new_val_handle);
+                // Check if we should use __set
+                let current_scope = self.get_current_class();
+                let (has_prop, visibility_ok) = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        let has = obj_data.properties.contains_key(&prop_name);
+                        let vis_ok = has
+                            && self
+                                .check_prop_visibility(class_name, prop_name, current_scope)
+                                .is_ok();
+                        (has, vis_ok)
+                    } else {
+                        (false, false)
+                    }
+                };
+
+                if has_prop && visibility_ok {
+                    // Direct assignment
+                    let payload_zval = self.arena.get_mut(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                        obj_data.properties.insert(prop_name, new_val_handle);
+                    }
+                } else {
+                    // Try __set
+                    let magic_set = self.context.interner.intern(b"__set");
+                    if let Some((method, _, _, defined_class)) =
+                        self.find_method(class_name, magic_set)
+                    {
+                        let prop_name_bytes = self
+                            .context
+                            .interner
+                            .lookup(prop_name)
+                            .unwrap_or(b"")
+                            .to_vec();
+                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+
+                        let mut frame = CallFrame::new(method.chunk.clone());
+                        frame.func = Some(method.clone());
+                        frame.this = Some(obj_handle);
+                        frame.class_scope = Some(defined_class);
+                        frame.called_scope = Some(class_name);
+                        frame.discard_return = true;
+
+                        if let Some(param) = method.params.get(0) {
+                            frame.locals.insert(param.name, name_handle);
+                        }
+                        if let Some(param) = method.params.get(1) {
+                            frame.locals.insert(param.name, new_val_handle);
+                        }
+
+                        self.push_frame(frame);
+                        
+                    } else {
+                        // No __set, do direct assignment
+                        let payload_zval = self.arena.get_mut(payload_handle);
+                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                            obj_data.properties.insert(prop_name, new_val_handle);
+                        }
+                    }
                 }
                 self.operand_stack.push(res_handle);
             }
