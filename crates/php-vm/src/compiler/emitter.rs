@@ -1266,6 +1266,35 @@ impl<'src> Emitter<'src> {
                         let end_label = self.chunk.code.len();
                         self.chunk.code[end_jump] = OpCode::Coalesce(end_label as u32);
                     }
+                    BinaryOp::Instanceof => {
+                        // For instanceof, the class name should be treated as a literal string,
+                        // not a constant lookup. PHP allows bare identifiers like "instanceof Foo".
+                        self.emit_expr(left);
+                        
+                        // Special handling for bare class names
+                        match right {
+                            Expr::Variable { span, .. } => {
+                                // Bare identifier - treat as class name string
+                                let name = self.get_text(*span);
+                                let class_name_str = if name.starts_with(b"$") {
+                                    // It's actually a variable, evaluate it normally
+                                    self.emit_expr(right);
+                                    return;
+                                } else {
+                                    // Bare class name - push as string constant
+                                    Val::String(name.to_vec().into())
+                                };
+                                let const_idx = self.add_constant(class_name_str) as u16;
+                                self.chunk.code.push(OpCode::Const(const_idx));
+                            }
+                            _ => {
+                                // Complex expression - evaluate normally
+                                self.emit_expr(right);
+                            }
+                        }
+                        
+                        self.chunk.code.push(OpCode::InstanceOf);
+                    }
                     _ => {
                         self.emit_expr(left);
                         self.emit_expr(right);
@@ -1291,8 +1320,9 @@ impl<'src> Emitter<'src> {
                             BinaryOp::GtEq => self.chunk.code.push(OpCode::IsGreaterOrEqual),
                             BinaryOp::LtEq => self.chunk.code.push(OpCode::IsLessOrEqual),
                             BinaryOp::Spaceship => self.chunk.code.push(OpCode::Spaceship),
-                            BinaryOp::Instanceof => self.chunk.code.push(OpCode::InstanceOf),
                             BinaryOp::LogicalXor => self.chunk.code.push(OpCode::BoolXor),
+                            // Instanceof is handled above
+                            BinaryOp::Instanceof => {}
                             _ => {}
                         }
                     }

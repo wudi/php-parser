@@ -5008,12 +5008,13 @@ impl VM {
                     let handle = self.arena.alloc(val.clone());
                     self.operand_stack.push(handle);
                 } else {
-                    // If not found, PHP treats it as a string "NAME" and issues a warning.
+                    // PHP 8.x: Undefined constant throws Error (not Warning)
                     let name_bytes = self.context.interner.lookup(name).unwrap_or(b"???");
-                    let val = Val::String(name_bytes.to_vec().into());
-                    let handle = self.arena.alloc(val);
-                    self.operand_stack.push(handle);
-                    // TODO: Issue warning
+                    let name_str = String::from_utf8_lossy(name_bytes);
+                    return Err(VmError::RuntimeError(format!(
+                        "Undefined constant \"{}\"",
+                        name_str
+                    )));
                 }
             }
             OpCode::DefStaticProp(class_name, prop_name, default_idx, visibility) => {
