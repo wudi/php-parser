@@ -900,7 +900,7 @@ impl VM {
                 }
                 let frame = self.frames.last_mut().unwrap();
                 if frame.ip >= frame.chunk.code.len() {
-                    self.pop_frame();
+                    let _ = self.pop_frame();
                     break;
                 }
                 let op = frame.chunk.code[frame.ip].clone();
@@ -959,7 +959,7 @@ impl VM {
                 }
                 let frame = self.frames.last_mut().unwrap();
                 if frame.ip >= frame.chunk.code.len() {
-                    self.pop_frame();
+                    let _ = self.pop_frame();
                     break;
                 }
                 let op = frame.chunk.code[frame.ip].clone();
@@ -1016,7 +1016,7 @@ impl VM {
                 }
                 let frame = self.frames.last_mut().unwrap();
                 if frame.ip >= frame.chunk.code.len() {
-                    self.pop_frame();
+                    let _ = self.pop_frame();
                     break;
                 }
                 let op = frame.chunk.code[frame.ip].clone();
@@ -1072,7 +1072,7 @@ impl VM {
                 }
                 let frame = self.frames.last_mut().unwrap();
                 if frame.ip >= frame.chunk.code.len() {
-                    self.pop_frame();
+                    let _ = self.pop_frame();
                     break;
                 }
                 let op = frame.chunk.code[frame.ip].clone();
@@ -7444,45 +7444,65 @@ impl VM {
 
                 // Pre-check: extract object class and check ArrayAccess
                 // before doing any operation to avoid borrow issues
-                let (is_object, is_array_access, class_name_opt) = {
+                let (is_object, is_array_access, class_name) = {
                     match &self.arena.get(container_handle).value {
                         Val::Object(payload_handle) => {
                             let payload = self.arena.get(*payload_handle);
                             if let Val::ObjPayload(obj_data) = &payload.value {
                                 let cn = obj_data.class;
                                 let is_aa = self.implements_array_access(cn);
-                                (true, is_aa, Some(cn))
+                                (true, is_aa, cn)
                             } else {
-                                (true, false, None)
+                                // Invalid object payload - should not happen
+                                return Err(VmError::RuntimeError("Invalid object payload".into()));
                             }
                         }
-                        _ => (false, false, None),
+                        _ => (false, false, self.context.interner.intern(b"")),
                     }
                 };
 
                 // Check for ArrayAccess objects first
-                // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ_SPEC
-                let val_handle = if is_object && is_array_access {
-                    // Handle ArrayAccess
-                    match self.call_array_access_offset_exists(container_handle, dim_handle) {
-                        Ok(exists) => {
-                            if !exists {
-                                None
-                            } else if type_val == 0 {
-                                // isset: offsetExists returned true
-                                Some(self.arena.alloc(Val::Bool(true)))
-                            } else {
-                                // empty: need to check the actual value via offsetGet
-                                match self.call_array_access_offset_get(container_handle, dim_handle) {
-                                    Ok(h) => Some(h),
-                                    Err(_) => None,
+                // Reference: PHP Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ handler
+                // For objects: must implement ArrayAccess, otherwise fatal error
+                let val_handle = if is_object {
+                    if is_array_access {
+                        // Handle ArrayAccess
+                        // isset: only calls offsetExists
+                        // empty: calls offsetExists, if true then calls offsetGet to check emptiness
+                        match self.call_array_access_offset_exists(container_handle, dim_handle) {
+                            Ok(exists) => {
+                                if !exists {
+                                    // offsetExists returned false
+                                    None
+                                } else if type_val == 0 {
+                                    // isset: offsetExists returned true, so isset is true
+                                    // BUT we still need to get the value to check if it's null
+                                    match self.call_array_access_offset_get(container_handle, dim_handle) {
+                                        Ok(h) => Some(h),
+                                        Err(_) => None,
+                                    }
+                                } else {
+                                    // empty: need to check the actual value via offsetGet
+                                    match self.call_array_access_offset_get(container_handle, dim_handle) {
+                                        Ok(h) => Some(h),
+                                        Err(_) => None,
+                                    }
                                 }
                             }
+                            Err(_) => None,
                         }
-                        Err(_) => None,
+                    } else {
+                        // Non-ArrayAccess object used as array - fatal error
+                        let class_name_str = String::from_utf8_lossy(
+                            self.context.interner.lookup(class_name).unwrap_or(b"Unknown")
+                        );
+                        return Err(VmError::RuntimeError(format!(
+                            "Cannot use object of type {} as array",
+                            class_name_str
+                        )));
                     }
                 } else {
-                    // Handle non-ArrayAccess types
+                    // Handle non-object types
                     let container = &self.arena.get(container_handle).value;
                     match container {
                         Val::Array(map) => {
@@ -7498,7 +7518,7 @@ impl VM {
                             let offset = self.arena.get(dim_handle).value.to_int();
                             let len = s.len() as i64;
                             
-                            // Handle negative offsets
+                            // Handle negative offsets (PHP 7.1+)
                             let actual_offset = if offset < 0 {
                                 let adjusted = len + offset;
                                 if adjusted < 0 {
@@ -7522,23 +7542,10 @@ impl VM {
                                 None
                             }
                         }
-                        Val::Object(payload_handle) => {
-                            // Regular object property access (not ArrayAccess)
-                            let prop_name = match &self.arena.get(dim_handle).value {
-                                Val::String(s) => s.clone(),
-                                _ => vec![].into(),
-                            };
-                            if prop_name.is_empty() {
-                                None
-                            } else {
-                                let sym = self.context.interner.intern(&prop_name);
-                                let payload = self.arena.get(*payload_handle);
-                                if let Val::ObjPayload(obj_data) = &payload.value {
-                                    obj_data.properties.get(&sym).cloned()
-                                } else {
-                                    None
-                                }
-                            }
+                        Val::Null | Val::Bool(_) | Val::Int(_) | Val::Float(_) => {
+                            // Trying to use isset/empty on scalar as array
+                            // PHP returns false/true respectively without error (warning only in some cases)
+                            None
                         }
                         _ => None,
                     }
