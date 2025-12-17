@@ -3914,12 +3914,12 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                let key_val = &self.arena.get(key_handle).value;
-                let key = self.array_key_from_value(key_val)?;
-
                 let array_val = &self.arena.get(array_handle).value;
                 match array_val {
                     Val::Array(map) => {
+                        let key_val = &self.arena.get(key_handle).value;
+                        let key = self.array_key_from_value(key_val)?;
+                        
                         if let Some(val_handle) = map.map.get(&key) {
                             self.operand_stack.push(*val_handle);
                         } else {
@@ -3934,6 +3934,48 @@ impl VM {
                             );
                             let null_handle = self.arena.alloc(Val::Null);
                             self.operand_stack.push(null_handle);
+                        }
+                    }
+                    Val::String(s) => {
+                        // String offset access
+                        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_fetch_dimension_address_read_R
+                        let dim_val = &self.arena.get(key_handle).value;
+                        
+                        // Convert offset to integer (PHP coerces any type to int for string offsets)
+                        let offset = dim_val.to_int();
+                        
+                        // Handle negative offsets (count from end)
+                        // Reference: PHP 7.1+ supports negative string offsets
+                        let len = s.len() as i64;
+                        let actual_offset = if offset < 0 {
+                            // Negative offset: count from end
+                            let adjusted = len + offset;
+                            if adjusted < 0 {
+                                // Still out of bounds even after adjustment
+                                self.report_error(
+                                    ErrorLevel::Warning,
+                                    &format!("Uninitialized string offset {}", offset),
+                                );
+                                let empty = self.arena.alloc(Val::String(vec![].into()));
+                                self.operand_stack.push(empty);
+                                return Ok(());
+                            }
+                            adjusted as usize
+                        } else {
+                            offset as usize
+                        };
+
+                        if actual_offset < s.len() {
+                            let char_str = vec![s[actual_offset]];
+                            let val = self.arena.alloc(Val::String(char_str.into()));
+                            self.operand_stack.push(val);
+                        } else {
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                &format!("Uninitialized string offset {}", offset),
+                            );
+                            let empty = self.arena.alloc(Val::String(vec![].into()));
+                            self.operand_stack.push(empty);
                         }
                     }
                     _ => {
@@ -6528,19 +6570,19 @@ impl VM {
 
                 let container = &self.arena.get(container_handle).value;
                 let is_fetch_r = matches!(op, OpCode::FetchDimR);
+                let is_unset = matches!(op, OpCode::FetchDimUnset);
 
                 match container {
                     Val::Array(map) => {
-                        let key = match &self.arena.get(dim).value {
-                            Val::Int(i) => ArrayKey::Int(*i),
-                            Val::String(s) => ArrayKey::Str(s.clone()),
-                            _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())), // TODO: proper key conversion
-                        };
+                        // Proper key conversion following PHP semantics
+                        // Reference: $PHP_SRC_PATH/Zend/zend_operators.c - convert_to_array_key
+                        let dim_val = &self.arena.get(dim).value;
+                        let key = self.array_key_from_value(dim_val)?;
 
                         if let Some(val_handle) = map.map.get(&key) {
                             self.operand_stack.push(*val_handle);
                         } else {
-                            // Emit notice for FetchDimR, but not for isset/empty (FetchDimIs)
+                            // Emit notice for FetchDimR, but not for isset/empty (FetchDimIs) or unset
                             if is_fetch_r {
                                 let key_str = match &key {
                                     ArrayKey::Int(i) => i.to_string(),
@@ -6556,35 +6598,93 @@ impl VM {
                         }
                     }
                     Val::String(s) => {
-                        // String offset
-                        let idx = match &self.arena.get(dim).value {
-                            Val::Int(i) => *i as usize,
-                            _ => 0,
+                        // String offset access
+                        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_fetch_dimension_address_read_R
+                        let dim_val = &self.arena.get(dim).value;
+                        
+                        // Convert offset to integer (PHP coerces any type to int for string offsets)
+                        let offset = dim_val.to_int();
+                        
+                        // Handle negative offsets (count from end)
+                        // Reference: PHP 7.1+ supports negative string offsets
+                        let len = s.len() as i64;
+                        let actual_offset = if offset < 0 {
+                            // Negative offset: count from end
+                            let adjusted = len + offset;
+                            if adjusted < 0 {
+                                // Still out of bounds even after adjustment
+                                if is_fetch_r {
+                                    self.report_error(
+                                        ErrorLevel::Warning,
+                                        &format!("Uninitialized string offset {}", offset),
+                                    );
+                                }
+                                let empty = self.arena.alloc(Val::String(vec![].into()));
+                                self.operand_stack.push(empty);
+                                return Ok(());
+                            }
+                            adjusted as usize
+                        } else {
+                            offset as usize
                         };
-                        if idx < s.len() {
-                            let char_str = vec![s[idx]];
+
+                        if actual_offset < s.len() {
+                            let char_str = vec![s[actual_offset]];
                             let val = self.arena.alloc(Val::String(char_str.into()));
                             self.operand_stack.push(val);
                         } else {
                             if is_fetch_r {
                                 self.report_error(
-                                    ErrorLevel::Notice,
-                                    &format!("Undefined string offset: {}", idx),
+                                    ErrorLevel::Warning,
+                                    &format!("Uninitialized string offset {}", offset),
                                 );
                             }
                             let empty = self.arena.alloc(Val::String(vec![].into()));
                             self.operand_stack.push(empty);
                         }
                     }
+                    Val::Bool(_) | Val::Int(_) | Val::Float(_) | Val::Resource(_) => {
+                        // PHP 7.4+: Trying to use scalar types as arrays produces a warning
+                        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c
+                        if is_fetch_r {
+                            let type_str = container.type_name();
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                &format!(
+                                    "Trying to access array offset on value of type {}",
+                                    type_str
+                                ),
+                            );
+                        }
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
+                    }
+                    Val::Null => {
+                        // Accessing offset on null: Warning in FetchDimR, silent for isset
+                        if is_fetch_r {
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                "Trying to access array offset on value of type null",
+                            );
+                        }
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
+                    }
+                    Val::Object(_) | Val::ObjPayload(_) => {
+                        // Objects with ArrayAccess can be accessed, but for now treat as error
+                        // TODO: Implement ArrayAccess interface support
+                        if is_fetch_r {
+                            self.report_error(
+                                ErrorLevel::Warning,
+                                "Trying to access array offset on value of type object",
+                            );
+                        }
+                        let null = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null);
+                    }
                     _ => {
                         if is_fetch_r {
-                            let type_str = match container {
-                                Val::Null => "null",
-                                Val::Bool(_) => "bool",
-                                Val::Int(_) => "int",
-                                Val::Float(_) => "float",
-                                _ => "value",
-                            };
+                            let type_str = container.type_name();
                             self.report_error(
                                 ErrorLevel::Warning,
                                 &format!(
@@ -6929,6 +7029,35 @@ impl VM {
                             _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
                         };
                         map.map.get(&key).cloned()
+                    }
+                    Val::String(s) => {
+                        // String offset access for isset/empty
+                        let offset = self.arena.get(dim_handle).value.to_int();
+                        let len = s.len() as i64;
+                        
+                        // Handle negative offsets
+                        let actual_offset = if offset < 0 {
+                            let adjusted = len + offset;
+                            if adjusted < 0 {
+                                None // Out of bounds
+                            } else {
+                                Some(adjusted as usize)
+                            }
+                        } else {
+                            Some(offset as usize)
+                        };
+                        
+                        // For strings, if offset is valid, create a temp string value
+                        if let Some(idx) = actual_offset {
+                            if idx < s.len() {
+                                let char_val = vec![s[idx]];
+                                Some(self.arena.alloc(Val::String(char_val.into())))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     }
                     Val::Object(obj_handle) => {
                         // Property check
@@ -7873,22 +8002,43 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                let key_val = &self.arena.get(key_handle).value;
-                let key = match key_val {
-                    Val::Int(i) => ArrayKey::Int(*i),
-                    Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => ArrayKey::Int(0), // Should probably be error or false
-                };
-
-                let array_zval = self.arena.get(array_handle);
-                let is_set = if let Val::Array(map) = &array_zval.value {
-                    if let Some(val_handle) = map.map.get(&key) {
-                        !matches!(self.arena.get(*val_handle).value, Val::Null)
-                    } else {
-                        false
+                let container_zval = self.arena.get(array_handle);
+                let is_set = match &container_zval.value {
+                    Val::Array(map) => {
+                        let key_val = &self.arena.get(key_handle).value;
+                        let key = match key_val {
+                            Val::Int(i) => ArrayKey::Int(*i),
+                            Val::String(s) => ArrayKey::Str(s.clone()),
+                            _ => ArrayKey::Int(0),
+                        };
+                        
+                        if let Some(val_handle) = map.map.get(&key) {
+                            !matches!(self.arena.get(*val_handle).value, Val::Null)
+                        } else {
+                            false
+                        }
                     }
-                } else {
-                    false
+                    Val::String(s) => {
+                        // String offset access - check if offset is valid
+                        // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ
+                        let offset = self.arena.get(key_handle).value.to_int();
+                        let len = s.len() as i64;
+                        
+                        // Handle negative offsets
+                        let actual_offset = if offset < 0 {
+                            let adjusted = len + offset;
+                            if adjusted < 0 {
+                                -1i64 as usize  // Out of bounds - use impossible value
+                            } else {
+                                adjusted as usize
+                            }
+                        } else {
+                            offset as usize
+                        };
+                        
+                        actual_offset < s.len()
+                    }
+                    _ => false,
                 };
 
                 let res_handle = self.arena.alloc(Val::Bool(is_set));
