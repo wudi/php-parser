@@ -449,6 +449,46 @@ impl<'src> Emitter<'src> {
                                     self.chunk.code.push(OpCode::UnsetDim);
                                     self.chunk.code.push(OpCode::StoreVar(sym));
                                 }
+                            } else if let Expr::PropertyFetch { target, property, .. } = array {
+                                // Object property case: $obj->prop['key']
+                                // We need: [obj, prop_name, key] for a hypothetical UnsetObjDim
+                                // OR: fetch prop, unset dim, assign back
+                                // Stack operations:
+                                // 1. emit target (obj)
+                                // 2. dup obj
+                                // 3. emit property name
+                                // 4. fetch property -> [obj, array]
+                                // 5. dup array
+                                // 6. emit key
+                                // 7. unset dim -> [obj, array]  (array is modified)
+                                // 8. swap -> [array, obj]
+                                // 9. emit prop name again
+                                // 10. assign prop
+                                
+                                self.emit_expr(target);  // [obj]
+                                self.chunk.code.push(OpCode::Dup);  // [obj, obj]
+                                
+                                // Get property name symbol
+                                let prop_sym = if let Expr::Variable { span, .. } = property {
+                                    let name = self.get_text(*span);
+                                    self.interner.intern(name)
+                                } else {
+                                    return; // Can't handle dynamic property names in unset yet
+                                };
+                                
+                                self.chunk.code.push(OpCode::FetchProp(prop_sym));  // [obj, array]
+                                self.chunk.code.push(OpCode::Dup);  // [obj, array, array]
+
+                                if let Some(d) = dim {
+                                    self.emit_expr(d);  // [obj, array, array, key]
+                                } else {
+                                    let idx = self.add_constant(Val::Null);
+                                    self.chunk.code.push(OpCode::Const(idx as u16));
+                                }
+
+                                self.chunk.code.push(OpCode::UnsetDim);  // [obj, array] (array modified)
+                                self.chunk.code.push(OpCode::AssignProp(prop_sym));  // []
+                                self.chunk.code.push(OpCode::Pop);  // discard result
                             }
                         }
                         Expr::PropertyFetch {
@@ -1144,8 +1184,13 @@ impl<'src> Emitter<'src> {
                         }
                         result
                     } else {
-                        value.to_vec()
+                        // No quotes - this is from string interpolation (EncapsedAndWhitespace)
+                        // These strings need unescaping too
+                        unescape_string(value)
                     }
+                } else if !value.is_empty() {
+                    // Short string without quotes - also from interpolation
+                    unescape_string(value)
                 } else {
                     value.to_vec()
                 };
@@ -1207,8 +1252,13 @@ impl<'src> Emitter<'src> {
                         }
                         result
                     } else {
-                        value.to_vec()
+                        // No quotes - this is from string interpolation (EncapsedAndWhitespace)
+                        // These strings need unescaping too
+                        unescape_string(value)
                     }
+                } else if !value.is_empty() {
+                    // Short string without quotes - also from interpolation
+                    unescape_string(value)
                 } else {
                     value.to_vec()
                 };
