@@ -1183,6 +1183,36 @@ impl VM {
         }
     }
 
+    /// Helper to extract class name and property name from stack for static property operations
+    /// Returns (property_name_symbol, defining_class, current_value)
+    fn prepare_static_prop_access(&mut self) -> Result<(Symbol, Symbol, Val), VmError> {
+        let prop_name_handle = self
+            .operand_stack
+            .pop()
+            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+        let class_name_handle = self
+            .operand_stack
+            .pop()
+            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+        let class_name = match &self.arena.get(class_name_handle).value {
+            Val::String(s) => self.context.interner.intern(s),
+            _ => return Err(VmError::RuntimeError("Class name must be string".into())),
+        };
+
+        let prop_name = match &self.arena.get(prop_name_handle).value {
+            Val::String(s) => self.context.interner.intern(s),
+            _ => return Err(VmError::RuntimeError("Property name must be string".into())),
+        };
+
+        let resolved_class = self.resolve_class_name(class_name)?;
+        let (current_val, visibility, defining_class) =
+            self.find_static_prop(resolved_class, prop_name)?;
+        self.check_const_visibility(defining_class, visibility)?;
+
+        Ok((prop_name, defining_class, current_val))
+    }
+
     fn find_static_prop(
         &self,
         start_class: Symbol,
@@ -7755,29 +7785,7 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
             OpCode::PreIncStaticProp => {
-                let prop_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let class_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                let class_name = match &self.arena.get(class_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Class name must be string".into())),
-                };
-
-                let prop_name = match &self.arena.get(prop_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Property name must be string".into())),
-                };
-
-                let resolved_class = self.resolve_class_name(class_name)?;
-                let (current_val, visibility, defining_class) =
-                    self.find_static_prop(resolved_class, prop_name)?;
-                self.check_const_visibility(defining_class, visibility)?;
+                let (prop_name, defining_class, current_val) = self.prepare_static_prop_access()?;
 
                 // Use increment_value for proper PHP type handling
                 use crate::vm::inc_dec::increment_value;
@@ -7793,29 +7801,7 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
             OpCode::PreDecStaticProp => {
-                let prop_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let class_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                let class_name = match &self.arena.get(class_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Class name must be string".into())),
-                };
-
-                let prop_name = match &self.arena.get(prop_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Property name must be string".into())),
-                };
-
-                let resolved_class = self.resolve_class_name(class_name)?;
-                let (current_val, visibility, defining_class) =
-                    self.find_static_prop(resolved_class, prop_name)?;
-                self.check_const_visibility(defining_class, visibility)?;
+                let (prop_name, defining_class, current_val) = self.prepare_static_prop_access()?;
 
                 // Use decrement_value for proper PHP type handling
                 use crate::vm::inc_dec::decrement_value;
@@ -7831,29 +7817,7 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
             OpCode::PostIncStaticProp => {
-                let prop_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let class_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                let class_name = match &self.arena.get(class_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Class name must be string".into())),
-                };
-
-                let prop_name = match &self.arena.get(prop_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Property name must be string".into())),
-                };
-
-                let resolved_class = self.resolve_class_name(class_name)?;
-                let (current_val, visibility, defining_class) =
-                    self.find_static_prop(resolved_class, prop_name)?;
-                self.check_const_visibility(defining_class, visibility)?;
+                let (prop_name, defining_class, current_val) = self.prepare_static_prop_access()?;
 
                 // Use increment_value for proper PHP type handling
                 use crate::vm::inc_dec::increment_value;
@@ -7870,29 +7834,7 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
             OpCode::PostDecStaticProp => {
-                let prop_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let class_name_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                let class_name = match &self.arena.get(class_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Class name must be string".into())),
-                };
-
-                let prop_name = match &self.arena.get(prop_name_handle).value {
-                    Val::String(s) => self.context.interner.intern(s),
-                    _ => return Err(VmError::RuntimeError("Property name must be string".into())),
-                };
-
-                let resolved_class = self.resolve_class_name(class_name)?;
-                let (current_val, visibility, defining_class) =
-                    self.find_static_prop(resolved_class, prop_name)?;
-                self.check_const_visibility(defining_class, visibility)?;
+                let (prop_name, defining_class, current_val) = self.prepare_static_prop_access()?;
 
                 // Use decrement_value for proper PHP type handling
                 use crate::vm::inc_dec::decrement_value;

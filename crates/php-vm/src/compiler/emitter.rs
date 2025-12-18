@@ -1509,18 +1509,8 @@ impl<'src> Emitter<'src> {
                             }
                             Expr::ClassConstFetch { class, constant, .. } => {
                                 // ++Class::$property
-                                if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
-                                    let class_name = self.get_text(*class_span);
-                                    let prop_name = self.get_text(*prop_span);
-                                    if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
-                                        let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
-                                        let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
-                                        self.chunk.code.push(OpCode::Const(class_idx as u16));
-                                        self.chunk.code.push(OpCode::Const(prop_idx as u16));
-                                        self.chunk.code.push(OpCode::PreIncStaticProp);
-                                    } else {
-                                        self.emit_expr(expr);
-                                    }
+                                if self.emit_static_property_access(class, constant) {
+                                    self.chunk.code.push(OpCode::PreIncStaticProp);
                                 } else {
                                     self.emit_expr(expr);
                                 }
@@ -1552,18 +1542,8 @@ impl<'src> Emitter<'src> {
                             }
                             Expr::ClassConstFetch { class, constant, .. } => {
                                 // --Class::$property
-                                if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
-                                    let class_name = self.get_text(*class_span);
-                                    let prop_name = self.get_text(*prop_span);
-                                    if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
-                                        let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
-                                        let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
-                                        self.chunk.code.push(OpCode::Const(class_idx as u16));
-                                        self.chunk.code.push(OpCode::Const(prop_idx as u16));
-                                        self.chunk.code.push(OpCode::PreDecStaticProp);
-                                    } else {
-                                        self.emit_expr(expr);
-                                    }
+                                if self.emit_static_property_access(class, constant) {
+                                    self.chunk.code.push(OpCode::PreDecStaticProp);
                                 } else {
                                     self.emit_expr(expr);
                                 }
@@ -1606,18 +1586,8 @@ impl<'src> Emitter<'src> {
                     }
                     Expr::ClassConstFetch { class, constant, .. } => {
                         // Class::$property++
-                        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
-                            let class_name = self.get_text(*class_span);
-                            let prop_name = self.get_text(*prop_span);
-                            if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
-                                let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
-                                let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
-                                self.chunk.code.push(OpCode::Const(class_idx as u16));
-                                self.chunk.code.push(OpCode::Const(prop_idx as u16));
-                                self.chunk.code.push(OpCode::PostIncStaticProp);
-                            } else {
-                                self.emit_expr(var);
-                            }
+                        if self.emit_static_property_access(class, constant) {
+                            self.chunk.code.push(OpCode::PostIncStaticProp);
                         } else {
                             self.emit_expr(var);
                         }
@@ -1650,18 +1620,8 @@ impl<'src> Emitter<'src> {
                     }
                     Expr::ClassConstFetch { class, constant, .. } => {
                         // Class::$property--
-                        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
-                            let class_name = self.get_text(*class_span);
-                            let prop_name = self.get_text(*prop_span);
-                            if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
-                                let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
-                                let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
-                                self.chunk.code.push(OpCode::Const(class_idx as u16));
-                                self.chunk.code.push(OpCode::Const(prop_idx as u16));
-                                self.chunk.code.push(OpCode::PostDecStaticProp);
-                            } else {
-                                self.emit_expr(var);
-                            }
+                        if self.emit_static_property_access(class, constant) {
+                            self.chunk.code.push(OpCode::PostDecStaticProp);
                         } else {
                             self.emit_expr(var);
                         }
@@ -3026,6 +2986,25 @@ impl<'src> Emitter<'src> {
 
     fn get_text(&self, span: php_parser::span::Span) -> &'src [u8] {
         &self.source[span.start..span.end]
+    }
+
+    /// Emit constants for static property access (Class::$property)
+    /// Returns true if successfully emitted, false if not a valid static property reference
+    fn emit_static_property_access(&mut self, class: &Expr, constant: &Expr) -> bool {
+        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (class, constant) {
+            let class_name = self.get_text(*class_span);
+            let prop_name = self.get_text(*prop_span);
+            
+            // Valid static property: Class::$property (class name without $, property with $)
+            if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
+                let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
+                let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
+                self.chunk.code.push(OpCode::Const(class_idx as u16));
+                self.chunk.code.push(OpCode::Const(prop_idx as u16));
+                return true;
+            }
+        }
+        false
     }
 
     /// Calculate line number from byte offset (1-indexed)
