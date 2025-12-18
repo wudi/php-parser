@@ -258,53 +258,29 @@ impl VM {
 
     fn create_server_superglobal(&mut self) -> Handle {
         let mut data = ArrayData::new();
-        Self::insert_array_value(
-            &mut data,
-            b"SERVER_PROTOCOL",
-            self.alloc_string_handle(b"HTTP/1.1"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"REQUEST_METHOD",
-            self.alloc_string_handle(b"GET"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"HTTP_HOST",
-            self.alloc_string_handle(b"localhost"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"SERVER_NAME",
-            self.alloc_string_handle(b"localhost"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"SERVER_SOFTWARE",
-            self.alloc_string_handle(b"php-vm"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"SERVER_ADDR",
-            self.alloc_string_handle(b"127.0.0.1"),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"REMOTE_ADDR",
-            self.alloc_string_handle(b"127.0.0.1"),
-        );
+
+        let mut insert_str = |vm: &mut Self, data: &mut ArrayData, key: &[u8], val: &[u8]| {
+            let handle = vm.alloc_string_handle(val);
+            Self::insert_array_value(data, key, handle);
+        };
+
+        insert_str(self, &mut data, b"SERVER_PROTOCOL", b"HTTP/1.1");
+        insert_str(self, &mut data, b"REQUEST_METHOD", b"GET");
+        insert_str(self, &mut data, b"HTTP_HOST", b"localhost");
+        insert_str(self, &mut data, b"SERVER_NAME", b"localhost");
+        insert_str(self, &mut data, b"SERVER_SOFTWARE", b"php-vm");
+        insert_str(self, &mut data, b"SERVER_ADDR", b"127.0.0.1");
+        insert_str(self, &mut data, b"REMOTE_ADDR", b"127.0.0.1");
+        
         Self::insert_array_value(&mut data, b"REMOTE_PORT", self.arena.alloc(Val::Int(0)));
         Self::insert_array_value(&mut data, b"SERVER_PORT", self.arena.alloc(Val::Int(80)));
-        Self::insert_array_value(
-            &mut data,
-            b"REQUEST_SCHEME",
-            self.alloc_string_handle(b"http"),
-        );
-        Self::insert_array_value(&mut data, b"HTTPS", self.alloc_string_handle(b"off"));
-        Self::insert_array_value(&mut data, b"QUERY_STRING", self.alloc_string_handle(b""));
-        Self::insert_array_value(&mut data, b"REQUEST_URI", self.alloc_string_handle(b"/"));
-        Self::insert_array_value(&mut data, b"PATH_INFO", self.alloc_string_handle(b""));
-        Self::insert_array_value(&mut data, b"ORIG_PATH_INFO", self.alloc_string_handle(b""));
+        
+        insert_str(self, &mut data, b"REQUEST_SCHEME", b"http");
+        insert_str(self, &mut data, b"HTTPS", b"off");
+        insert_str(self, &mut data, b"QUERY_STRING", b"");
+        insert_str(self, &mut data, b"REQUEST_URI", b"/");
+        insert_str(self, &mut data, b"PATH_INFO", b"");
+        insert_str(self, &mut data, b"ORIG_PATH_INFO", b"");
 
         let document_root = std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())
@@ -324,32 +300,17 @@ impl VM {
             format!("{}/{}", normalized_root, script_basename)
         };
 
-        Self::insert_array_value(
-            &mut data,
-            b"DOCUMENT_ROOT",
-            self.alloc_string_handle(document_root.as_bytes()),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"SCRIPT_NAME",
-            self.alloc_string_handle(script_name.as_bytes()),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"PHP_SELF",
-            self.alloc_string_handle(script_name.as_bytes()),
-        );
-        Self::insert_array_value(
-            &mut data,
-            b"SCRIPT_FILENAME",
-            self.alloc_string_handle(script_filename.as_bytes()),
-        );
+        insert_str(self, &mut data, b"DOCUMENT_ROOT", document_root.as_bytes());
+        insert_str(self, &mut data, b"SCRIPT_NAME", script_name.as_bytes());
+        insert_str(self, &mut data, b"PHP_SELF", script_name.as_bytes());
+        insert_str(self, &mut data, b"SCRIPT_FILENAME", script_filename.as_bytes());
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
         let request_time = now.as_secs() as i64;
         let request_time_float = now.as_secs_f64();
+        
         Self::insert_array_value(
             &mut data,
             b"REQUEST_TIME",
@@ -9461,7 +9422,7 @@ impl VM {
         self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwXor)
     }
 
-    fn bitwise_shl(&mut self) -> Result<(), VmError> {
+    fn binary_shift(&mut self, is_shr: bool) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
         let a_val = &self.arena.get(a_handle).value;
@@ -9471,9 +9432,17 @@ impl VM {
         let value = a_val.to_int();
         
         let result = if shift_amount < 0 || shift_amount >= 64 {
-            Val::Int(0)
+            if is_shr {
+                Val::Int(value >> 63)
+            } else {
+                Val::Int(0)
+            }
         } else {
-            Val::Int(value.wrapping_shl(shift_amount as u32))
+            if is_shr {
+                Val::Int(value.wrapping_shr(shift_amount as u32))
+            } else {
+                Val::Int(value.wrapping_shl(shift_amount as u32))
+            }
         };
         
         let res_handle = self.arena.alloc(result);
@@ -9481,24 +9450,12 @@ impl VM {
         Ok(())
     }
 
-    fn bitwise_shr(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
+    fn bitwise_shl(&mut self) -> Result<(), VmError> {
+        self.binary_shift(false)
+    }
 
-        let shift_amount = b_val.to_int();
-        let value = a_val.to_int();
-        
-        let result = if shift_amount < 0 || shift_amount >= 64 {
-            Val::Int(if value < 0 { -1 } else { 0 })
-        } else {
-            Val::Int(value.wrapping_shr(shift_amount as u32))
-        };
-        
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+    fn bitwise_shr(&mut self) -> Result<(), VmError> {
+        self.binary_shift(true)
     }
 
     fn binary_cmp<F>(&mut self, op: F) -> Result<(), VmError>
