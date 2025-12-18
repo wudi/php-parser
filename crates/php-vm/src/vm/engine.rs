@@ -7,6 +7,7 @@ use crate::vm::frame::{
 };
 use crate::vm::opcode::OpCode;
 use crate::vm::stack::Stack;
+use crate::vm::error_formatting::MemberKind;
 use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -506,14 +507,14 @@ impl VM {
     }
 
     // Safe frame access helpers (no-panic guarantee)
-    #[inline]
+    #[inline(always)]
     fn current_frame(&self) -> Result<&CallFrame, VmError> {
         self.frames
             .last()
             .ok_or_else(|| VmError::RuntimeError("No active frame".into()))
     }
 
-    #[inline]
+    #[inline(always)]
     fn current_frame_mut(&mut self) -> Result<&mut CallFrame, VmError> {
         self.frames
             .last_mut()
@@ -527,13 +528,14 @@ impl VM {
             .ok_or_else(|| VmError::RuntimeError("Frame stack empty".into()))
     }
 
-    #[inline]
+    #[inline(always)]
     fn pop_operand(&mut self) -> Result<Handle, VmError> {
         self.operand_stack
             .pop()
             .ok_or_else(|| VmError::RuntimeError("Operand stack empty".into()))
     }
 
+    #[inline]
     fn push_frame(&mut self, mut frame: CallFrame) {
         if frame.stack_base.is_none() {
             frame.stack_base = Some(self.operand_stack.len());
@@ -821,7 +823,8 @@ impl VM {
 
     /// Extract class symbol from object handle
     /// Reference: $PHP_SRC_PATH/Zend/zend_object_handlers.c
-    fn extract_object_class(&self, obj_handle: Handle) -> Result<Symbol, VmError> {
+    #[inline]
+    pub(crate) fn extract_object_class(&self, obj_handle: Handle) -> Result<Symbol, VmError> {
         let obj_val = &self.arena.get(obj_handle).value;
         match obj_val {
             Val::Object(payload_handle) => {
@@ -837,7 +840,7 @@ impl VM {
 
     /// Execute a user-defined method with given arguments
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_call_function
-    fn invoke_user_method(
+    pub(crate) fn invoke_user_method(
         &mut self,
         this_handle: Handle,
         func: Rc<UserFunc>,
@@ -857,72 +860,6 @@ impl VM {
         // Execute until this frame completes
         let target_depth = self.frames.len() - 1;
         self.run_loop(target_depth)
-    }
-
-    /// Generic ArrayAccess method invoker
-    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - array access handlers
-    fn call_array_access_method(
-        &mut self,
-        obj_handle: Handle,
-        method_name: &[u8],
-        args: Vec<Handle>,
-    ) -> Result<Option<Handle>, VmError> {
-        let method_sym = self.context.interner.intern(method_name);
-        let class_name = self.extract_object_class(obj_handle)?;
-        
-        let (user_func, _, _, defined_class) = self.find_method(class_name, method_sym)
-            .ok_or_else(|| VmError::RuntimeError(
-                format!("ArrayAccess::{} not found", String::from_utf8_lossy(method_name))
-            ))?;
-        
-        self.invoke_user_method(obj_handle, user_func, args, defined_class, class_name)?;
-        Ok(self.last_return_value.take())
-    }
-
-    /// Call ArrayAccess::offsetExists($offset)
-    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_call_method
-    fn call_array_access_offset_exists(
-        &mut self,
-        obj_handle: Handle,
-        offset_handle: Handle,
-    ) -> Result<bool, VmError> {
-        let result = self.call_array_access_method(obj_handle, b"offsetExists", vec![offset_handle])?
-            .unwrap_or_else(|| self.arena.alloc(Val::Null));
-        Ok(self.arena.get(result).value.to_bool())
-    }
-
-    /// Call ArrayAccess::offsetGet($offset)
-    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
-    fn call_array_access_offset_get(
-        &mut self,
-        obj_handle: Handle,
-        offset_handle: Handle,
-    ) -> Result<Handle, VmError> {
-        self.call_array_access_method(obj_handle, b"offsetGet", vec![offset_handle])?
-            .ok_or_else(|| VmError::RuntimeError("offsetGet returned void".into()))
-    }
-
-    /// Call ArrayAccess::offsetSet($offset, $value)
-    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
-    fn call_array_access_offset_set(
-        &mut self,
-        obj_handle: Handle,
-        offset_handle: Handle,
-        value_handle: Handle,
-    ) -> Result<(), VmError> {
-        self.call_array_access_method(obj_handle, b"offsetSet", vec![offset_handle, value_handle])?;
-        Ok(())
-    }
-
-    /// Call ArrayAccess::offsetUnset($offset)
-    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
-    fn call_array_access_offset_unset(
-        &mut self,
-        obj_handle: Handle,
-        offset_handle: Handle,
-    ) -> Result<(), VmError> {
-        self.call_array_access_method(obj_handle, b"offsetUnset", vec![offset_handle])?;
-        Ok(())
     }
 
     fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
@@ -1086,19 +1023,10 @@ impl VM {
     }
 }
 
-/// Member kind for visibility checking
-/// Reference: $PHP_SRC_PATH/Zend/zend_compile.c
-#[derive(Debug, Clone, Copy)]
-enum MemberKind {
-    Constant,
-    Method,
-    Property,
-}
-
 impl VM {
     /// Unified visibility check following Zend rules
     /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - zend_check_visibility
-    #[inline]
+    #[inline(always)]
     fn is_visible_from(
         &self,
         defining_class: Symbol,
@@ -1156,25 +1084,8 @@ impl VM {
         member_kind: MemberKind,
         member_name: Option<Symbol>,
     ) -> Result<(), VmError> {
-        let class_str = self.symbol_to_string(defining_class);
-        let member_str = self.optional_symbol_to_string(member_name, "unknown");
-
-        let vis_str = match visibility {
-            Visibility::Private => "private",
-            Visibility::Protected => "protected",
-            Visibility::Public => unreachable!(),
-        };
-
-        let (kind_str, separator) = match member_kind {
-            MemberKind::Constant => ("constant", "::"),
-            MemberKind::Method => ("method", "::"),
-            MemberKind::Property => ("property", "::$"),
-        };
-
-        Err(VmError::RuntimeError(format!(
-            "Cannot access {} {} {}{}{}",
-            vis_str, kind_str, class_str, separator, member_str
-        )))
+        let message = self.format_visibility_error(defining_class, visibility, member_kind, member_name);
+        Err(VmError::RuntimeError(message))
     }
 
     fn check_const_visibility(
@@ -1205,25 +1116,6 @@ impl VM {
 
     pub(crate) fn get_current_class(&self) -> Option<Symbol> {
         self.frames.last().and_then(|f| f.class_scope)
-    }
-
-    /// Get human-readable string for a symbol (for error messages)
-    /// Reference: $PHP_SRC_PATH/Zend/zend_string.h - ZSTR_VAL
-    #[inline]
-    fn symbol_to_string(&self, sym: Symbol) -> String {
-        self.context
-            .interner
-            .lookup(sym)
-            .map(|b| String::from_utf8_lossy(b).into_owned())
-            .unwrap_or_else(|| "Unknown".to_string())
-    }
-
-    /// Get human-readable string for an optional symbol
-    #[inline]
-    fn optional_symbol_to_string(&self, sym: Option<Symbol>, default: &str) -> String {
-        sym.and_then(|s| self.context.interner.lookup(s))
-            .map(|b| String::from_utf8_lossy(b).into_owned())
-            .unwrap_or_else(|| default.to_string())
     }
 
     /// Create and push a method frame
@@ -1912,46 +1804,6 @@ impl VM {
         }
     }
 
-    fn describe_handle(&self, handle: Handle) -> String {
-        let val = self.arena.get(handle);
-        match &val.value {
-            Val::Null => "null".into(),
-            Val::Bool(b) => format!("bool({})", b),
-            Val::Int(i) => format!("int({})", i),
-            Val::Float(f) => format!("float({})", f),
-            Val::String(s) => {
-                let preview = String::from_utf8_lossy(&s[..s.len().min(32)])
-                    .replace('\n', "\\n")
-                    .replace('\r', "\\r");
-                format!(
-                    "string(len={}, \"{}{}\")",
-                    s.len(),
-                    preview,
-                    if s.len() > 32 { "…" } else { "" }
-                )
-            }
-            Val::Array(_) => "array".into(),
-            Val::Object(_) => "object".into(),
-            Val::ObjPayload(_) => "object(payload)".into(),
-            Val::Resource(_) => "resource".into(),
-            Val::AppendPlaceholder => "append-placeholder".into(),
-        }
-    }
-
-    fn describe_object_class(&self, payload_handle: Handle) -> String {
-        if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
-            String::from_utf8_lossy(
-                self.context
-                    .interner
-                    .lookup(obj_data.class)
-                    .unwrap_or(b"<unknown>"),
-            )
-            .into_owned()
-        } else {
-            "<unknown>".into()
-        }
-    }
-
     fn handle_return(&mut self, force_by_ref: bool, target_depth: usize) -> Result<(), VmError> {
         let frame_base = {
             let frame = self.current_frame()?;
@@ -2125,16 +1977,17 @@ impl VM {
 
     fn bitwise_not(&mut self) -> Result<(), VmError> {
         let handle = self.pop_operand()?;
-        let val = self.arena.get(handle).value.clone();
-        let res = match val {
+        // Match on reference to avoid cloning unless necessary
+        let res = match &self.arena.get(handle).value {
             Val::Int(i) => Val::Int(!i),
             Val::String(s) => {
-                // Bitwise NOT on strings flips each byte
+                // Bitwise NOT on strings flips each byte - only clone bytes, not Rc
                 let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
                 Val::String(Rc::new(inverted))
             }
             _ => {
-                let i = val.to_int();
+                // Type juggling - access value again for to_int()
+                let i = self.arena.get(handle).value.to_int();
                 Val::Int(!i)
             }
         };
@@ -2172,6 +2025,7 @@ impl VM {
         Ok(())
     }
 
+    #[inline]
     fn set_ip(&mut self, target: usize) -> Result<(), VmError> {
         let frame = self.current_frame_mut()?;
         frame.ip = target;
@@ -4214,32 +4068,19 @@ impl VM {
                     }
                 };
 
-                let mut next_key = dest_map
-                    .map
-                    .keys()
-                    .filter_map(|k| {
-                        if let ArrayKey::Int(i) = k {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    })
-                    .max()
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
+                // Get the starting next_key from ArrayData (O(1))
+                let mut next_key = dest_map.next_index();
 
                 for (key, val_handle) in src_map.map.iter() {
                     match key {
                         ArrayKey::Int(_) => {
-                            Rc::make_mut(dest_map)
-                                .map
-                                .insert(ArrayKey::Int(next_key), *val_handle);
+                            // Reindex numeric keys using ArrayData::insert (maintains next_free)
+                            Rc::make_mut(dest_map).insert(ArrayKey::Int(next_key), *val_handle);
                             next_key += 1;
                         }
                         ArrayKey::Str(s) => {
-                            Rc::make_mut(dest_map)
-                                .map
-                                .insert(ArrayKey::Str(s.clone()), *val_handle);
+                            // Preserve string keys
+                            Rc::make_mut(dest_map).insert(ArrayKey::Str(s.clone()), *val_handle);
                         }
                     }
                 }
@@ -9580,32 +9421,8 @@ impl VM {
         Ok(())
     }
 
-    /// Compute the next auto-increment array index
+    /// Note: Array append now uses O(1) ArrayData::push() instead of O(n) index computation
     /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
-    ///
-    /// OPTIMIZATION NOTE: This is O(n) on every append. PHP tracks this in the HashTable struct
-    /// as `nNextFreeElement`. To match PHP performance, we would need to add metadata to Val::Array,
-    /// tracking the next auto-index and updating it on insert/delete. For now, we scan all integer
-    /// keys to find the max.
-    ///
-    /// TODO: Consider adding ArrayMeta { next_free: i64, .. } wrapper around IndexMap
-    fn compute_next_array_index(map: &indexmap::IndexMap<ArrayKey, Handle>) -> i64 {
-        map.keys()
-            .filter_map(|k| match k {
-                ArrayKey::Int(i) => Some(*i),
-                // PHP also considers numeric string keys when computing next index
-                ArrayKey::Str(s) => {
-                    if let Ok(s_str) = std::str::from_utf8(s) {
-                        s_str.parse::<i64>().ok()
-                    } else {
-                        None
-                    }
-                }
-            })
-            .max()
-            .map(|i| i + 1)
-            .unwrap_or(0)
-    }
 
     fn append_array(&mut self, array_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
         let is_ref = self.arena.get(array_handle).is_ref;
@@ -9618,10 +9435,8 @@ impl VM {
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
-                let map_mut = &mut Rc::make_mut(map).map;
-                let next_key = Self::compute_next_array_index(&map_mut);
-
-                map_mut.insert(ArrayKey::Int(next_key), val_handle);
+                // Use O(1) push method instead of O(n) index computation
+                Rc::make_mut(map).push(val_handle);
             } else {
                 return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -9635,10 +9450,8 @@ impl VM {
             }
 
             if let Val::Array(ref mut map) = new_val {
-                let map_mut = &mut Rc::make_mut(map).map;
-                let next_key = Self::compute_next_array_index(&map_mut);
-
-                map_mut.insert(ArrayKey::Int(next_key), val_handle);
+                // Use O(1) push method instead of O(n) index computation
+                Rc::make_mut(map).push(val_handle);
             } else {
                 return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -9844,11 +9657,10 @@ impl VM {
             let key = if let Some(k) = key {
                 k
             } else {
-                // Compute next auto-index
+                // Compute next auto-index using O(1) next_index()
                 let current_zval = self.arena.get(current_handle);
                 if let Val::Array(map) = &current_zval.value {
-                    let next_key = Self::compute_next_array_index(&map.map);
-                    ArrayKey::Int(next_key)
+                    ArrayKey::Int(map.next_index())
                 } else {
                     return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
                 }
@@ -9931,12 +9743,12 @@ impl VM {
         }
 
         if let Val::Array(ref mut map) = new_val {
-            let map_mut = &mut Rc::make_mut(map).map;
+            let map_mut = Rc::make_mut(map);
             // Resolve key
             let key_val = &self.arena.get(key_handle).value;
             let key = if let Val::AppendPlaceholder = key_val {
-                let next_key = Self::compute_next_array_index(&map_mut);
-                ArrayKey::Int(next_key)
+                // Use O(1) next_index() instead of O(n) computation
+                ArrayKey::Int(map_mut.next_index())
             } else {
                 self.array_key_from_value(key_val)?
             };
@@ -9944,7 +9756,7 @@ impl VM {
             if remaining_keys.is_empty() {
                 // We are at the last key.
                 let mut updated_ref = false;
-                if let Some(existing_handle) = map_mut.get(&key) {
+                if let Some(existing_handle) = map_mut.map.get(&key) {
                     if self.arena.get(*existing_handle).is_ref {
                         // Update Ref value
                         let new_val = self.arena.get(val_handle).value.clone();
@@ -9958,7 +9770,7 @@ impl VM {
                 }
             } else {
                 // We need to go deeper.
-                let next_handle = if let Some(h) = map_mut.get(&key) {
+                let next_handle = if let Some(h) = map_mut.map.get(&key) {
                     *h
                 } else {
                     // Create empty array
@@ -9978,6 +9790,7 @@ impl VM {
         Ok(new_handle)
     }
 
+    #[inline]
     fn array_key_from_value(&self, value: &Val) -> Result<ArrayKey, VmError> {
         match value {
             Val::Int(i) => Ok(ArrayKey::Int(*i)),
@@ -10214,30 +10027,6 @@ impl VM {
         }
         
         false
-    }
-
-    fn get_type_name(&self, val_handle: Handle) -> String {
-        let val = &self.arena.get(val_handle).value;
-        match val {
-            Val::Null => "null".to_string(),
-            Val::Bool(_) => "bool".to_string(),
-            Val::Int(_) => "int".to_string(),
-            Val::Float(_) => "float".to_string(),
-            Val::String(_) => "string".to_string(),
-            Val::Array(_) => "array".to_string(),
-            Val::Object(payload_handle) => {
-                if let Val::ObjPayload(obj_data) = &self.arena.get(*payload_handle).value {
-                    self.context.interner.lookup(obj_data.class)
-                        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
-                        .unwrap_or_else(|| "object".to_string())
-                } else {
-                    "object".to_string()
-                }
-            }
-            Val::Resource(_) => "resource".to_string(),
-            Val::ObjPayload(_) => "object".to_string(),
-            Val::AppendPlaceholder => "unknown".to_string(),
-        }
     }
 
     /// Convert a ReturnType to a human-readable string
