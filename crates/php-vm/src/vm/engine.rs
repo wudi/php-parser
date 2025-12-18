@@ -1082,17 +1082,7 @@ impl VM {
         visibility: Visibility,
         caller_scope: Option<Symbol>,
     ) -> bool {
-        match visibility {
-            Visibility::Public => true,
-            Visibility::Private => caller_scope == Some(defining_class),
-            Visibility::Protected => {
-                if let Some(scope) = caller_scope {
-                    scope == defining_class || self.is_subclass_of(scope, defining_class)
-                } else {
-                    false
-                }
-            }
-        }
+        self.is_visible_from(defining_class, visibility, caller_scope)
     }
 }
 
@@ -1106,6 +1096,25 @@ enum MemberKind {
 }
 
 impl VM {
+    /// Unified visibility check following Zend rules
+    /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - zend_check_visibility
+    #[inline]
+    fn is_visible_from(
+        &self,
+        defining_class: Symbol,
+        visibility: Visibility,
+        caller_scope: Option<Symbol>,
+    ) -> bool {
+        match visibility {
+            Visibility::Public => true,
+            Visibility::Private => caller_scope == Some(defining_class),
+            Visibility::Protected => {
+                caller_scope.map_or(false, |scope| {
+                    scope == defining_class || self.is_subclass_of(scope, defining_class)
+                })
+            }
+        }
+    }
     /// Unified visibility checker for class members
     /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - visibility rules
     fn check_member_visibility(
@@ -1147,17 +1156,8 @@ impl VM {
         member_kind: MemberKind,
         member_name: Option<Symbol>,
     ) -> Result<(), VmError> {
-        let class_str = self
-            .context
-            .interner
-            .lookup(defining_class)
-            .map(|b| String::from_utf8_lossy(b).to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        let member_str = member_name
-            .and_then(|s| self.context.interner.lookup(s))
-            .map(|b| String::from_utf8_lossy(b).to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let class_str = self.symbol_to_string(defining_class);
+        let member_str = self.optional_symbol_to_string(member_name, "unknown");
 
         let vis_str = match visibility {
             Visibility::Private => "private",
@@ -1200,21 +1200,76 @@ impl VM {
         visibility: Visibility,
         caller_scope: Option<Symbol>,
     ) -> bool {
-        match visibility {
-            Visibility::Public => true,
-            Visibility::Private => caller_scope == Some(defining_class),
-            Visibility::Protected => {
-                if let Some(scope) = caller_scope {
-                    scope == defining_class || self.is_subclass_of(scope, defining_class)
-                } else {
-                    false
-                }
-            }
-        }
+        self.is_visible_from(defining_class, visibility, caller_scope)
     }
 
     pub(crate) fn get_current_class(&self) -> Option<Symbol> {
         self.frames.last().and_then(|f| f.class_scope)
+    }
+
+    /// Get human-readable string for a symbol (for error messages)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_string.h - ZSTR_VAL
+    #[inline]
+    fn symbol_to_string(&self, sym: Symbol) -> String {
+        self.context
+            .interner
+            .lookup(sym)
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_else(|| "Unknown".to_string())
+    }
+
+    /// Get human-readable string for an optional symbol
+    #[inline]
+    fn optional_symbol_to_string(&self, sym: Option<Symbol>, default: &str) -> String {
+        sym.and_then(|s| self.context.interner.lookup(s))
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_else(|| default.to_string())
+    }
+
+    /// Create and push a method frame
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_execute_data initialization
+    #[inline]
+    fn push_method_frame(
+        &mut self,
+        func: Rc<UserFunc>,
+        this: Option<Handle>,
+        class_scope: Symbol,
+        called_scope: Symbol,
+        args: ArgList,
+    ) {
+        let mut frame = CallFrame::new(func.chunk.clone());
+        frame.func = Some(func);
+        frame.this = this;
+        frame.class_scope = Some(class_scope);
+        frame.called_scope = Some(called_scope);
+        frame.args = args;
+        self.push_frame(frame);
+    }
+
+    /// Create and push a function frame (no class scope)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
+    #[inline]
+    fn push_function_frame(&mut self, func: Rc<UserFunc>, args: ArgList) {
+        let mut frame = CallFrame::new(func.chunk.clone());
+        frame.func = Some(func);
+        frame.args = args;
+        self.push_frame(frame);
+    }
+
+    /// Create and push a closure frame with captures
+    /// Reference: $PHP_SRC_PATH/Zend/zend_closures.c
+    #[inline]
+    fn push_closure_frame(&mut self, closure: &ClosureData, args: ArgList) {
+        let mut frame = CallFrame::new(closure.func.chunk.clone());
+        frame.func = Some(closure.func.clone());
+        frame.args = args;
+        frame.this = closure.this;
+        
+        for (sym, handle) in &closure.captures {
+            frame.locals.insert(*sym, *handle);
+        }
+        
+        self.push_frame(frame);
     }
 
     /// Check if a class allows dynamic properties
@@ -1636,16 +1691,7 @@ impl VM {
                 if let Val::ObjPayload(obj_data) = &payload_val.value {
                     if let Some(internal) = &obj_data.internal {
                         if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
-                            let mut frame = CallFrame::new(closure.func.chunk.clone());
-                            frame.func = Some(closure.func.clone());
-                            frame.args = args;
-
-                            for (sym, handle) in &closure.captures {
-                                frame.locals.insert(*sym, *handle);
-                            }
-
-                            frame.this = closure.this;
-                            self.push_frame(frame);
+                            self.push_closure_frame(&closure, args);
                             return Ok(());
                         }
                     }
@@ -1655,15 +1701,7 @@ impl VM {
                         self.find_method(obj_data.class, invoke_sym)
                     {
                         self.check_method_visibility(defining_class, visibility, Some(invoke_sym))?;
-
-                        let mut frame = CallFrame::new(method.chunk.clone());
-                        frame.func = Some(method.clone());
-                        frame.this = Some(callable_handle);
-                        frame.class_scope = Some(defining_class);
-                        frame.called_scope = Some(obj_data.class);
-                        frame.args = args;
-
-                        self.push_frame(frame);
+                        self.push_method_frame(method, Some(callable_handle), defining_class, obj_data.class, args);
                         Ok(())
                     } else {
                         Err(VmError::RuntimeError(
@@ -1709,17 +1747,8 @@ impl VM {
                                 Some(method_sym),
                             )?;
 
-                            let mut frame = CallFrame::new(method.chunk.clone());
-                            frame.func = Some(method.clone());
-                            frame.class_scope = Some(defining_class);
-                            frame.called_scope = Some(class_sym);
-                            frame.args = args;
-
-                            if !is_static {
-                                // Allow but do not provide $this; PHP would emit a notice.
-                            }
-
-                            self.push_frame(frame);
+                            // Static method call: no $this
+                            self.push_method_frame(method, None, defining_class, class_sym, args);
                             Ok(())
                         } else {
                             let class_str = String::from_utf8_lossy(class_name_bytes);
@@ -1742,14 +1771,7 @@ impl VM {
                                     Some(method_sym),
                                 )?;
 
-                                let mut frame = CallFrame::new(method.chunk.clone());
-                                frame.func = Some(method.clone());
-                                frame.this = Some(class_or_obj);
-                                frame.class_scope = Some(defining_class);
-                                frame.called_scope = Some(obj_data.class);
-                                frame.args = args;
-
-                                self.push_frame(frame);
+                                self.push_method_frame(method, Some(class_or_obj), defining_class, obj_data.class, args);
                                 Ok(())
                             } else {
                                 let class_str = String::from_utf8_lossy(
@@ -2033,14 +2055,15 @@ impl VM {
     }
 
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
-        let mut instruction_count = 0u64;
         const TIMEOUT_CHECK_INTERVAL: u64 = 1000; // Check every 1000 instructions
+        let mut instructions_until_timeout_check = TIMEOUT_CHECK_INTERVAL;
         
         while self.frames.len() > target_depth {
-            // Periodically check execution timeout
-            instruction_count += 1;
-            if instruction_count % TIMEOUT_CHECK_INTERVAL == 0 {
+            // Periodically check execution timeout (countdown is faster than modulo)
+            instructions_until_timeout_check -= 1;
+            if instructions_until_timeout_check == 0 {
                 self.check_execution_timeout()?;
+                instructions_until_timeout_check = TIMEOUT_CHECK_INTERVAL;
             }
 
             let op = {
