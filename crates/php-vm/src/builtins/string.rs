@@ -805,10 +805,12 @@ pub fn php_str_replace(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             let subject_str = String::from_utf8_lossy(&subject);
             let search_str = String::from_utf8_lossy(&search);
             let replace_str = String::from_utf8_lossy(&replace);
-            
+
             let result = subject_str.replace(&*search_str, &*replace_str);
 
-            Ok(vm.arena.alloc(Val::String(std::rc::Rc::new(result.into_bytes()))))
+            Ok(vm
+                .arena
+                .alloc(Val::String(std::rc::Rc::new(result.into_bytes()))))
         }
         Val::Array(arr) => {
             // Apply str_replace to each element
@@ -820,13 +822,16 @@ pub fn php_str_replace(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                     let search_str = String::from_utf8_lossy(&search);
                     let replace_str = String::from_utf8_lossy(&replace);
                     let result = subject_str.replace(&*search_str, &*replace_str);
-                    vm.arena.alloc(Val::String(std::rc::Rc::new(result.into_bytes())))
+                    vm.arena
+                        .alloc(Val::String(std::rc::Rc::new(result.into_bytes())))
                 } else {
                     *val_handle
                 };
                 result_map.insert(key.clone(), new_val);
             }
-            Ok(vm.arena.alloc(Val::Array(std::rc::Rc::new(crate::core::value::ArrayData::from(result_map)))))
+            Ok(vm.arena.alloc(Val::Array(std::rc::Rc::new(
+                crate::core::value::ArrayData::from(result_map),
+            ))))
         }
         _ => Ok(subject_handle), // Return unchanged for other types
     }

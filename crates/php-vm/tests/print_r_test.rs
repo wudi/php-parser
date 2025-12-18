@@ -24,10 +24,10 @@ impl OutputWriter for BufferWriter {
 fn php_out(code: &str) -> String {
     let engine = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine);
-    
+
     let buffer = Rc::new(RefCell::new(Vec::new()));
     vm.set_output_writer(Box::new(BufferWriter::new(buffer.clone())));
-    
+
     let source = format!("<?php\n{}", code);
 
     let arena = bumpalo::Bump::new();

@@ -1,6 +1,5 @@
 /// Increment/Decrement operations for PHP values
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_function/decrement_function
-
 use crate::core::value::Val;
 use crate::vm::engine::{ErrorHandler, ErrorLevel, VmError};
 use std::rc::Rc;
@@ -106,7 +105,7 @@ fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
     // Try parsing as numeric
     if let Ok(s_str) = std::str::from_utf8(&s) {
         let trimmed = s_str.trim();
-        
+
         // Try as integer
         if let Ok(i) = trimmed.parse::<i64>() {
             if i == i64::MAX {
@@ -115,7 +114,7 @@ fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
                 return Ok(Val::Int(i + 1));
             }
         }
-        
+
         // Try as float
         if let Ok(f) = trimmed.parse::<f64>() {
             return Ok(Val::Float(f + 1.0));
@@ -129,15 +128,15 @@ fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
         ErrorLevel::Deprecated,
         "Increment on non-numeric string is deprecated, use str_increment() instead",
     );
-    
+
     let mut result = (*s).clone();
-    
+
     // Find the last alphanumeric character
     let mut pos = result.len();
     while pos > 0 {
         pos -= 1;
         let ch = result[pos];
-        
+
         // Check if alphanumeric
         if (ch >= b'0' && ch <= b'9') || (ch >= b'a' && ch <= b'z') || (ch >= b'A' && ch <= b'Z') {
             // Increment this character
@@ -160,7 +159,7 @@ fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
                 result[pos] = ch + 1;
                 return Ok(Val::String(Rc::new(result)));
             }
-            
+
             // If we got here, we need to carry
             if pos == 0 {
                 // Need to prepend
@@ -178,7 +177,7 @@ fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
             break;
         }
     }
-    
+
     // If we reach here and pos was decremented to 0, we've carried all the way
     // This should have been handled above, but as a fallback:
     Ok(Val::String(Rc::new(result)))
@@ -199,7 +198,7 @@ fn decrement_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
     // Try parsing as numeric
     if let Ok(s_str) = std::str::from_utf8(&s) {
         let trimmed = s_str.trim();
-        
+
         // Try as integer
         if let Ok(i) = trimmed.parse::<i64>() {
             if i == i64::MIN {
@@ -208,7 +207,7 @@ fn decrement_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Res
                 return Ok(Val::Int(i - 1));
             }
         }
-        
+
         // Try as float
         if let Ok(f) = trimmed.parse::<f64>() {
             return Ok(Val::Float(f - 1.0));
@@ -251,9 +250,18 @@ mod tests {
     #[test]
     fn test_increment_int() {
         let mut handler = MockErrorHandler::new();
-        assert_eq!(increment_value(Val::Int(5), &mut handler).unwrap(), Val::Int(6));
-        assert_eq!(increment_value(Val::Int(0), &mut handler).unwrap(), Val::Int(1));
-        assert_eq!(increment_value(Val::Int(-1), &mut handler).unwrap(), Val::Int(0));
+        assert_eq!(
+            increment_value(Val::Int(5), &mut handler).unwrap(),
+            Val::Int(6)
+        );
+        assert_eq!(
+            increment_value(Val::Int(0), &mut handler).unwrap(),
+            Val::Int(1)
+        );
+        assert_eq!(
+            increment_value(Val::Int(-1), &mut handler).unwrap(),
+            Val::Int(0)
+        );
     }
 
     #[test]
@@ -269,13 +277,19 @@ mod tests {
     #[test]
     fn test_increment_float() {
         let mut handler = MockErrorHandler::new();
-        assert_eq!(increment_value(Val::Float(5.5), &mut handler).unwrap(), Val::Float(6.5));
+        assert_eq!(
+            increment_value(Val::Float(5.5), &mut handler).unwrap(),
+            Val::Float(6.5)
+        );
     }
 
     #[test]
     fn test_increment_null() {
         let mut handler = MockErrorHandler::new();
-        assert_eq!(increment_value(Val::Null, &mut handler).unwrap(), Val::Int(1));
+        assert_eq!(
+            increment_value(Val::Null, &mut handler).unwrap(),
+            Val::Int(1)
+        );
     }
 
     #[test]
@@ -326,8 +340,14 @@ mod tests {
     #[test]
     fn test_decrement_int() {
         let mut handler = MockErrorHandler::new();
-        assert_eq!(decrement_value(Val::Int(5), &mut handler).unwrap(), Val::Int(4));
-        assert_eq!(decrement_value(Val::Int(0), &mut handler).unwrap(), Val::Int(-1));
+        assert_eq!(
+            decrement_value(Val::Int(5), &mut handler).unwrap(),
+            Val::Int(4)
+        );
+        assert_eq!(
+            decrement_value(Val::Int(0), &mut handler).unwrap(),
+            Val::Int(-1)
+        );
     }
 
     #[test]

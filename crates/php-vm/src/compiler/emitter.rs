@@ -449,7 +449,10 @@ impl<'src> Emitter<'src> {
                                     self.chunk.code.push(OpCode::UnsetDim);
                                     self.chunk.code.push(OpCode::StoreVar(sym));
                                 }
-                            } else if let Expr::PropertyFetch { target, property, .. } = array {
+                            } else if let Expr::PropertyFetch {
+                                target, property, ..
+                            } = array
+                            {
                                 // Object property case: $obj->prop['key']
                                 // We need: [obj, prop_name, key] for a hypothetical UnsetObjDim
                                 // OR: fetch prop, unset dim, assign back
@@ -464,10 +467,10 @@ impl<'src> Emitter<'src> {
                                 // 8. swap -> [array, obj]
                                 // 9. emit prop name again
                                 // 10. assign prop
-                                
-                                self.emit_expr(target);  // [obj]
-                                self.chunk.code.push(OpCode::Dup);  // [obj, obj]
-                                
+
+                                self.emit_expr(target); // [obj]
+                                self.chunk.code.push(OpCode::Dup); // [obj, obj]
+
                                 // Get property name symbol
                                 let prop_sym = if let Expr::Variable { span, .. } = property {
                                     let name = self.get_text(*span);
@@ -475,20 +478,20 @@ impl<'src> Emitter<'src> {
                                 } else {
                                     return; // Can't handle dynamic property names in unset yet
                                 };
-                                
-                                self.chunk.code.push(OpCode::FetchProp(prop_sym));  // [obj, array]
-                                self.chunk.code.push(OpCode::Dup);  // [obj, array, array]
+
+                                self.chunk.code.push(OpCode::FetchProp(prop_sym)); // [obj, array]
+                                self.chunk.code.push(OpCode::Dup); // [obj, array, array]
 
                                 if let Some(d) = dim {
-                                    self.emit_expr(d);  // [obj, array, array, key]
+                                    self.emit_expr(d); // [obj, array, array, key]
                                 } else {
                                     let idx = self.add_constant(Val::Null);
                                     self.chunk.code.push(OpCode::Const(idx as u16));
                                 }
 
-                                self.chunk.code.push(OpCode::UnsetDim);  // [obj, array] (array modified)
-                                self.chunk.code.push(OpCode::AssignProp(prop_sym));  // []
-                                self.chunk.code.push(OpCode::Pop);  // discard result
+                                self.chunk.code.push(OpCode::UnsetDim); // [obj, array] (array modified)
+                                self.chunk.code.push(OpCode::AssignProp(prop_sym)); // []
+                                self.chunk.code.push(OpCode::Pop); // discard result
                             }
                         }
                         Expr::PropertyFetch {
@@ -1107,10 +1110,10 @@ impl<'src> Emitter<'src> {
                 // Emit finally block if present
                 if let Some(finally_body) = finally {
                     let finally_start = self.chunk.code.len();
-                    
+
                     // Patch jump from try to finally
                     self.patch_jump(jump_from_try, finally_start);
-                    
+
                     // Patch all catch block jumps to finally
                     for idx in &catch_jumps {
                         self.patch_jump(*idx, finally_start);
@@ -1119,7 +1122,7 @@ impl<'src> Emitter<'src> {
                     for stmt in *finally_body {
                         self.emit_stmt(stmt);
                     }
-                    
+
                     // Finally falls through to end
                 } else {
                     // No finally - patch jumps directly to end
@@ -1320,7 +1323,7 @@ impl<'src> Emitter<'src> {
                         // For instanceof, the class name should be treated as a literal string,
                         // not a constant lookup. PHP allows bare identifiers like "instanceof Foo".
                         self.emit_expr(left);
-                        
+
                         // Special handling for bare class names
                         match right {
                             Expr::Variable { span, .. } => {
@@ -1342,7 +1345,7 @@ impl<'src> Emitter<'src> {
                                 self.emit_expr(right);
                             }
                         }
-                        
+
                         self.chunk.code.push(OpCode::InstanceOf);
                     }
                     _ => {
@@ -1503,11 +1506,14 @@ impl<'src> Emitter<'src> {
                                 self.emit_expr(target);
                                 // Property name (could be identifier or expression)
                                 let prop_name = self.get_text(property.span());
-                                let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                                let const_idx =
+                                    self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
                                 self.chunk.code.push(OpCode::Const(const_idx as u16));
                                 self.chunk.code.push(OpCode::PreIncObj);
                             }
-                            Expr::ClassConstFetch { class, constant, .. } => {
+                            Expr::ClassConstFetch {
+                                class, constant, ..
+                            } => {
                                 // ++Class::$property
                                 if self.emit_static_property_access(class, constant) {
                                     self.chunk.code.push(OpCode::PreIncStaticProp);
@@ -1536,11 +1542,14 @@ impl<'src> Emitter<'src> {
                                 // --$obj->prop
                                 self.emit_expr(target);
                                 let prop_name = self.get_text(property.span());
-                                let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
+                                let const_idx =
+                                    self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
                                 self.chunk.code.push(OpCode::Const(const_idx as u16));
                                 self.chunk.code.push(OpCode::PreDecObj);
                             }
-                            Expr::ClassConstFetch { class, constant, .. } => {
+                            Expr::ClassConstFetch {
+                                class, constant, ..
+                            } => {
                                 // --Class::$property
                                 if self.emit_static_property_access(class, constant) {
                                     self.chunk.code.push(OpCode::PreDecStaticProp);
@@ -1584,7 +1593,9 @@ impl<'src> Emitter<'src> {
                         self.chunk.code.push(OpCode::Const(const_idx as u16));
                         self.chunk.code.push(OpCode::PostIncObj);
                     }
-                    Expr::ClassConstFetch { class, constant, .. } => {
+                    Expr::ClassConstFetch {
+                        class, constant, ..
+                    } => {
                         // Class::$property++
                         if self.emit_static_property_access(class, constant) {
                             self.chunk.code.push(OpCode::PostIncStaticProp);
@@ -1618,7 +1629,9 @@ impl<'src> Emitter<'src> {
                         self.chunk.code.push(OpCode::Const(const_idx as u16));
                         self.chunk.code.push(OpCode::PostDecObj);
                     }
-                    Expr::ClassConstFetch { class, constant, .. } => {
+                    Expr::ClassConstFetch {
+                        class, constant, ..
+                    } => {
                         // Class::$property--
                         if self.emit_static_property_access(class, constant) {
                             self.chunk.code.push(OpCode::PostDecStaticProp);
@@ -2136,15 +2149,18 @@ impl<'src> Emitter<'src> {
                         let sym = self.interner.intern(name);
                         self.chunk.code.push(OpCode::FetchProp(sym));
                     } else {
-                         // Dynamic property fetch $this->$prop
-                         // We need to emit the property name expression (variable)
-                         // But here 'property' IS the variable expression.
-                         // We should emit it?
-                         // But emit_expr(property) would emit LoadVar($prop).
-                         // Then we need FetchPropDynamic.
-                         
-                         // For now, let's just debug print
-                         eprintln!("Property starts with $: {:?}", String::from_utf8_lossy(name));
+                        // Dynamic property fetch $this->$prop
+                        // We need to emit the property name expression (variable)
+                        // But here 'property' IS the variable expression.
+                        // We should emit it?
+                        // But emit_expr(property) would emit LoadVar($prop).
+                        // Then we need FetchPropDynamic.
+
+                        // For now, let's just debug print
+                        eprintln!(
+                            "Property starts with $: {:?}",
+                            String::from_utf8_lossy(name)
+                        );
                     }
                 } else {
                     eprintln!("Property is not Variable: {:?}", property);
@@ -2991,10 +3007,18 @@ impl<'src> Emitter<'src> {
     /// Emit constants for static property access (Class::$property)
     /// Returns true if successfully emitted, false if not a valid static property reference
     fn emit_static_property_access(&mut self, class: &Expr, constant: &Expr) -> bool {
-        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (class, constant) {
+        if let (
+            Expr::Variable {
+                name: class_span, ..
+            },
+            Expr::Variable {
+                name: prop_span, ..
+            },
+        ) = (class, constant)
+        {
             let class_name = self.get_text(*class_span);
             let prop_name = self.get_text(*prop_span);
-            
+
             // Valid static property: Class::$property (class name without $, property with $)
             if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
                 let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
@@ -3063,9 +3087,9 @@ impl<'src> Emitter<'src> {
                     Some(ReturnType::Intersection(converted))
                 }
             }
-            Type::Nullable(inner) => {
-                self.convert_type(inner).map(|t| ReturnType::Nullable(Box::new(t)))
-            }
+            Type::Nullable(inner) => self
+                .convert_type(inner)
+                .map(|t| ReturnType::Nullable(Box::new(t))),
         }
     }
 }

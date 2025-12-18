@@ -11,19 +11,23 @@ use std::rc::Rc;
 // Iterator interface methods (SPL)
 // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - zend_user_iterator
 pub fn iterator_current(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let this_handle = vm.frames.last()
+    let this_handle = vm
+        .frames
+        .last()
         .and_then(|f| f.this)
         .ok_or("Iterator::current() called outside object context")?;
-    
+
     // Default implementation returns null if not overridden
     Ok(vm.arena.alloc(Val::Null))
 }
 
 pub fn iterator_key(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let this_handle = vm.frames.last()
+    let this_handle = vm
+        .frames
+        .last()
         .and_then(|f| f.this)
         .ok_or("Iterator::key() called outside object context")?;
-    
+
     Ok(vm.arena.alloc(Val::Null))
 }
 
@@ -86,17 +90,19 @@ pub fn closure_bind(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Err("Closure::bind() expects at least 1 parameter".into());
     }
-    
+
     // Return the closure unchanged for now (full implementation would create new binding)
     Ok(args[0])
 }
 
 pub fn closure_bind_to(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // $closure->bindTo($newthis, $newscope = "static")
-    let this_handle = vm.frames.last()
+    let this_handle = vm
+        .frames
+        .last()
         .and_then(|f| f.this)
         .ok_or("Closure::bindTo() called outside object context")?;
-    
+
     // Return this unchanged for now
     Ok(this_handle)
 }
@@ -111,7 +117,7 @@ pub fn closure_from_callable(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     if args.is_empty() {
         return Err("Closure::fromCallable() expects exactly 1 parameter".into());
     }
-    
+
     // Would convert callable to Closure
     Ok(args[0])
 }
@@ -217,12 +223,12 @@ pub fn weak_reference_create(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     if args.is_empty() {
         return Err("WeakReference::create() expects exactly 1 parameter".into());
     }
-    
+
     let val = vm.arena.get(args[0]);
     if !matches!(val.value, Val::Object(_)) {
         return Err("WeakReference::create() expects parameter 1 to be object".into());
     }
-    
+
     // Would create a WeakReference object
     Ok(args[0])
 }
@@ -272,9 +278,9 @@ pub fn stringable_to_string(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Str
 // Reference: $PHP_SRC_PATH/Zend/zend_enum.c
 pub fn unit_enum_cases(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // Returns array of all enum cases
-    Ok(vm.arena.alloc(Val::Array(
-        crate::core::value::ArrayData::new().into(),
-    )))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(crate::core::value::ArrayData::new().into())))
 }
 
 // BackedEnum interface (PHP 8.1+)
@@ -290,35 +296,42 @@ pub fn backed_enum_try_from(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Str
 // Reference: $PHP_SRC_PATH/Zend/zend_attributes.c
 pub fn sensitive_parameter_value_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // SensitiveParameterValue::__construct($value)
-    let this_handle = vm.frames.last()
+    let this_handle = vm
+        .frames
+        .last()
         .and_then(|f| f.this)
         .ok_or("SensitiveParameterValue::__construct() called outside object context")?;
-    
+
     let value = if args.is_empty() {
         vm.arena.alloc(Val::Null)
     } else {
         args[0]
     };
-    
+
     let value_sym = vm.context.interner.intern(b"value");
-    
+
     if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
         let payload = vm.arena.get_mut(*payload_handle);
         if let Val::ObjPayload(ref mut obj_data) = payload.value {
             obj_data.properties.insert(value_sym, value);
         }
     }
-    
+
     Ok(vm.arena.alloc(Val::Null))
 }
 
-pub fn sensitive_parameter_value_get_value(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let this_handle = vm.frames.last()
+pub fn sensitive_parameter_value_get_value(
+    vm: &mut VM,
+    _args: &[Handle],
+) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
         .and_then(|f| f.this)
         .ok_or("SensitiveParameterValue::getValue() called outside object context")?;
-    
+
     let value_sym = vm.context.interner.intern(b"value");
-    
+
     if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
         if let Val::ObjPayload(obj_data) = &vm.arena.get(*payload_handle).value {
             if let Some(&val_handle) = obj_data.properties.get(&value_sym) {
@@ -326,17 +339,20 @@ pub fn sensitive_parameter_value_get_value(vm: &mut VM, _args: &[Handle]) -> Res
             }
         }
     }
-    
+
     Ok(vm.arena.alloc(Val::Null))
 }
 
-pub fn sensitive_parameter_value_debug_info(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn sensitive_parameter_value_debug_info(
+    vm: &mut VM,
+    _args: &[Handle],
+) -> Result<Handle, String> {
     // __debugInfo() returns array with redacted value
     let mut array = IndexMap::new();
     let key = ArrayKey::Str(Rc::new(b"value".to_vec()));
     let val = vm.arena.alloc(Val::String(Rc::new(b"[REDACTED]".to_vec())));
     array.insert(key, val);
-    
+
     Ok(vm.arena.alloc(Val::Array(
         crate::core::value::ArrayData::from(array).into(),
     )))

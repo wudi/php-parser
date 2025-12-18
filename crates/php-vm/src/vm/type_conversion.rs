@@ -43,7 +43,7 @@
 //! - PHP Manual: https://www.php.net/manual/en/language.types.type-juggling.php
 
 use crate::core::value::{Handle, Val};
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 use std::rc::Rc;
 
 impl VM {
@@ -111,7 +111,7 @@ pub(crate) trait TypeJuggling {
     /// Determine if two values should be compared numerically
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - compare_function
     fn should_compare_numerically(&self, other: &Self) -> bool;
-    
+
     /// Get numeric comparison value
     fn numeric_value(&self) -> NumericValue;
 }
@@ -166,13 +166,13 @@ mod tests {
     fn test_value_to_int() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         let int_handle = vm.arena.alloc(Val::Int(42));
         assert_eq!(vm.value_to_int(int_handle), 42);
-        
+
         let float_handle = vm.arena.alloc(Val::Float(3.14));
         assert_eq!(vm.value_to_int(float_handle), 3);
-        
+
         let bool_handle = vm.arena.alloc(Val::Bool(true));
         assert_eq!(vm.value_to_int(bool_handle), 1);
     }
@@ -181,13 +181,13 @@ mod tests {
     fn test_value_to_bool() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         let zero = vm.arena.alloc(Val::Int(0));
         assert!(!vm.value_to_bool(zero));
-        
+
         let one = vm.arena.alloc(Val::Int(1));
         assert!(vm.value_to_bool(one));
-        
+
         let null = vm.arena.alloc(Val::Null);
         assert!(!vm.value_to_bool(null));
     }
@@ -197,7 +197,7 @@ mod tests {
         let int_val = Val::Int(42);
         let float_val = Val::Float(3.14);
         let string_val = Val::String(Rc::new(b"hello".to_vec()));
-        
+
         assert!(int_val.should_compare_numerically(&float_val));
         assert!(int_val.should_compare_numerically(&string_val));
         assert!(!string_val.should_compare_numerically(&Val::Null));

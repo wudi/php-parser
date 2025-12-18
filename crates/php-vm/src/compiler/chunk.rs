@@ -64,17 +64,17 @@ pub struct CatchEntry {
     pub start: u32,
     pub end: u32,
     pub target: u32,
-    pub catch_type: Option<Symbol>, // None for catch-all
+    pub catch_type: Option<Symbol>,  // None for catch-all
     pub finally_target: Option<u32>, // Finally block target
 }
 
 #[derive(Debug, Default)]
 pub struct CodeChunk {
-    pub name: Symbol,        // File/Func name
+    pub name: Symbol,              // File/Func name
     pub file_path: Option<String>, // Source file path
-    pub returns_ref: bool,   // Function returns by reference
-    pub code: Vec<OpCode>,   // Instructions
-    pub constants: Vec<Val>, // Literals (Ints, Strings)
-    pub lines: Vec<u32>,     // Line numbers for debug
+    pub returns_ref: bool,         // Function returns by reference
+    pub code: Vec<OpCode>,         // Instructions
+    pub constants: Vec<Val>,       // Literals (Ints, Strings)
+    pub lines: Vec<u32>,           // Line numbers for debug
     pub catch_table: Vec<CatchEntry>,
 }

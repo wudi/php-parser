@@ -1,12 +1,12 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::compiler::chunk::UserFunc;
-use php_vm::runtime::context::EngineContext;
-use php_vm::vm::engine::VM;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
+use php_vm::compiler::chunk::UserFunc;
+use php_vm::compiler::emitter::Emitter;
+use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::VM;
+use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::any::Any;
 
 #[test]
 fn test_verify_return_debug() {
@@ -22,15 +22,15 @@ fn test_verify_return_debug() {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     eprintln!("Program errors: {:?}", program.errors);
 
     let engine_context = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine_context);
-    
+
     let emitter = Emitter::new(code.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     eprintln!("Main chunk opcodes: {:?}", chunk.code);
     eprintln!("Constants in main chunk:");
     for (i, val) in chunk.constants.iter().enumerate() {
@@ -43,11 +43,14 @@ fn test_verify_return_debug() {
             }
         }
     }
-    
+
     println!("About to call vm.run...");
     let result = vm.run(Rc::new(chunk));
     println!("vm.run returned!");
-    
+
     eprintln!("Result: {:?}", result);
-    assert!(result.is_err(), "Expected error for string return on int function");
+    assert!(
+        result.is_err(),
+        "Expected error for string return on int function"
+    );
 }

@@ -1,8 +1,8 @@
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM, OutputWriter};
-use std::rc::Rc;
+use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 // Simple output writer that collects to a string
 struct StringOutputWriter {
@@ -13,7 +13,7 @@ impl StringOutputWriter {
     fn new() -> Self {
         Self { buffer: Vec::new() }
     }
-    
+
     fn get_output(&self) -> String {
         String::from_utf8_lossy(&self.buffer).to_string()
     }
@@ -58,10 +58,12 @@ fn run_code(source: &str) -> Result<String, VmError> {
 
     let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
     let output_writer_clone = output_writer.clone();
-    
+
     let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter { writer: output_writer });
-    
+    vm.output_writer = Box::new(RefCellOutputWriter {
+        writer: output_writer,
+    });
+
     vm.run(Rc::new(chunk))?;
 
     // Get output from the cloned reference
@@ -90,10 +92,18 @@ echo empty($arr["missing"]) ? "true\n" : "false\n";  // true - missing is empty
 "#;
 
     let output = run_code(code).unwrap();
-    
+
     // Check we have both true and false results
-    assert!(output.contains("true"), "Output should contain 'true': {}", output);
-    assert!(output.contains("false"), "Output should contain 'false': {}", output);
+    assert!(
+        output.contains("true"),
+        "Output should contain 'true': {}",
+        output
+    );
+    assert!(
+        output.contains("false"),
+        "Output should contain 'false': {}",
+        output
+    );
 }
 
 #[test]
@@ -109,10 +119,18 @@ echo isset($str[-1]) ? "true\n" : "false\n";  // true
 "#;
 
     let output = run_code(code).unwrap();
-    
+
     // Verify output contains expected values
-    assert!(output.contains("true"), "Output should contain 'true': {}", output);
-    assert!(output.contains("false"), "Output should contain 'false': {}", output);
+    assert!(
+        output.contains("true"),
+        "Output should contain 'true': {}",
+        output
+    );
+    assert!(
+        output.contains("false"),
+        "Output should contain 'false': {}",
+        output
+    );
 }
 
 #[test]
@@ -154,10 +172,18 @@ echo empty($obj["zero"]) ? "true\n" : "false\n";    // true
 "#;
 
     let output = run_code(code).unwrap();
-    
+
     // Verify output contains expected values
-    assert!(output.contains("true"), "Output should contain 'true': {}", output);
-    assert!(output.contains("false"), "Output should contain 'false': {}", output);
+    assert!(
+        output.contains("true"),
+        "Output should contain 'true': {}",
+        output
+    );
+    assert!(
+        output.contains("false"),
+        "Output should contain 'false': {}",
+        output
+    );
 }
 
 #[test]
@@ -217,10 +243,14 @@ echo isset($obj["missing"]) ? "true\n" : "false\n";
 "#;
 
     let output = run_code(code).unwrap();
-    
+
     // Just verify we got some output with true/false
     assert!(output.len() > 0, "Should have some output: {}", output);
-    assert!(output.contains("true") || output.contains("false"), "Should contain bool results: {}", output);
+    assert!(
+        output.contains("true") || output.contains("false"),
+        "Should contain bool results: {}",
+        output
+    );
 }
 
 #[test]
@@ -249,6 +279,9 @@ echo empty($obj["test"]) ? "true\n" : "false\n";
 
     let output = run_code(code).unwrap();
     // Should return true when offsetExists returns false
-    assert!(output.contains("true"), "Should contain 'true' when offsetExists=false: {}", output);
+    assert!(
+        output.contains("true"),
+        "Should contain 'true' when offsetExists=false: {}",
+        output
+    );
 }
-

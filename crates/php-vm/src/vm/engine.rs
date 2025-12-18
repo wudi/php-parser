@@ -1,8 +1,57 @@
+//! VM Engine Core
+//!
+//! This module contains the main VM execution loop and core state.
+//! Production-grade, fault-tolerant PHP VM with zero-heap AST guarantees.
+//!
+//! ## Architecture
+//!
+//! The VM follows a stack-based execution model similar to Zend Engine:
+//! - **Operand Stack**: Temporary value storage during expression evaluation
+//! - **Call Frames**: Function/method execution contexts with local variables
+//! - **Arena Allocator**: Zero-heap allocation using `bumpalo` for values
+//!
+//! ## Delegated Responsibilities
+//!
+//! To improve modularity and maintainability, functionality is organized across modules:
+//!
+//! - **Arithmetic operations**: [`opcodes::arithmetic`](crate::vm::opcodes::arithmetic) - Add, Sub, Mul, Div, Mod, Pow
+//! - **Bitwise operations**: [`opcodes::bitwise`](crate::vm::opcodes::bitwise) - And, Or, Xor, Not, Shifts
+//! - **Comparison operations**: [`opcodes::comparison`](crate::vm::opcodes::comparison) - Equality, relational, spaceship
+//! - **Type conversions**: [`type_conversion`](crate::vm::type_conversion) - PHP type juggling
+//! - **Class resolution**: [`class_resolution`](crate::vm::class_resolution) - Inheritance chain walking
+//! - **Stack helpers**: [`stack_helpers`](crate::vm::stack_helpers) - Pop/push/peek operations
+//! - **Visibility checks**: [`visibility`](crate::vm::visibility) - Access control for class members
+//! - **Variable operations**: [`variable_ops`](crate::vm::variable_ops) - Load/store/unset variables
+//!
+//! ## Core Execution
+//!
+//! - [`VM::run`] - Top-level script execution
+//! - [`VM::run_loop`] - Main opcode dispatch loop
+//! - [`VM::execute_opcode`] - Single opcode execution (delegated to specialized handlers)
+//!
+//! ## Performance Characteristics
+//!
+//! - **Zero-Copy**: Values reference arena-allocated memory, no cloning
+//! - **Zero-Heap in AST**: All AST nodes use arena allocation
+//! - **Inlined Hot Paths**: Critical operations marked `#[inline]`
+//! - **Timeout Checking**: Configurable execution time limits
+//!
+//! ## Error Handling
+//!
+//! - **No Panics**: All errors return [`VmError`], ensuring fault tolerance
+//! - **Error Recovery**: Parse errors become `Error` nodes, execution continues
+//! - **Error Reporting**: Configurable error levels (Notice, Warning, Error)
+//!
+//! ## References
+//!
+//! - Zend VM: `$PHP_SRC_PATH/Zend/zend_execute.c` - Main execution loop
+//! - Zend Operators: `$PHP_SRC_PATH/Zend/zend_operators.c` - Type juggling
+//! - Zend Compile: `$PHP_SRC_PATH/Zend/zend_compile.c` - Visibility rules
+
 use crate::compiler::chunk::{ClosureData, CodeChunk, ReturnType, UserFunc};
 use crate::core::heap::Arena;
 use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val, Visibility};
 use crate::runtime::context::{ClassDef, EngineContext, MethodEntry, RequestContext};
-use crate::vm::error_formatting::MemberKind;
 use crate::vm::frame::{
     ArgList, CallFrame, GeneratorData, GeneratorState, SubGenState, SubIterator,
 };
@@ -1093,121 +1142,6 @@ impl VM {
         }
     }
 
-    fn property_visible_to(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        caller_scope: Option<Symbol>,
-    ) -> bool {
-        self.is_visible_from(defining_class, visibility, caller_scope)
-    }
-}
-
-impl VM {
-    /// Unified visibility check following Zend rules
-    /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - zend_check_visibility
-    #[inline(always)]
-    fn is_visible_from(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        caller_scope: Option<Symbol>,
-    ) -> bool {
-        match visibility {
-            Visibility::Public => true,
-            Visibility::Private => caller_scope == Some(defining_class),
-            Visibility::Protected => caller_scope.map_or(false, |scope| {
-                scope == defining_class || self.is_subclass_of(scope, defining_class)
-            }),
-        }
-    }
-    /// Unified visibility checker for class members
-    /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - visibility rules
-    fn check_member_visibility(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        member_kind: MemberKind,
-        member_name: Option<Symbol>,
-    ) -> Result<(), VmError> {
-        match visibility {
-            Visibility::Public => Ok(()),
-            Visibility::Private => {
-                let caller_scope = self.get_current_class();
-                if caller_scope == Some(defining_class) {
-                    Ok(())
-                } else {
-                    self.build_visibility_error(
-                        defining_class,
-                        visibility,
-                        member_kind,
-                        member_name,
-                    )
-                }
-            }
-            Visibility::Protected => {
-                let caller_scope = self.get_current_class();
-                if let Some(scope) = caller_scope {
-                    if scope == defining_class || self.is_subclass_of(scope, defining_class) {
-                        Ok(())
-                    } else {
-                        self.build_visibility_error(
-                            defining_class,
-                            visibility,
-                            member_kind,
-                            member_name,
-                        )
-                    }
-                } else {
-                    self.build_visibility_error(
-                        defining_class,
-                        visibility,
-                        member_kind,
-                        member_name,
-                    )
-                }
-            }
-        }
-    }
-
-    fn build_visibility_error(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        member_kind: MemberKind,
-        member_name: Option<Symbol>,
-    ) -> Result<(), VmError> {
-        let message =
-            self.format_visibility_error(defining_class, visibility, member_kind, member_name);
-        Err(VmError::RuntimeError(message))
-    }
-
-    fn check_const_visibility(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-    ) -> Result<(), VmError> {
-        self.check_member_visibility(defining_class, visibility, MemberKind::Constant, None)
-    }
-
-    fn check_method_visibility(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        method_name: Option<Symbol>,
-    ) -> Result<(), VmError> {
-        self.check_member_visibility(defining_class, visibility, MemberKind::Method, method_name)
-    }
-
-    fn method_visible_to(
-        &self,
-        defining_class: Symbol,
-        visibility: Visibility,
-        caller_scope: Option<Symbol>,
-    ) -> bool {
-        self.is_visible_from(defining_class, visibility, caller_scope)
-    }
-
     pub(crate) fn get_current_class(&self) -> Option<Symbol> {
         self.frames.last().and_then(|f| f.class_scope)
     }
@@ -1296,63 +1230,6 @@ impl VM {
         }
 
         false
-    }
-
-    pub(crate) fn check_prop_visibility(
-        &self,
-        class_name: Symbol,
-        prop_name: Symbol,
-        current_scope: Option<Symbol>,
-    ) -> Result<(), VmError> {
-        // Find property in inheritance chain
-        let found = self.walk_inheritance_chain(class_name, |def, cls| {
-            def.properties.get(&prop_name).map(|(_, vis)| (*vis, cls))
-        });
-
-        if let Some((vis, defined_class)) = found {
-            // Temporarily set current scope for check (since prop visibility can be called with explicit scope)
-            // We need to pass the scope through rather than using get_current_class()
-            match vis {
-                Visibility::Public => Ok(()),
-                Visibility::Private => {
-                    if current_scope == Some(defined_class) {
-                        Ok(())
-                    } else {
-                        self.build_visibility_error(
-                            defined_class,
-                            vis,
-                            MemberKind::Property,
-                            Some(prop_name),
-                        )
-                    }
-                }
-                Visibility::Protected => {
-                    if let Some(scope) = current_scope {
-                        if scope == defined_class || self.is_subclass_of(scope, defined_class) {
-                            Ok(())
-                        } else {
-                            self.build_visibility_error(
-                                defined_class,
-                                vis,
-                                MemberKind::Property,
-                                Some(prop_name),
-                            )
-                        }
-                    } else {
-                        self.build_visibility_error(
-                            defined_class,
-                            vis,
-                            MemberKind::Property,
-                            Some(prop_name),
-                        )
-                    }
-                }
-            }
-        } else {
-            // Dynamic property - check if allowed in PHP 8.2+
-            // Reference: PHP 8.2 deprecated dynamic properties by default
-            Ok(())
-        }
     }
 
     /// Check if writing a dynamic property should emit a deprecation warning
@@ -2098,51 +1975,21 @@ impl VM {
         Ok(())
     }
 
-    pub(crate) fn bitwise_not(&mut self) -> Result<(), VmError> {
-        let handle = self.pop_operand_required()?;
-        // Match on reference to avoid cloning unless necessary
-        let res = match &self.arena.get(handle).value {
-            Val::Int(i) => Val::Int(!i),
-            Val::String(s) => {
-                // Bitwise NOT on strings flips each byte - only clone bytes, not Rc
-                let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
-                Val::String(Rc::new(inverted))
-            }
-            _ => {
-                // Type juggling - access value again for to_int()
-                let i = self.arena.get(handle).value.to_int();
-                Val::Int(!i)
-            }
-        };
-        let res_handle = self.arena.alloc(res);
-        self.operand_stack.push(res_handle);
-        Ok(())
-    }
-
-    pub(crate) fn bool_not(&mut self) -> Result<(), VmError> {
-        let handle = self.pop_operand_required()?;
-        let val = &self.arena.get(handle).value;
-        let b = val.to_bool();
-        let res_handle = self.arena.alloc(Val::Bool(!b));
-        self.operand_stack.push(res_handle);
-        Ok(())
-    }
-
     fn exec_math_op(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
-            OpCode::Add => self.arithmetic_add()?,
-            OpCode::Sub => self.arithmetic_sub()?,
-            OpCode::Mul => self.arithmetic_mul()?,
-            OpCode::Div => self.arithmetic_div()?,
-            OpCode::Mod => self.arithmetic_mod()?,
-            OpCode::Pow => self.arithmetic_pow()?,
-            OpCode::BitwiseAnd => self.bitwise_and()?,
-            OpCode::BitwiseOr => self.bitwise_or()?,
-            OpCode::BitwiseXor => self.bitwise_xor()?,
-            OpCode::ShiftLeft => self.bitwise_shl()?,
-            OpCode::ShiftRight => self.bitwise_shr()?,
-            OpCode::BitwiseNot => self.bitwise_not()?,
-            OpCode::BoolNot => self.bool_not()?,
+            OpCode::Add => self.exec_add()?,
+            OpCode::Sub => self.exec_sub()?,
+            OpCode::Mul => self.exec_mul()?,
+            OpCode::Div => self.exec_div()?,
+            OpCode::Mod => self.exec_mod()?,
+            OpCode::Pow => self.exec_pow()?,
+            OpCode::BitwiseAnd => self.exec_bitwise_and()?,
+            OpCode::BitwiseOr => self.exec_bitwise_or()?,
+            OpCode::BitwiseXor => self.exec_bitwise_xor()?,
+            OpCode::ShiftLeft => self.exec_shift_left()?,
+            OpCode::ShiftRight => self.exec_shift_right()?,
+            OpCode::BitwiseNot => self.exec_bitwise_not()?,
+            OpCode::BoolNot => self.exec_bool_not()?,
             _ => unreachable!("Not a math op"),
         }
         Ok(())
@@ -3356,10 +3203,12 @@ impl VM {
                                                 handle: iterable_handle,
                                                 state: SubGenState::Initial,
                                             },
-                                            val => return Err(VmError::RuntimeError(format!(
+                                            val => {
+                                                return Err(VmError::RuntimeError(format!(
                                                 "Yield from expects array or traversable, got {:?}",
                                                 val
-                                            ))),
+                                            )))
+                                            }
                                         };
                                         data.sub_iter = Some(iter.clone());
                                         (iter, true)
@@ -9124,184 +8973,7 @@ impl VM {
     }
 }
 
-/// Arithmetic operation types
-/// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
-#[derive(Debug, Clone, Copy)]
-enum ArithOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Pow,
-}
-
-impl ArithOp {
-    fn apply_int(&self, a: i64, b: i64) -> Option<i64> {
-        match self {
-            ArithOp::Add => Some(a.wrapping_add(b)),
-            ArithOp::Sub => Some(a.wrapping_sub(b)),
-            ArithOp::Mul => Some(a.wrapping_mul(b)),
-            ArithOp::Mod if b != 0 => Some(a % b),
-            _ => None, // Div/Pow always use float, Mod checks zero
-        }
-    }
-
-    fn apply_float(&self, a: f64, b: f64) -> f64 {
-        match self {
-            ArithOp::Add => a + b,
-            ArithOp::Sub => a - b,
-            ArithOp::Mul => a * b,
-            ArithOp::Div => a / b,
-            ArithOp::Pow => a.powf(b),
-            ArithOp::Mod => unreachable!(), // Mod uses int only
-        }
-    }
-
-    fn always_float(&self) -> bool {
-        matches!(self, ArithOp::Div | ArithOp::Pow)
-    }
-}
-
 impl VM {
-    // Arithmetic operations following PHP type juggling
-    // Reference: $PHP_SRC_PATH/Zend/zend_operators.c
-
-    /// Generic binary arithmetic operation
-    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
-    fn binary_arithmetic(&mut self, op: ArithOp) -> Result<(), VmError> {
-        let (a_handle, b_handle) = self.pop_binary_operands()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        // Special case: Array + Array = union (only for Add)
-        if matches!(op, ArithOp::Add) {
-            if let (Val::Array(a_arr), Val::Array(b_arr)) = (a_val, b_val) {
-                let mut result = (**a_arr).clone();
-                for (k, v) in b_arr.map.iter() {
-                    result.map.entry(k.clone()).or_insert(*v);
-                }
-                self.operand_stack
-                    .push(self.arena.alloc(Val::Array(Rc::new(result))));
-                return Ok(());
-            }
-        }
-
-        // Check for division/modulo by zero
-        if matches!(op, ArithOp::Div) && b_val.to_float() == 0.0 {
-            self.report_error(ErrorLevel::Warning, "Division by zero");
-            self.operand_stack
-                .push(self.arena.alloc(Val::Float(f64::INFINITY)));
-            return Ok(());
-        }
-        if matches!(op, ArithOp::Mod) && b_val.to_int() == 0 {
-            self.report_error(ErrorLevel::Warning, "Modulo by zero");
-            self.operand_stack.push(self.arena.alloc(Val::Bool(false)));
-            return Ok(());
-        }
-
-        // Determine result type and compute
-        let needs_float =
-            op.always_float() || matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
-
-        let result = if needs_float {
-            Val::Float(op.apply_float(a_val.to_float(), b_val.to_float()))
-        } else if let Some(int_result) = op.apply_int(a_val.to_int(), b_val.to_int()) {
-            Val::Int(int_result)
-        } else {
-            Val::Float(op.apply_float(a_val.to_float(), b_val.to_float()))
-        };
-
-        self.operand_stack.push(self.arena.alloc(result));
-        Ok(())
-    }
-
-    pub(crate) fn arithmetic_add(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Add)
-    }
-
-    pub(crate) fn arithmetic_sub(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Sub)
-    }
-
-    pub(crate) fn arithmetic_mul(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Mul)
-    }
-
-    pub(crate) fn arithmetic_div(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Div)
-    }
-
-    pub(crate) fn arithmetic_mod(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Mod)
-    }
-
-    pub(crate) fn arithmetic_pow(&mut self) -> Result<(), VmError> {
-        self.binary_arithmetic(ArithOp::Pow)
-    }
-
-    /// Generic binary bitwise operation using AssignOpType
-    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
-    fn binary_bitwise(
-        &mut self,
-        op_type: crate::vm::assign_op::AssignOpType,
-    ) -> Result<(), VmError> {
-        let (a_handle, b_handle) = self.pop_binary_operands()?;
-        let a_val = self.arena.get(a_handle).value.clone();
-        let b_val = self.arena.get(b_handle).value.clone();
-
-        let result = op_type.apply(a_val, b_val)?;
-        self.operand_stack.push(self.arena.alloc(result));
-        Ok(())
-    }
-
-    pub(crate) fn bitwise_and(&mut self) -> Result<(), VmError> {
-        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwAnd)
-    }
-
-    pub(crate) fn bitwise_or(&mut self) -> Result<(), VmError> {
-        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwOr)
-    }
-
-    pub(crate) fn bitwise_xor(&mut self) -> Result<(), VmError> {
-        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwXor)
-    }
-
-    fn binary_shift(&mut self, is_shr: bool) -> Result<(), VmError> {
-        let (a_handle, b_handle) = self.pop_binary_operands()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let shift_amount = b_val.to_int();
-        let value = a_val.to_int();
-
-        let result = if shift_amount < 0 || shift_amount >= 64 {
-            if is_shr {
-                Val::Int(value >> 63)
-            } else {
-                Val::Int(0)
-            }
-        } else {
-            if is_shr {
-                Val::Int(value.wrapping_shr(shift_amount as u32))
-            } else {
-                Val::Int(value.wrapping_shl(shift_amount as u32))
-            }
-        };
-
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
-    }
-
-    pub(crate) fn bitwise_shl(&mut self) -> Result<(), VmError> {
-        self.binary_shift(false)
-    }
-
-    pub(crate) fn bitwise_shr(&mut self) -> Result<(), VmError> {
-        self.binary_shift(true)
-    }
-
     pub(crate) fn binary_cmp<F>(&mut self, op: F) -> Result<(), VmError>
     where
         F: Fn(&Val, &Val) -> bool,

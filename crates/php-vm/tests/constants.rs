@@ -57,8 +57,14 @@ fn run_code_expect_error(source: &str, expected_error: &str) {
                 msg
             );
         }
-        Err(e) => panic!("Expected RuntimeError with '{}', got: {:?}", expected_error, e),
-        Ok(_) => panic!("Expected error containing '{}', but code succeeded", expected_error),
+        Err(e) => panic!(
+            "Expected RuntimeError with '{}', got: {:?}",
+            expected_error, e
+        ),
+        Ok(_) => panic!(
+            "Expected error containing '{}', but code succeeded",
+            expected_error
+        ),
     }
 }
 
@@ -125,7 +131,7 @@ fn test_const_case_sensitive() {
         var_dump(MyConst);
     "#,
     );
-    
+
     // Different case should fail
     run_code_expect_error(
         r#"

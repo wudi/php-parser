@@ -1,12 +1,12 @@
 //! Class and object resolution utilities
-//! 
+//!
 //! Provides efficient lookup and resolution of class members following inheritance chains.
 //! Reference: $PHP_SRC_PATH/Zend/zend_inheritance.c, Zend/zend_API.c
 
 use crate::compiler::chunk::UserFunc;
 use crate::core::value::{Symbol, Visibility};
 use crate::runtime::context::ClassDef;
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 use std::rc::Rc;
 
 /// Result of method lookup in inheritance chain
@@ -37,11 +37,7 @@ impl VM {
     /// Walk inheritance chain and find first match
     /// Generic helper that reduces code duplication
     /// Reference: $PHP_SRC_PATH/Zend/zend_inheritance.c - do_inheritance
-    pub(crate) fn walk_class_hierarchy<F, T>(
-        &self,
-        start_class: Symbol,
-        predicate: F,
-    ) -> Option<T>
+    pub(crate) fn walk_class_hierarchy<F, T>(&self, start_class: Symbol, predicate: F) -> Option<T>
     where
         F: FnMut(&ClassDef, Symbol) -> Option<T>,
     {
@@ -72,10 +68,12 @@ impl VM {
         prop_name: Symbol,
     ) -> Option<PropertyLookupResult> {
         self.walk_class_hierarchy(class_name, |def, defining_class| {
-            def.properties.get(&prop_name).map(|(_, vis)| PropertyLookupResult {
-                visibility: *vis,
-                defining_class,
-            })
+            def.properties
+                .get(&prop_name)
+                .map(|(_, vis)| PropertyLookupResult {
+                    visibility: *vis,
+                    defining_class,
+                })
         })
     }
 
@@ -96,7 +94,8 @@ impl VM {
         class_name: Symbol,
         const_name: Symbol,
     ) -> Result<ConstantLookupResult, VmError> {
-        let (value, visibility, defining_class) = self.find_class_constant(class_name, const_name)?;
+        let (value, visibility, defining_class) =
+            self.find_class_constant(class_name, const_name)?;
         Ok(ConstantLookupResult {
             value,
             visibility,
@@ -134,12 +133,12 @@ impl VM {
     pub(crate) fn get_parent_chain(&self, class_name: Symbol) -> Vec<Symbol> {
         let mut chain = Vec::new();
         let mut current = self.get_class_def(class_name).and_then(|def| def.parent);
-        
+
         while let Some(parent) = current {
             chain.push(parent);
             current = self.get_class_def(parent).and_then(|def| def.parent);
         }
-        
+
         chain
     }
 
@@ -147,16 +146,16 @@ impl VM {
     /// Reference: $PHP_SRC_PATH/Zend/zend_inheritance.c - interface checks
     pub(crate) fn get_implemented_interfaces(&self, class_name: Symbol) -> Vec<Symbol> {
         let mut interfaces = Vec::new();
-        
+
         if let Some(def) = self.get_class_def(class_name) {
             interfaces.extend(def.interfaces.iter().copied());
-            
+
             // Recursively collect from parent
             if let Some(parent) = def.parent {
                 interfaces.extend(self.get_implemented_interfaces(parent));
             }
         }
-        
+
         interfaces.dedup();
         interfaces
     }
@@ -172,12 +171,12 @@ mod tests {
     fn test_parent_chain() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         // Create simple class hierarchy: GrandParent -> Parent -> Child
         let grandparent_sym = vm.context.interner.intern(b"GrandParent");
         let parent_sym = vm.context.interner.intern(b"Parent");
         let child_sym = vm.context.interner.intern(b"Child");
-        
+
         let grandparent_def = ClassDef {
             name: grandparent_sym,
             parent: None,
@@ -192,7 +191,7 @@ mod tests {
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(grandparent_sym, grandparent_def);
-        
+
         let parent_def = ClassDef {
             name: parent_sym,
             parent: Some(grandparent_sym),
@@ -207,7 +206,7 @@ mod tests {
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(parent_sym, parent_def);
-        
+
         let child_def = ClassDef {
             name: child_sym,
             parent: Some(parent_sym),
@@ -222,7 +221,7 @@ mod tests {
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(child_sym, child_def);
-        
+
         let chain = vm.get_parent_chain(child_sym);
         assert_eq!(chain, vec![parent_sym, grandparent_sym]);
     }
@@ -231,10 +230,10 @@ mod tests {
     fn test_is_subclass() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         let parent_sym = vm.context.interner.intern(b"Parent");
         let child_sym = vm.context.interner.intern(b"Child");
-        
+
         let parent_def = ClassDef {
             name: parent_sym,
             parent: None,
@@ -249,7 +248,7 @@ mod tests {
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(parent_sym, parent_def);
-        
+
         let child_def = ClassDef {
             name: child_sym,
             parent: Some(parent_sym),
@@ -264,7 +263,7 @@ mod tests {
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(child_sym, child_def);
-        
+
         assert!(vm.is_subclass(child_sym, parent_sym));
         assert!(vm.is_subclass(child_sym, child_sym)); // Class is subclass of itself
         assert!(!vm.is_subclass(parent_sym, child_sym));

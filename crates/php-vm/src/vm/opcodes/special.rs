@@ -1,46 +1,46 @@
 //! Special language constructs
-//! 
+//!
 //! Implements PHP-specific language constructs that don't fit other categories.
-//! 
+//!
 //! ## PHP Semantics
-//! 
+//!
 //! These operations handle special PHP constructs:
 //! - Output: echo, print
 //! - Type checking: isset, empty, is_array, etc.
 //! - Object operations: clone, instanceof
 //! - Error control: @ operator (silence)
-//! 
+//!
 //! ## Operations
-//! 
+//!
 //! - **Echo**: Output value to stdout (no return value)
 //! - **Print**: Output value and return 1 (always succeeds)
-//! 
+//!
 //! ## Echo vs Print
-//! 
+//!
 //! Both convert values to strings and output them:
 //! - `echo` is a statement (no return value, can take multiple args)
 //! - `print` is an expression (returns 1, takes one arg)
-//! 
+//!
 //! ## String Conversion
-//! 
+//!
 //! Values are converted to strings following PHP rules:
 //! - Integers/floats: standard string representation
 //! - Booleans: "1" for true, "" for false
 //! - null: ""
 //! - Arrays: "Array" (with notice in some contexts)
 //! - Objects: __toString() method or "Object"
-//! 
+//!
 //! ## Performance
-//! 
+//!
 //! Output operations are I/O bound. String conversion is O(1) for
 //! primitive types, O(n) for arrays/objects.
-//! 
+//!
 //! ## References
-//! 
+//!
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_vm_execute.h` - ZEND_ECHO handler
 //! - PHP Manual: https://www.php.net/manual/en/function.echo.php
 
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 
 impl VM {
     /// Execute Echo operation: Output value to stdout
@@ -67,8 +67,8 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::context::EngineContext;
     use crate::core::value::Val;
+    use crate::runtime::context::EngineContext;
     use std::sync::{Arc, Mutex};
 
     /// Test output writer that captures output to a Vec
@@ -113,7 +113,9 @@ mod tests {
         let mut vm = VM::new(engine);
         vm.set_output_writer(Box::new(TestOutputWriter::new(output_buffer.clone())));
 
-        let val = vm.arena.alloc(Val::String(b"Hello, World!".to_vec().into()));
+        let val = vm
+            .arena
+            .alloc(Val::String(b"Hello, World!".to_vec().into()));
         vm.operand_stack.push(val);
 
         vm.exec_echo().unwrap();

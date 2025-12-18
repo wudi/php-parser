@@ -1,5 +1,5 @@
 //! Error message formatting utilities
-//! 
+//!
 //! Provides consistent error message generation following PHP error conventions.
 //! Reference: $PHP_SRC_PATH/Zend/zend_exceptions.c - error message formatting
 
@@ -57,7 +57,8 @@ impl VM {
     /// Describe an object's class for error messages
     /// Reference: $PHP_SRC_PATH/Zend/zend_objects_API.c
     pub(crate) fn describe_object_class(&self, payload_handle: Handle) -> String {
-        if let crate::core::value::Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
+        if let crate::core::value::Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value
+        {
             self.context
                 .interner
                 .lookup(obj_data.class)

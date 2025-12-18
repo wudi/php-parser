@@ -92,7 +92,7 @@ pub fn php_min(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 fn compare_values(vm: &VM, a: Handle, b: Handle) -> i32 {
     let a_val = vm.arena.get(a);
     let b_val = vm.arena.get(b);
-    
+
     match (&a_val.value, &b_val.value) {
         (Val::Int(i1), Val::Int(i2)) => i1.cmp(i2) as i32,
         (Val::Float(f1), Val::Float(f2)) => {

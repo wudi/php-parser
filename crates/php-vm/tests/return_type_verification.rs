@@ -1,8 +1,8 @@
+use php_parser::lexer::Lexer;
+use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
-use php_parser::lexer::Lexer;
-use php_parser::parser::Parser;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ fn compile_and_run(code: &str) -> Result<(), String> {
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     if !program.errors.is_empty() {
         return Err(format!("Parse errors: {:?}", program.errors));
     }
@@ -19,11 +19,11 @@ fn compile_and_run(code: &str) -> Result<(), String> {
     // Create VM first so we can use its interner
     let engine_context = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine_context);
-    
+
     // Compile using the VM's interner
     let emitter = Emitter::new(code.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     match vm.run(Rc::new(chunk)) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("{:?}", e)),
@@ -39,9 +39,9 @@ fn test_int_return_type_valid() {
         }
         foo();
     "#;
-    
+
     match compile_and_run(code) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => panic!("Expected Ok but got error: {}", e),
     }
 }
@@ -55,10 +55,12 @@ fn test_int_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type int"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type int"));
 }
 
 #[test]
@@ -70,7 +72,7 @@ fn test_string_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -83,10 +85,12 @@ fn test_string_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type string"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type string"));
 }
 
 #[test]
@@ -98,7 +102,7 @@ fn test_bool_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -111,10 +115,12 @@ fn test_bool_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type bool"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type bool"));
 }
 
 #[test]
@@ -126,7 +132,7 @@ fn test_float_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -139,10 +145,12 @@ fn test_float_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type float"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type float"));
 }
 
 #[test]
@@ -154,7 +162,7 @@ fn test_array_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -167,10 +175,12 @@ fn test_array_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type array"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type array"));
 }
 
 #[test]
@@ -182,7 +192,7 @@ fn test_void_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -195,10 +205,12 @@ fn test_void_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type void"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type void"));
 }
 
 #[test]
@@ -218,7 +230,7 @@ fn test_mixed_return_type() {
         bar();
         baz();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -231,7 +243,7 @@ fn test_nullable_int_return_type_with_null() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -244,7 +256,7 @@ fn test_nullable_int_return_type_with_int() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -257,10 +269,12 @@ fn test_nullable_int_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type ?int"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type ?int"));
 }
 
 #[test]
@@ -272,7 +286,7 @@ fn test_union_return_type_int_or_string_with_int() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -285,7 +299,7 @@ fn test_union_return_type_int_or_string_with_string() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -298,10 +312,12 @@ fn test_union_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type int|string"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type int|string"));
 }
 
 #[test]
@@ -313,7 +329,7 @@ fn test_true_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -326,10 +342,12 @@ fn test_true_return_type_invalid_with_false() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type true"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type true"));
 }
 
 #[test]
@@ -341,7 +359,7 @@ fn test_false_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -354,10 +372,12 @@ fn test_false_return_type_invalid_with_true() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type false"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type false"));
 }
 
 #[test]
@@ -369,7 +389,7 @@ fn test_null_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -382,10 +402,12 @@ fn test_null_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type null"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type null"));
 }
 
 #[test]
@@ -398,7 +420,7 @@ fn test_object_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -411,10 +433,12 @@ fn test_object_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type object"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type object"));
 }
 
 // === Callable Return Type Tests ===
@@ -429,7 +453,7 @@ fn test_callable_return_type_with_function_name() {
         }
         $f = foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -442,7 +466,7 @@ fn test_callable_return_type_with_closure() {
         }
         $f = foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -458,7 +482,7 @@ fn test_callable_return_type_with_array_object_method() {
         }
         $f = foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -474,7 +498,7 @@ fn test_callable_return_type_with_array_static_method() {
         }
         $f = foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -490,7 +514,7 @@ fn test_callable_return_type_with_invokable_object() {
         }
         $f = foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -503,10 +527,12 @@ fn test_callable_return_type_invalid_non_existent_function() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type callable"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type callable"));
 }
 
 #[test]
@@ -518,10 +544,12 @@ fn test_callable_return_type_invalid_non_callable() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type callable"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type callable"));
 }
 
 #[test]
@@ -533,10 +561,12 @@ fn test_callable_return_type_invalid_wrong_array_format() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type callable"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type callable"));
 }
 
 // === Iterable Return Type Tests ===
@@ -550,7 +580,7 @@ fn test_iterable_return_type_with_array() {
         }
         foreach (foo() as $v) {}
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -563,10 +593,12 @@ fn test_iterable_return_type_invalid() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type iterable"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type iterable"));
 }
 
 // === Named Class Return Type Tests ===
@@ -581,7 +613,7 @@ fn test_named_class_return_type_valid() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -596,7 +628,7 @@ fn test_named_class_return_type_with_subclass() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -611,10 +643,12 @@ fn test_named_class_return_type_invalid_different_class() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type ClassA"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type ClassA"));
 }
 
 #[test]
@@ -627,10 +661,12 @@ fn test_named_class_return_type_invalid_non_object() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type MyClass"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type MyClass"));
 }
 
 // === Float Type Coercion Tests (SSTH Exception) ===
@@ -645,7 +681,7 @@ fn test_float_return_type_accepts_int() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -660,7 +696,7 @@ fn test_union_with_null() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -673,7 +709,7 @@ fn test_union_with_multiple_scalar_types() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -688,7 +724,7 @@ fn test_union_with_class_types() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -707,7 +743,7 @@ fn test_static_return_type_in_base_class() {
         }
         Base::create();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -724,7 +760,7 @@ fn test_static_return_type_in_derived_class() {
         class Derived extends Base {}
         Derived::create();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -741,10 +777,12 @@ fn test_static_return_type_invalid() {
         class OtherClass {}
         Base::create();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type static"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type static"));
 }
 
 // === Never Return Type Tests ===
@@ -758,7 +796,7 @@ fn test_never_return_type_with_exit() {
         }
         foo();
     "#;
-    
+
     // Should not return normally
     let result = compile_and_run(code);
     // exit() should cause the program to terminate
@@ -776,7 +814,7 @@ fn test_never_return_type_with_throw() {
             foo();
         } catch (Exception $e) {}
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -789,10 +827,12 @@ fn test_never_return_type_invalid_with_return() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Return value must be of type never"));
+    assert!(result
+        .unwrap_err()
+        .contains("Return value must be of type never"));
 }
 
 // === Missing Return Tests ===
@@ -806,12 +846,11 @@ fn test_missing_return_with_non_nullable_type() {
         }
         foo();
     "#;
-    
+
     let result = compile_and_run(code);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("Return value must be of type int") || 
-            err.contains("missing return"));
+    assert!(err.contains("Return value must be of type int") || err.contains("missing return"));
 }
 
 #[test]
@@ -823,7 +862,7 @@ fn test_missing_return_with_nullable_type_ok() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -836,7 +875,7 @@ fn test_missing_return_with_void_ok() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }
 
@@ -851,6 +890,6 @@ fn test_void_with_explicit_null_return() {
         }
         foo();
     "#;
-    
+
     assert!(compile_and_run(code).is_ok());
 }

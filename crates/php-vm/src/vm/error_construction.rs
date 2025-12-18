@@ -12,7 +12,11 @@ impl VmError {
     }
 
     /// Create a type error
-    pub fn type_error(expected: impl Into<String>, got: impl Into<String>, operation: &'static str) -> Self {
+    pub fn type_error(
+        expected: impl Into<String>,
+        got: impl Into<String>,
+        operation: &'static str,
+    ) -> Self {
         VmError::TypeError {
             expected: expected.into(),
             got: got.into(),
@@ -56,11 +60,20 @@ mod tests {
     #[test]
     fn test_error_construction() {
         let err = VmError::stack_underflow("test_op");
-        assert!(matches!(err, VmError::StackUnderflow { operation: "test_op" }));
+        assert!(matches!(
+            err,
+            VmError::StackUnderflow {
+                operation: "test_op"
+            }
+        ));
 
         let err = VmError::type_error("int", "string", "add");
         match err {
-            VmError::TypeError { expected, got, operation } => {
+            VmError::TypeError {
+                expected,
+                got,
+                operation,
+            } => {
                 assert_eq!(expected, "int");
                 assert_eq!(got, "string");
                 assert_eq!(operation, "add");
@@ -83,7 +96,10 @@ mod tests {
         assert_eq!(err.to_string(), "Stack underflow during pop");
 
         let err = VmError::type_error("int", "string", "add");
-        assert_eq!(err.to_string(), "Type error in add: expected int, got string");
+        assert_eq!(
+            err.to_string(),
+            "Type error in add: expected int, got string"
+        );
 
         let err = VmError::undefined_variable("count");
         assert_eq!(err.to_string(), "Undefined variable: $count");

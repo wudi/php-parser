@@ -288,7 +288,10 @@ fn test_nested_finally() {
 
     let (res, _) = run_code(src).unwrap();
     if let Val::String(s) = res {
-        assert_eq!(std::str::from_utf8(&s).unwrap(), "inner-try inner-finally outer-finally");
+        assert_eq!(
+            std::str::from_utf8(&s).unwrap(),
+            "inner-try inner-finally outer-finally"
+        );
     } else {
         panic!("Expected correct finally execution order, got {:?}", res);
     }
@@ -576,7 +579,10 @@ fn test_throw_new_exception_in_catch() {
 
     let (res, _) = run_code(src).unwrap();
     if let Val::String(s) = res {
-        assert_eq!(std::str::from_utf8(&s).unwrap(), "caught first, caught second");
+        assert_eq!(
+            std::str::from_utf8(&s).unwrap(),
+            "caught first, caught second"
+        );
     } else {
         panic!("Expected correct catch sequence, got {:?}", res);
     }

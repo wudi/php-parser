@@ -139,12 +139,12 @@ fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::
     let source = fs::read_to_string(&path)?;
     let script_name = path.to_string_lossy().into_owned();
     let canonical_path = path.canonicalize().unwrap_or_else(|_| path.clone());
-    
+
     // Change working directory to script directory
     if let Some(parent) = canonical_path.parent() {
         std::env::set_current_dir(parent)?;
     }
-    
+
     let engine_context = create_engine(enable_pthreads)?;
     let mut vm = VM::new(engine_context);
 
@@ -181,18 +181,14 @@ fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::
             .parent()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let val_handle_doc_root = vm
-            .arena
-            .alloc(Val::String(Rc::new(doc_root.into_bytes())));
+        let val_handle_doc_root = vm.arena.alloc(Val::String(Rc::new(doc_root.into_bytes())));
 
         // PWD - current working directory
         let pwd = std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let val_handle_pwd = vm
-            .arena
-            .alloc(Val::String(Rc::new(pwd.into_bytes())));
+        let val_handle_pwd = vm.arena.alloc(Val::String(Rc::new(pwd.into_bytes())));
 
         // 3. Modify the array data
         let array_data = Rc::make_mut(&mut array_data_rc);
@@ -213,10 +209,7 @@ fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::
             ArrayKey::Str(Rc::new(b"DOCUMENT_ROOT".to_vec())),
             val_handle_doc_root,
         );
-        array_data.insert(
-            ArrayKey::Str(Rc::new(b"PWD".to_vec())),
-            val_handle_pwd,
-        );
+        array_data.insert(ArrayKey::Str(Rc::new(b"PWD".to_vec())), val_handle_pwd);
 
         // 4. Update the global variable with the new Rc
         let slot = vm.arena.get_mut(server_handle);

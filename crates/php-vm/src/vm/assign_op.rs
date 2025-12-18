@@ -8,18 +8,18 @@ use std::rc::Rc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum AssignOpType {
-    Add = 0,      // ZEND_ADD - 1
-    Sub = 1,      // ZEND_SUB - 1
-    Mul = 2,      // ZEND_MUL - 1
-    Div = 3,      // ZEND_DIV - 1
-    Mod = 4,      // ZEND_MOD - 1
-    Sl = 5,       // ZEND_SL - 1 (Shift Left)
-    Sr = 6,       // ZEND_SR - 1 (Shift Right)
-    Concat = 7,   // ZEND_CONCAT - 1
-    BwOr = 8,     // ZEND_BW_OR - 1
-    BwAnd = 9,    // ZEND_BW_AND - 1
-    BwXor = 10,   // ZEND_BW_XOR - 1
-    Pow = 11,     // ZEND_POW - 1
+    Add = 0,    // ZEND_ADD - 1
+    Sub = 1,    // ZEND_SUB - 1
+    Mul = 2,    // ZEND_MUL - 1
+    Div = 3,    // ZEND_DIV - 1
+    Mod = 4,    // ZEND_MOD - 1
+    Sl = 5,     // ZEND_SL - 1 (Shift Left)
+    Sr = 6,     // ZEND_SR - 1 (Shift Right)
+    Concat = 7, // ZEND_CONCAT - 1
+    BwOr = 8,   // ZEND_BW_OR - 1
+    BwAnd = 9,  // ZEND_BW_AND - 1
+    BwXor = 10, // ZEND_BW_XOR - 1
+    Pow = 11,   // ZEND_POW - 1
 }
 
 impl AssignOpType {

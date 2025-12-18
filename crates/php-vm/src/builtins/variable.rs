@@ -316,7 +316,7 @@ fn print_r_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
                         output.push_str("] => ");
                     }
                 }
-                
+
                 // Check if value is array or object to put it on new line
                 let val = vm.arena.get(*val_handle);
                 match &val.value {
@@ -355,7 +355,7 @@ fn print_r_value(vm: &VM, handle: Handle, depth: usize, output: &mut String) {
                     output.push('[');
                     output.push_str(&String::from_utf8_lossy(prop_name));
                     output.push_str("] => ");
-                    
+
                     let val = vm.arena.get(*val_handle);
                     match &val.value {
                         Val::Array(_) | Val::Object(_) => {
@@ -665,7 +665,9 @@ pub fn php_ini_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => "".to_string(), // Unknown settings return empty string
     };
 
-    Ok(vm.arena.alloc(Val::String(Rc::new(value.as_bytes().to_vec()))))
+    Ok(vm
+        .arena
+        .alloc(Val::String(Rc::new(value.as_bytes().to_vec()))))
 }
 
 pub fn php_ini_set(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -716,17 +718,21 @@ pub fn php_error_get_last(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     if let Some(error_info) = &vm.context.last_error {
         // Build array with error information
         let mut map = crate::core::value::ArrayData::new();
-        
+
         let type_key = crate::core::value::ArrayKey::Str(b"type".to_vec().into());
         let type_val = vm.arena.alloc(Val::Int(error_info.error_type));
         map.map.insert(type_key, type_val);
 
         let message_key = crate::core::value::ArrayKey::Str(b"message".to_vec().into());
-        let message_val = vm.arena.alloc(Val::String(Rc::new(error_info.message.as_bytes().to_vec())));
+        let message_val = vm
+            .arena
+            .alloc(Val::String(Rc::new(error_info.message.as_bytes().to_vec())));
         map.map.insert(message_key, message_val);
 
         let file_key = crate::core::value::ArrayKey::Str(b"file".to_vec().into());
-        let file_val = vm.arena.alloc(Val::String(Rc::new(error_info.file.as_bytes().to_vec())));
+        let file_val = vm
+            .arena
+            .alloc(Val::String(Rc::new(error_info.file.as_bytes().to_vec())));
         map.map.insert(file_key, file_val);
 
         let line_key = crate::core::value::ArrayKey::Str(b"line".to_vec().into());
@@ -739,4 +745,3 @@ pub fn php_error_get_last(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         Ok(vm.arena.alloc(Val::Null))
     }
 }
-

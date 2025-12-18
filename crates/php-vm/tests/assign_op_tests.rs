@@ -1,7 +1,6 @@
 /// Comprehensive tests for binary assignment operations (AssignOp, AssignStaticPropOp, AssignObjOp)
 /// These tests ensure PHP-like behavior for all operations: +=, -=, *=, /=, %=, <<=, >>=, .=, |=, &=, ^=, **=
 /// Reference: PHP behavior verified with `php -r` commands
-
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineContext, RequestContext};
@@ -373,7 +372,7 @@ return $a;
 "#;
     match run_php(code) {
         Val::String(s) => assert_eq!(s[0], b'c'), // 'a' | 'b' = 0x61 | 0x62 = 0x63 = 'c'
-        Val::Int(i) => assert_eq!(i, 0x63), // Temporary: accepting int result
+        Val::Int(i) => assert_eq!(i, 0x63),       // Temporary: accepting int result
         _ => panic!("Expected string or int"),
     }
 }
@@ -387,7 +386,7 @@ return $a;
 "#;
     match run_php(code) {
         Val::String(s) => assert_eq!(s[0], b'g'), // 0x67 & 0x77 = 0x67
-        Val::Int(i) => assert_eq!(i, 0x67), // Temporary: accepting int result
+        Val::Int(i) => assert_eq!(i, 0x67),       // Temporary: accepting int result
         _ => panic!("Expected string or int"),
     }
 }
@@ -401,7 +400,7 @@ return $a;
 "#;
     match run_php(code) {
         Val::String(s) => assert_eq!(s[0], 0x03), // 0x61 ^ 0x62 = 0x03
-        Val::Int(i) => assert_eq!(i, 0x03), // Temporary: accepting int result
+        Val::Int(i) => assert_eq!(i, 0x03),       // Temporary: accepting int result
         _ => panic!("Expected string or int"),
     }
 }

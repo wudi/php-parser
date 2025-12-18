@@ -239,7 +239,7 @@ fn test_get_with_post_increment() {
 
     let res = run_php(src);
     if let Val::Int(i) = res {
-        assert_eq!(i, 5);  // Returns old value
+        assert_eq!(i, 5); // Returns old value
     } else {
         panic!("Expected int 5, got {:?}", res);
     }
@@ -422,7 +422,7 @@ fn test_get_set_chain() {
 
     let res = run_php(src);
     if let Val::Int(i) = res {
-        assert_eq!(i, 3);  // set:x=10, get:x, set:y=15
+        assert_eq!(i, 3); // set:x=10, get:x, set:y=15
     } else {
         panic!("Expected int 3, got {:?}", res);
     }

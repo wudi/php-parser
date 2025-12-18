@@ -1,5 +1,5 @@
 use php_vm::runtime::context::EngineContext;
-use php_vm::vm::engine::{VM, VmError};
+use php_vm::vm::engine::{VmError, VM};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,20 +10,22 @@ fn test_undefined_constant_error_message_format() {
     let mut vm = VM::new(engine);
 
     let source = "<?php echo UNDEFINED_CONST;";
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
-    assert!(program.errors.is_empty(), "Parse errors: {:?}", program.errors);
-    
-    let emitter = php_vm::compiler::emitter::Emitter::new(
-        source.as_bytes(),
-        &mut vm.context.interner
+
+    assert!(
+        program.errors.is_empty(),
+        "Parse errors: {:?}",
+        program.errors
     );
+
+    let emitter =
+        php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     match vm.run(Rc::new(chunk)) {
         Err(VmError::RuntimeError(msg)) => {
             // Verify exact error message format matches native PHP
@@ -42,18 +44,16 @@ fn test_multiple_undefined_constants() {
 
     // Test that the first undefined constant throws immediately
     let source = "<?php $x = FIRST + SECOND;";
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
-    let emitter = php_vm::compiler::emitter::Emitter::new(
-        source.as_bytes(),
-        &mut vm.context.interner
-    );
+
+    let emitter =
+        php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     match vm.run(Rc::new(chunk)) {
         Err(VmError::RuntimeError(msg)) => {
             // Should fail on the first undefined constant
@@ -80,18 +80,16 @@ fn test_defined_then_undefined() {
         echo DEFINED_CONST;
         echo UNDEFINED_CONST;
     "#;
-    
+
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
-    let emitter = php_vm::compiler::emitter::Emitter::new(
-        source.as_bytes(),
-        &mut vm.context.interner
-    );
+
+    let emitter =
+        php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
-    
+
     // Should successfully print 42, then fail on UNDEFINED_CONST
     match vm.run(Rc::new(chunk)) {
         Err(VmError::RuntimeError(msg)) => {

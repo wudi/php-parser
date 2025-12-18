@@ -4,24 +4,24 @@ use indexmap::IndexMap;
 use std::rc::Rc;
 
 // Output buffer phase flags (passed to handler as second parameter)
-pub const PHP_OUTPUT_HANDLER_START: i64 = 1;      // 0b0000_0001
-pub const PHP_OUTPUT_HANDLER_WRITE: i64 = 0;      // 0b0000_0000 (also aliased as CONT)
-pub const PHP_OUTPUT_HANDLER_FLUSH: i64 = 4;      // 0b0000_0100
-pub const PHP_OUTPUT_HANDLER_CLEAN: i64 = 2;      // 0b0000_0010
-pub const PHP_OUTPUT_HANDLER_FINAL: i64 = 8;      // 0b0000_1000 (also aliased as END)
-pub const PHP_OUTPUT_HANDLER_CONT: i64 = 0;       // Alias for WRITE
-pub const PHP_OUTPUT_HANDLER_END: i64 = 8;        // Alias for FINAL
+pub const PHP_OUTPUT_HANDLER_START: i64 = 1; // 0b0000_0001
+pub const PHP_OUTPUT_HANDLER_WRITE: i64 = 0; // 0b0000_0000 (also aliased as CONT)
+pub const PHP_OUTPUT_HANDLER_FLUSH: i64 = 4; // 0b0000_0100
+pub const PHP_OUTPUT_HANDLER_CLEAN: i64 = 2; // 0b0000_0010
+pub const PHP_OUTPUT_HANDLER_FINAL: i64 = 8; // 0b0000_1000 (also aliased as END)
+pub const PHP_OUTPUT_HANDLER_CONT: i64 = 0; // Alias for WRITE
+pub const PHP_OUTPUT_HANDLER_END: i64 = 8; // Alias for FINAL
 
 // Output buffer control flags (passed to ob_start as third parameter)
-pub const PHP_OUTPUT_HANDLER_CLEANABLE: i64 = 16;   // 0b0001_0000
-pub const PHP_OUTPUT_HANDLER_FLUSHABLE: i64 = 32;   // 0b0010_0000
-pub const PHP_OUTPUT_HANDLER_REMOVABLE: i64 = 64;   // 0b0100_0000
-pub const PHP_OUTPUT_HANDLER_STDFLAGS: i64 = 112;   // CLEANABLE | FLUSHABLE | REMOVABLE
+pub const PHP_OUTPUT_HANDLER_CLEANABLE: i64 = 16; // 0b0001_0000
+pub const PHP_OUTPUT_HANDLER_FLUSHABLE: i64 = 32; // 0b0010_0000
+pub const PHP_OUTPUT_HANDLER_REMOVABLE: i64 = 64; // 0b0100_0000
+pub const PHP_OUTPUT_HANDLER_STDFLAGS: i64 = 112; // CLEANABLE | FLUSHABLE | REMOVABLE
 
 // Output handler status flags (returned by ob_get_status)
-pub const PHP_OUTPUT_HANDLER_STARTED: i64 = 4096;     // 0b0001_0000_0000_0000
-pub const PHP_OUTPUT_HANDLER_DISABLED: i64 = 8192;    // 0b0010_0000_0000_0000
-pub const PHP_OUTPUT_HANDLER_PROCESSED: i64 = 16384;  // 0b0100_0000_0000_0000 (PHP 8.4+)
+pub const PHP_OUTPUT_HANDLER_STARTED: i64 = 4096; // 0b0001_0000_0000_0000
+pub const PHP_OUTPUT_HANDLER_DISABLED: i64 = 8192; // 0b0010_0000_0000_0000
+pub const PHP_OUTPUT_HANDLER_PROCESSED: i64 = 16384; // 0b0100_0000_0000_0000 (PHP 8.4+)
 
 /// Output buffer structure representing a single level of output buffering
 #[derive(Debug, Clone)]
@@ -180,7 +180,9 @@ pub fn php_ob_flush(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
 
     // Send output to parent buffer or stdout
     if buffer_idx > 0 {
-        vm.output_buffers[buffer_idx - 1].content.extend_from_slice(&output);
+        vm.output_buffers[buffer_idx - 1]
+            .content
+            .extend_from_slice(&output);
     } else {
         vm.write_output(&output).map_err(|e| format!("{:?}", e))?;
     }
@@ -220,7 +222,11 @@ pub fn php_ob_end_clean(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
 
     // Call handler with FINAL | CLEAN if handler exists
     if vm.output_buffers[buffer_idx].handler.is_some() {
-        let _ = process_buffer(vm, buffer_idx, PHP_OUTPUT_HANDLER_FINAL | PHP_OUTPUT_HANDLER_CLEAN);
+        let _ = process_buffer(
+            vm,
+            buffer_idx,
+            PHP_OUTPUT_HANDLER_FINAL | PHP_OUTPUT_HANDLER_CLEAN,
+        );
     }
 
     vm.output_buffers.pop();
@@ -259,7 +265,9 @@ pub fn php_ob_end_flush(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
 
     // Send output to parent buffer or stdout
     if buffer_idx > 0 {
-        vm.output_buffers[buffer_idx - 1].content.extend_from_slice(&output);
+        vm.output_buffers[buffer_idx - 1]
+            .content
+            .extend_from_slice(&output);
     } else {
         vm.write_output(&output).map_err(|e| format!("{:?}", e))?;
     }
@@ -306,7 +314,9 @@ pub fn php_ob_get_flush(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
 
     // Send output to parent buffer or stdout
     if buffer_idx > 0 {
-        vm.output_buffers[buffer_idx - 1].content.extend_from_slice(&output);
+        vm.output_buffers[buffer_idx - 1]
+            .content
+            .extend_from_slice(&output);
     } else {
         vm.write_output(&output).map_err(|e| format!("{:?}", e))?;
     }
@@ -343,14 +353,35 @@ pub fn php_ob_get_status(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     if full_status {
         // Return array of all buffer statuses
         // Clone the buffer data to avoid borrow issues
-        let buffers_data: Vec<_> = vm.output_buffers.iter()
+        let buffers_data: Vec<_> = vm
+            .output_buffers
+            .iter()
             .enumerate()
-            .map(|(level, buf)| (level, buf.name.clone(), buf.handler, buf.flags, buf.chunk_size, buf.content.len(), buf.status))
+            .map(|(level, buf)| {
+                (
+                    level,
+                    buf.name.clone(),
+                    buf.handler,
+                    buf.flags,
+                    buf.chunk_size,
+                    buf.content.len(),
+                    buf.status,
+                )
+            })
             .collect();
-        
+
         let mut result = Vec::new();
         for (level, name, handler, flags, chunk_size, content_len, status) in buffers_data {
-            let status_array = create_buffer_status_data(vm, &name, handler, flags, level, chunk_size, content_len, status)?;
+            let status_array = create_buffer_status_data(
+                vm,
+                &name,
+                handler,
+                flags,
+                level,
+                chunk_size,
+                content_len,
+                status,
+            )?;
             result.push(status_array);
         }
         let mut arr = ArrayData::new();
@@ -368,7 +399,16 @@ pub fn php_ob_get_status(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
             let chunk_size = buffer.chunk_size;
             let content_len = buffer.content.len();
             let status = buffer.status;
-            create_buffer_status_data(vm, &name, handler, flags, level, chunk_size, content_len, status)
+            create_buffer_status_data(
+                vm,
+                &name,
+                handler,
+                flags,
+                level,
+                chunk_size,
+                content_len,
+                status,
+            )
         } else {
             // Return empty array if no buffers
             Ok(vm.arena.alloc(Val::Array(Rc::new(ArrayData::new()))))
@@ -416,10 +456,10 @@ pub fn php_flush(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     if !vm.output_buffers.is_empty() {
         php_ob_flush(vm, &[])?;
     }
-    
+
     // Flush the underlying output writer
     vm.flush_output().map_err(|e| format!("{:?}", e))?;
-    
+
     Ok(vm.arena.alloc(Val::Null))
 }
 
@@ -454,7 +494,7 @@ pub fn php_output_reset_rewrite_vars(vm: &mut VM, _args: &[Handle]) -> Result<Ha
 // Helper function to process buffer through handler
 fn process_buffer(vm: &mut VM, buffer_idx: usize, phase: i64) -> Result<Vec<u8>, String> {
     let buffer = &mut vm.output_buffers[buffer_idx];
-    
+
     // Mark as started and processed
     if !buffer.started {
         buffer.started = true;
@@ -464,12 +504,12 @@ fn process_buffer(vm: &mut VM, buffer_idx: usize, phase: i64) -> Result<Vec<u8>,
 
     let handler = buffer.handler;
     let content = buffer.content.clone();
-    
+
     if let Some(handler_handle) = handler {
         // Prepare arguments for handler: (string $buffer, int $phase)
         let buffer_arg = vm.arena.alloc(Val::String(Rc::new(content.clone())));
         let phase_arg = vm.arena.alloc(Val::Int(phase));
-        
+
         // Call the handler
         match vm.call_user_function(handler_handle, &[buffer_arg, phase_arg]) {
             Ok(result_handle) => {
@@ -517,7 +557,9 @@ fn create_buffer_status_data(
     status_map.insert(ArrayKey::Str(Rc::new(b"name".to_vec())), name_val);
 
     // 'type' => 0 for user handler, 1 for internal handler
-    let type_val = vm.arena.alloc(Val::Int(if handler.is_some() { 1 } else { 0 }));
+    let type_val = vm
+        .arena
+        .alloc(Val::Int(if handler.is_some() { 1 } else { 0 }));
     status_map.insert(ArrayKey::Str(Rc::new(b"type".to_vec())), type_val);
 
     // 'flags' => control flags
@@ -544,5 +586,7 @@ fn create_buffer_status_data(
     let status_val = vm.arena.alloc(Val::Int(status));
     status_map.insert(ArrayKey::Str(Rc::new(b"status".to_vec())), status_val);
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(ArrayData::from(status_map)))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(ArrayData::from(status_map)))))
 }

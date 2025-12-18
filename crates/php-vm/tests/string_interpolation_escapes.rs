@@ -1,7 +1,7 @@
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VM, VmError, OutputWriter};
+use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -14,7 +14,12 @@ struct TestWriter {
 impl TestWriter {
     fn new() -> (Self, Rc<RefCell<Vec<u8>>>) {
         let buffer = Rc::new(RefCell::new(Vec::new()));
-        (Self { buffer: buffer.clone() }, buffer)
+        (
+            Self {
+                buffer: buffer.clone(),
+            },
+            buffer,
+        )
     }
 }
 

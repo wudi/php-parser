@@ -8,7 +8,6 @@
 /// - WeakReference, WeakMap, Stringable
 /// - UnitEnum, BackedEnum
 /// - SensitiveParameterValue, __PHP_Incomplete_Class
-
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::{VmError, VM};
@@ -49,7 +48,7 @@ fn test_traversable_interface_exists() {
             throw new Exception('Traversable interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -65,7 +64,7 @@ fn test_iterator_interface_exists() {
             throw new Exception('Iterator must extend Traversable');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -81,7 +80,7 @@ fn test_iterator_aggregate_interface_exists() {
             throw new Exception('IteratorAggregate must extend Traversable');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -98,7 +97,7 @@ fn test_throwable_interface_exists() {
             throw new Exception('Throwable must extend Stringable');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -111,7 +110,7 @@ fn test_countable_interface_exists() {
             throw new Exception('Countable interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -124,7 +123,7 @@ fn test_array_access_interface_exists() {
             throw new Exception('ArrayAccess interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -137,7 +136,7 @@ fn test_serializable_interface_exists() {
             throw new Exception('Serializable interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -150,7 +149,7 @@ fn test_stringable_interface_exists() {
             throw new Exception('Stringable interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -167,7 +166,7 @@ fn test_closure_class_exists() {
             throw new Exception('Closure class not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -185,7 +184,7 @@ fn test_stdclass_exists() {
             throw new Exception('Dynamic properties not working');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -201,7 +200,7 @@ fn test_generator_class_exists() {
             throw new Exception('Generator must implement Iterator');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -214,7 +213,7 @@ fn test_fiber_class_exists() {
             throw new Exception('Fiber class not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -227,7 +226,7 @@ fn test_weak_reference_class_exists() {
             throw new Exception('WeakReference class not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -249,7 +248,7 @@ fn test_weak_map_class_exists() {
             throw new Exception('WeakMap must implement IteratorAggregate');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -262,7 +261,7 @@ fn test_sensitive_parameter_value_class_exists() {
             throw new Exception('SensitiveParameterValue class not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -275,7 +274,7 @@ fn test_incomplete_class_exists() {
             throw new Exception('__PHP_Incomplete_Class not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -292,7 +291,7 @@ fn test_unit_enum_interface_exists() {
             throw new Exception('UnitEnum interface not found');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -308,7 +307,7 @@ fn test_backed_enum_interface_exists() {
             throw new Exception('BackedEnum must extend UnitEnum');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -351,7 +350,7 @@ fn test_iterator_implementation() {
             throw new Exception('MyIterator must be instanceof Iterator');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -364,7 +363,7 @@ fn test_exception_implements_throwable() {
             throw new Exception('Exception must implement Throwable');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -377,7 +376,7 @@ fn test_error_implements_throwable() {
             throw new Exception('Error must implement Throwable');
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
@@ -426,8 +425,7 @@ fn test_all_predefined_interfaces_and_classes_exist() {
             }
         }
     "#;
-    
+
     let result = run_code(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
-

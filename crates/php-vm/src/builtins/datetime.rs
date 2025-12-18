@@ -172,14 +172,12 @@ fn format_php_date(dt: &ChronoDateTime<Tz>, format: &str) -> String {
             }
             'n' => result.push_str(&dt.month().to_string()),
             't' => {
-                let days_in_month = NaiveDate::from_ymd_opt(
-                    dt.year(),
-                    dt.month() + 1,
-                    1,
-                )
-                .unwrap_or(NaiveDate::from_ymd_opt(dt.year() + 1, 1, 1).unwrap())
-                .signed_duration_since(NaiveDate::from_ymd_opt(dt.year(), dt.month(), 1).unwrap())
-                .num_days();
+                let days_in_month = NaiveDate::from_ymd_opt(dt.year(), dt.month() + 1, 1)
+                    .unwrap_or(NaiveDate::from_ymd_opt(dt.year() + 1, 1, 1).unwrap())
+                    .signed_duration_since(
+                        NaiveDate::from_ymd_opt(dt.year(), dt.month(), 1).unwrap(),
+                    )
+                    .num_days();
                 result.push_str(&days_in_month.to_string());
             }
 
@@ -205,12 +203,14 @@ fn format_php_date(dt: &ChronoDateTime<Tz>, format: &str) -> String {
             }
             'g' => {
                 let hour = dt.hour();
-                result.push_str(&(if hour == 0 || hour == 12 {
-                    12
-                } else {
-                    hour % 12
-                })
-                .to_string());
+                result.push_str(
+                    &(if hour == 0 || hour == 12 {
+                        12
+                    } else {
+                        hour % 12
+                    })
+                    .to_string(),
+                );
             }
             'G' => result.push_str(&dt.hour().to_string()),
             'h' => {
@@ -476,9 +476,9 @@ pub fn php_strtotime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     if let Ok(date) = NaiveDate::parse_from_str(&datetime_str, "%Y-%m-%d") {
-        return Ok(vm
-            .arena
-            .alloc(Val::Int(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())));
+        return Ok(vm.arena.alloc(Val::Int(
+            date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp(),
+        )));
     }
 
     // Return false for unparseable strings
@@ -545,7 +545,8 @@ pub fn php_getdate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
     map.insert(
         make_array_key("weekday"),
-        vm.arena.alloc(Val::String(weekday.as_bytes().to_vec().into())),
+        vm.arena
+            .alloc(Val::String(weekday.as_bytes().to_vec().into())),
     );
 
     let month = match dt.month() {
@@ -565,15 +566,18 @@ pub fn php_getdate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
     map.insert(
         make_array_key("month"),
-        vm.arena.alloc(Val::String(month.as_bytes().to_vec().into())),
+        vm.arena
+            .alloc(Val::String(month.as_bytes().to_vec().into())),
     );
 
     map.insert(make_array_key("0"), vm.arena.alloc(Val::Int(timestamp)));
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-        map,
-        next_free: 0,
-    }))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: 0,
+        }))))
 }
 
 /// idate(string $format, ?int $timestamp = null): int|false
@@ -668,19 +672,15 @@ pub fn php_gettimeofday(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
             make_array_key("usec"),
             vm.arena.alloc(Val::Int(usecs as i64)),
         );
-        map.insert(
-            make_array_key("minuteswest"),
-            vm.arena.alloc(Val::Int(0)),
-        );
-        map.insert(
-            make_array_key("dsttime"),
-            vm.arena.alloc(Val::Int(0)),
-        );
+        map.insert(make_array_key("minuteswest"), vm.arena.alloc(Val::Int(0)));
+        map.insert(make_array_key("dsttime"), vm.arena.alloc(Val::Int(0)));
 
-        Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-            map,
-            next_free: 0,
-        }))))
+        Ok(vm
+            .arena
+            .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+                map,
+                next_free: 0,
+            }))))
     }
 }
 
@@ -741,10 +741,7 @@ pub fn php_localtime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             make_array_key("tm_yday"),
             vm.arena.alloc(Val::Int(dt.ordinal0() as i64)),
         );
-        map.insert(
-            make_array_key("tm_isdst"),
-            vm.arena.alloc(Val::Int(0)),
-        );
+        map.insert(make_array_key("tm_isdst"), vm.arena.alloc(Val::Int(0)));
     } else {
         map.insert(
             make_array_key("0"),
@@ -782,10 +779,12 @@ pub fn php_localtime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         map.insert(make_array_key("8"), vm.arena.alloc(Val::Int(0)));
     }
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-        map,
-        next_free: if associative { 0 } else { 9 },
-    }))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: if associative { 0 } else { 9 },
+        }))))
 }
 
 // ============================================================================
@@ -796,7 +795,9 @@ pub fn php_localtime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 pub fn php_date_default_timezone_get(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // In a real implementation, this would read from ini settings
     // For now, return UTC
-    Ok(vm.arena.alloc(Val::String("UTC".as_bytes().to_vec().into())))
+    Ok(vm
+        .arena
+        .alloc(Val::String("UTC".as_bytes().to_vec().into())))
 }
 
 /// date_default_timezone_set(string $timezoneId): bool
@@ -836,7 +837,7 @@ pub fn php_date_sunrise(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         1 => Ok(vm
             .arena
             .alloc(Val::String("06:00".as_bytes().to_vec().into()))), // SUNFUNCS_RET_STRING
-        2 => Ok(vm.arena.alloc(Val::Float(6.0))),                      // SUNFUNCS_RET_DOUBLE
+        2 => Ok(vm.arena.alloc(Val::Float(6.0))),      // SUNFUNCS_RET_DOUBLE
         _ => Ok(vm.arena.alloc(Val::Bool(false))),
     }
 }
@@ -913,10 +914,12 @@ pub fn php_date_sun_info(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
         vm.arena.alloc(Val::Int(1234567890)),
     );
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-        map,
-        next_free: 0,
-    }))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: 0,
+        }))))
 }
 
 // ============================================================================
@@ -970,41 +973,36 @@ pub fn php_date_parse(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         map.insert(make_array_key("second"), vm.arena.alloc(Val::Bool(false)));
     }
 
-    map.insert(
-        make_array_key("fraction"),
-        vm.arena.alloc(Val::Float(0.0)),
-    );
-    map.insert(
-        make_array_key("warning_count"),
-        vm.arena.alloc(Val::Int(0)),
-    );
+    map.insert(make_array_key("fraction"), vm.arena.alloc(Val::Float(0.0)));
+    map.insert(make_array_key("warning_count"), vm.arena.alloc(Val::Int(0)));
     map.insert(
         make_array_key("warnings"),
-        vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-            map: IndexMap::new(),
-            next_free: 0,
-        }))),
+        vm.arena
+            .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+                map: IndexMap::new(),
+                next_free: 0,
+            }))),
     );
-    map.insert(
-        make_array_key("error_count"),
-        vm.arena.alloc(Val::Int(0)),
-    );
+    map.insert(make_array_key("error_count"), vm.arena.alloc(Val::Int(0)));
     map.insert(
         make_array_key("errors"),
-        vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-            map: IndexMap::new(),
-            next_free: 0,
-        }))),
+        vm.arena
+            .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+                map: IndexMap::new(),
+                next_free: 0,
+            }))),
     );
     map.insert(
         make_array_key("is_localtime"),
         vm.arena.alloc(Val::Bool(false)),
     );
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-        map,
-        next_free: 0,
-    }))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: 0,
+        }))))
 }
 
 /// date_parse_from_format(string $format, string $datetime): array
@@ -1018,41 +1016,54 @@ pub fn php_date_parse_from_format(vm: &mut VM, args: &[Handle]) -> Result<Handle
 
     // Simplified implementation - return basic structure
     let mut map = IndexMap::new();
-    map.insert(ArrayKey::Str(Rc::new("year".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
-    map.insert(ArrayKey::Str(Rc::new("month".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
-    map.insert(ArrayKey::Str(Rc::new("day".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
-    map.insert(ArrayKey::Str(Rc::new("hour".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
-    map.insert(ArrayKey::Str(Rc::new("minute".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
-    map.insert(ArrayKey::Str(Rc::new("second".as_bytes().to_vec())), vm.arena.alloc(Val::Bool(false)));
     map.insert(
-        make_array_key("fraction"),
-        vm.arena.alloc(Val::Float(0.0)),
+        ArrayKey::Str(Rc::new("year".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
     );
     map.insert(
-        make_array_key("warning_count"),
-        vm.arena.alloc(Val::Int(0)),
+        ArrayKey::Str(Rc::new("month".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
     );
+    map.insert(
+        ArrayKey::Str(Rc::new("day".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new("hour".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new("minute".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new("second".as_bytes().to_vec())),
+        vm.arena.alloc(Val::Bool(false)),
+    );
+    map.insert(make_array_key("fraction"), vm.arena.alloc(Val::Float(0.0)));
+    map.insert(make_array_key("warning_count"), vm.arena.alloc(Val::Int(0)));
     map.insert(
         make_array_key("warnings"),
-        vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-            map: IndexMap::new(),
-            next_free: 0,
-        }))),
+        vm.arena
+            .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+                map: IndexMap::new(),
+                next_free: 0,
+            }))),
     );
-    map.insert(
-        make_array_key("error_count"),
-        vm.arena.alloc(Val::Int(0)),
-    );
+    map.insert(make_array_key("error_count"), vm.arena.alloc(Val::Int(0)));
     map.insert(
         make_array_key("errors"),
-        vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-            map: IndexMap::new(),
-            next_free: 0,
-        }))),
+        vm.arena
+            .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+                map: IndexMap::new(),
+                next_free: 0,
+            }))),
     );
 
-    Ok(vm.arena.alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
-        map,
-        next_free: 0,
-    }))))
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: 0,
+        }))))
 }

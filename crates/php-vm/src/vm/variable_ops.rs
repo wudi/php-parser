@@ -48,7 +48,7 @@
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_variables.c` - Variable management
 
 use crate::core::value::{Handle, Symbol};
-use crate::vm::engine::{ErrorLevel, VM, VmError};
+use crate::vm::engine::{ErrorLevel, VmError, VM};
 
 impl VM {
     /// Load variable by symbol, handling superglobals and undefined variables
@@ -99,7 +99,9 @@ impl VM {
             }
         }
 
-        let frame = self.frames.last_mut()
+        let frame = self
+            .frames
+            .last_mut()
             .ok_or_else(|| VmError::RuntimeError("No active frame".into()))?;
 
         if let Some(&handle) = frame.locals.get(&sym) {
@@ -118,9 +120,11 @@ impl VM {
             // Must create handle before getting frame again
             let handle = self.arena.alloc(crate::core::value::Val::Null);
             self.arena.get_mut(handle).is_ref = true;
-            
+
             // Now we can safely insert into frame
-            let frame = self.frames.last_mut()
+            let frame = self
+                .frames
+                .last_mut()
                 .ok_or_else(|| VmError::RuntimeError("No active frame".into()))?;
             frame.locals.insert(sym, handle);
             Ok(handle)
@@ -129,17 +133,25 @@ impl VM {
 
     /// Store value to variable
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ASSIGN
-    pub(crate) fn store_variable(&mut self, sym: Symbol, val_handle: Handle) -> Result<(), VmError> {
+    pub(crate) fn store_variable(
+        &mut self,
+        sym: Symbol,
+        val_handle: Handle,
+    ) -> Result<(), VmError> {
         // Bind superglobal if needed
         if self.is_superglobal(sym) {
             if let Some(handle) = self.ensure_superglobal_handle(sym) {
-                let frame = self.frames.last_mut()
+                let frame = self
+                    .frames
+                    .last_mut()
                     .ok_or_else(|| VmError::RuntimeError("No active frame".into()))?;
                 frame.locals.entry(sym).or_insert(handle);
             }
         }
 
-        let frame = self.frames.last_mut()
+        let frame = self
+            .frames
+            .last_mut()
             .ok_or_else(|| VmError::RuntimeError("No active frame".into()))?;
 
         // Check if target is a reference
@@ -156,7 +168,7 @@ impl VM {
         let val = self.arena.get(val_handle).value.clone();
         let final_handle = self.arena.alloc(val);
         frame.locals.insert(sym, final_handle);
-        
+
         Ok(())
     }
 
@@ -183,7 +195,9 @@ impl VM {
     /// Unset a variable (remove from local scope)
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_UNSET_VAR
     pub(crate) fn unset_variable(&mut self, sym: Symbol) -> Result<(), VmError> {
-        let frame = self.frames.last_mut()
+        let frame = self
+            .frames
+            .last_mut()
             .ok_or_else(|| VmError::RuntimeError("No active frame".into()))?;
         frame.locals.remove(&sym);
         Ok(())
@@ -213,12 +227,12 @@ mod tests {
     fn setup_vm() -> VM {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         // Push a frame to have an active scope
         let chunk = Rc::new(CodeChunk::default());
         let frame = CallFrame::new(chunk);
         vm.frames.push(frame);
-        
+
         vm
     }
 
@@ -226,11 +240,11 @@ mod tests {
     fn test_load_store_variable() {
         let mut vm = setup_vm();
         let sym = vm.context.interner.intern(b"test_var");
-        
+
         // Store a value
         let value = vm.new_int_handle(42);
         vm.store_variable(sym, value).unwrap();
-        
+
         // Load it back
         let loaded = vm.load_variable(sym).unwrap();
         assert_eq!(vm.value_to_int(loaded), 42);
@@ -240,7 +254,7 @@ mod tests {
     fn test_undefined_variable_returns_null() {
         let mut vm = setup_vm();
         let sym = vm.context.interner.intern(b"undefined_var");
-        
+
         let result = vm.load_variable(sym).unwrap();
         let val = &vm.arena.get(result).value;
         assert!(matches!(val, Val::Null));
@@ -250,15 +264,15 @@ mod tests {
     fn test_reference_variable() {
         let mut vm = setup_vm();
         let sym = vm.context.interner.intern(b"ref_var");
-        
+
         // Load as reference (creates if undefined)
         let ref_handle = vm.load_variable_ref(sym).unwrap();
         assert!(vm.arena.get(ref_handle).is_ref);
-        
+
         // Assign to the reference
         let new_value = vm.new_int_handle(99);
         vm.store_variable(sym, new_value).unwrap();
-        
+
         // Original reference should be updated
         let val = &vm.arena.get(ref_handle).value;
         assert_eq!(val.to_int(), 99);
@@ -267,13 +281,14 @@ mod tests {
     #[test]
     fn test_dynamic_variable() {
         let mut vm = setup_vm();
-        
+
         // Create variable name at runtime
         let name_handle = vm.new_string_handle(b"dynamic".to_vec());
         let value_handle = vm.new_int_handle(123);
-        
-        vm.store_variable_dynamic(name_handle, value_handle).unwrap();
-        
+
+        vm.store_variable_dynamic(name_handle, value_handle)
+            .unwrap();
+
         // Load it back
         let loaded = vm.load_variable_dynamic(name_handle).unwrap();
         assert_eq!(vm.value_to_int(loaded), 123);
@@ -283,12 +298,12 @@ mod tests {
     fn test_variable_exists() {
         let mut vm = setup_vm();
         let sym = vm.context.interner.intern(b"exists_test");
-        
+
         assert!(!vm.variable_exists(sym));
-        
+
         let value = vm.new_int_handle(1);
         vm.store_variable(sym, value).unwrap();
-        
+
         assert!(vm.variable_exists(sym));
     }
 
@@ -296,11 +311,11 @@ mod tests {
     fn test_unset_variable() {
         let mut vm = setup_vm();
         let sym = vm.context.interner.intern(b"to_unset");
-        
+
         let value = vm.new_int_handle(1);
         vm.store_variable(sym, value).unwrap();
         assert!(vm.variable_exists(sym));
-        
+
         vm.unset_variable(sym).unwrap();
         assert!(!vm.variable_exists(sym));
     }

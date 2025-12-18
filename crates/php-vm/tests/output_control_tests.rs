@@ -156,11 +156,12 @@ fn test_ob_get_status() {
     let mut vm = create_test_vm();
 
     // Start buffering with specific flags
-    let flags = output_control::PHP_OUTPUT_HANDLER_CLEANABLE | output_control::PHP_OUTPUT_HANDLER_FLUSHABLE;
+    let flags =
+        output_control::PHP_OUTPUT_HANDLER_CLEANABLE | output_control::PHP_OUTPUT_HANDLER_FLUSHABLE;
     let null_handle = vm.arena.alloc(Val::Null);
     let zero_handle = vm.arena.alloc(Val::Int(0));
     let flags_val = vm.arena.alloc(Val::Int(flags));
-    
+
     output_control::php_ob_start(&mut vm, &[null_handle, zero_handle, flags_val]).unwrap();
 
     // Get status

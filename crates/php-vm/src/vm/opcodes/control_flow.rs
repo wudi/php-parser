@@ -1,42 +1,42 @@
 //! Control flow operations
-//! 
+//!
 //! Implements control flow opcodes for jumps, conditionals, and exceptions.
-//! 
+//!
 //! ## PHP Semantics
-//! 
+//!
 //! Jump operations modify the instruction pointer (IP) to enable:
 //! - Conditional execution (if/else, ternary)
 //! - Loops (for, while, foreach)
 //! - Short-circuit evaluation (&&, ||, ??)
 //! - Exception handling (try/catch)
-//! 
+//!
 //! ## Operations
-//! 
+//!
 //! - **Jmp**: Unconditional jump to target offset
 //! - **JmpIfFalse**: Jump if operand is falsy (pops value)
 //! - **JmpIfTrue**: Jump if operand is truthy (pops value)
 //! - **JmpZEx**: Jump if falsy, else leave value on stack (peek)
 //! - **JmpNzEx**: Jump if truthy, else leave value on stack (peek)
-//! 
+//!
 //! ## Implementation Notes
-//! 
+//!
 //! Jump targets are absolute offsets into the current function's bytecode.
 //! The VM maintains separate instruction pointers per call frame.
-//! 
+//!
 //! Conditional jumps use PHP's truthiness rules:
 //! - Falsy: false, 0, 0.0, "", "0", null, empty arrays
 //! - Truthy: everything else
-//! 
+//!
 //! ## Performance
-//! 
+//!
 //! All jump operations are O(1). No heap allocations.
-//! 
+//!
 //! ## References
-//! 
+//!
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_vm_execute.h` - ZEND_JMP* handlers
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_vm_def.h` - jump opcode definitions
 
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 
 impl VM {
     /// Execute unconditional jump

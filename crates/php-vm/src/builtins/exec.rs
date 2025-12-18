@@ -525,7 +525,7 @@ pub fn php_proc_terminate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
 ///
 /// Sets the maximum time in seconds a script is allowed to run.
 /// When the limit is reached, the script will be terminated with a fatal error.
-/// 
+///
 /// A value of 0 means unlimited execution time.
 /// Negative values are treated as valid and set the limit (PHP allows this).
 ///
@@ -541,7 +541,13 @@ pub fn php_set_time_limit(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     let seconds = match &vm.arena.get(args[0]).value {
         Val::Int(i) => *i,
         Val::Float(f) => *f as i64,
-        Val::Bool(b) => if *b { 1 } else { 0 },
+        Val::Bool(b) => {
+            if *b {
+                1
+            } else {
+                0
+            }
+        }
         Val::String(s) => {
             let s_str = String::from_utf8_lossy(s);
             let trimmed = s_str.trim();
@@ -569,7 +575,7 @@ pub fn php_set_time_limit(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
 
     // Set the new execution time limit
     vm.context.max_execution_time = seconds;
-    
+
     // Reset the execution start time (resets the timeout counter)
     vm.execution_start_time = std::time::SystemTime::now();
 

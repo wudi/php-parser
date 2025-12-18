@@ -1,16 +1,16 @@
 //! Bitwise operations
-//! 
+//!
 //! Implements PHP bitwise and logical operations following Zend semantics.
-//! 
+//!
 //! ## PHP Semantics
-//! 
+//!
 //! Bitwise operations work on integers:
 //! - Operands are converted to integers via type juggling
 //! - Results are always integers (or strings for string bitwise ops)
 //! - Shift operations use modulo for shift amounts
-//! 
+//!
 //! ## Operations
-//! 
+//!
 //! - **BitwiseAnd**: `$a & $b` - Bitwise AND
 //! - **BitwiseOr**: `$a | $b` - Bitwise OR
 //! - **BitwiseXor**: `$a ^ $b` - Bitwise XOR
@@ -18,73 +18,135 @@
 //! - **ShiftLeft**: `$a << $b` - Left shift
 //! - **ShiftRight**: `$a >> $b` - Right shift (arithmetic)
 //! - **BoolNot**: `!$a` - Logical NOT (boolean negation)
-//! 
+//!
 //! ## Special Cases
-//! 
+//!
 //! - String bitwise operations work character-by-character
 //! - Shift amounts > 63 are reduced via modulo
 //! - Negative shift amounts cause undefined behavior in PHP
-//! 
+//!
 //! ## Performance
-//! 
+//!
 //! All operations are O(1) on integers. String bitwise operations
 //! are O(n) where n is the string length.
-//! 
+//!
 //! ## References
-//! 
+//!
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_operators.c` - bitwise functions
 //! - PHP Manual: https://www.php.net/manual/en/language.operators.bitwise.php
 
-use crate::vm::engine::{VM, VmError};
+use crate::core::value::Val;
+use crate::vm::engine::{VmError, VM};
 
 impl VM {
+    /// Generic binary bitwise operation using AssignOpType
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+    fn binary_bitwise(
+        &mut self,
+        op_type: crate::vm::assign_op::AssignOpType,
+    ) -> Result<(), VmError> {
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
+        let a_val = self.arena.get(a_handle).value.clone();
+        let b_val = self.arena.get(b_handle).value.clone();
+
+        let result = op_type.apply(a_val, b_val)?;
+        self.operand_stack.push(self.arena.alloc(result));
+        Ok(())
+    }
+
+    /// Generic shift operation (left or right)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+    fn binary_shift(&mut self, is_shr: bool) -> Result<(), VmError> {
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
+        let a_val = &self.arena.get(a_handle).value;
+        let b_val = &self.arena.get(b_handle).value;
+
+        let shift_amount = b_val.to_int();
+        let value = a_val.to_int();
+
+        let result = if shift_amount < 0 || shift_amount >= 64 {
+            if is_shr {
+                Val::Int(value >> 63)
+            } else {
+                Val::Int(0)
+            }
+        } else {
+            if is_shr {
+                Val::Int(value.wrapping_shr(shift_amount as u32))
+            } else {
+                Val::Int(value.wrapping_shl(shift_amount as u32))
+            }
+        };
+
+        let res_handle = self.arena.alloc(result);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+
     /// Execute BitwiseAnd operation: $result = $left & $right
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - bitwise_and_function
     #[inline]
     pub(crate) fn exec_bitwise_and(&mut self) -> Result<(), VmError> {
-        self.bitwise_and()
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwAnd)
     }
 
     /// Execute BitwiseOr operation: $result = $left | $right
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - bitwise_or_function
     #[inline]
     pub(crate) fn exec_bitwise_or(&mut self) -> Result<(), VmError> {
-        self.bitwise_or()
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwOr)
     }
 
     /// Execute BitwiseXor operation: $result = $left ^ $right
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - bitwise_xor_function
     #[inline]
     pub(crate) fn exec_bitwise_xor(&mut self) -> Result<(), VmError> {
-        self.bitwise_xor()
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwXor)
     }
 
     /// Execute ShiftLeft operation: $result = $left << $right
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - shift_left_function
     #[inline]
     pub(crate) fn exec_shift_left(&mut self) -> Result<(), VmError> {
-        self.bitwise_shl()
+        self.binary_shift(false)
     }
 
     /// Execute ShiftRight operation: $result = $left >> $right
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - shift_right_function
     #[inline]
     pub(crate) fn exec_shift_right(&mut self) -> Result<(), VmError> {
-        self.bitwise_shr()
+        self.binary_shift(true)
     }
 
     /// Execute BitwiseNot operation: $result = ~$value
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - bitwise_not_function
     #[inline]
     pub(crate) fn exec_bitwise_not(&mut self) -> Result<(), VmError> {
-        self.bitwise_not()
+        let handle = self.pop_operand_required()?;
+        // Match on reference to avoid cloning unless necessary
+        let res = match &self.arena.get(handle).value {
+            Val::Int(i) => Val::Int(!i),
+            Val::String(s) => {
+                let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
+                Val::String(inverted.into())
+            }
+            other => Val::Int(!other.to_int()),
+        };
+        let res_handle = self.arena.alloc(res);
+        self.operand_stack.push(res_handle);
+        Ok(())
     }
 
     /// Execute BoolNot operation: $result = !$value
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - boolean_not_function
     #[inline]
     pub(crate) fn exec_bool_not(&mut self) -> Result<(), VmError> {
-        self.bool_not()
+        let handle = self.pop_operand_required()?;
+        let val = &self.arena.get(handle).value;
+        let b = val.to_bool();
+        let res_handle = self.arena.alloc(Val::Bool(!b));
+        self.operand_stack.push(res_handle);
+        Ok(())
     }
 }
 

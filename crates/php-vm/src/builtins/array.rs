@@ -161,27 +161,25 @@ pub fn php_ksort(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let arr_handle = args[0];
     let arr_slot = vm.arena.get(arr_handle);
-    
+
     if let Val::Array(arr_rc) = &arr_slot.value {
         let mut arr_data = (**arr_rc).clone();
-        
+
         // Sort keys: collect entries, sort, and rebuild
         let mut entries: Vec<_> = arr_data.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
-        entries.sort_by(|(a, _), (b, _)| {
-            match (a, b) {
-                (ArrayKey::Int(i1), ArrayKey::Int(i2)) => i1.cmp(i2),
-                (ArrayKey::Str(s1), ArrayKey::Str(s2)) => s1.cmp(s2),
-                (ArrayKey::Int(_), ArrayKey::Str(_)) => std::cmp::Ordering::Less,
-                (ArrayKey::Str(_), ArrayKey::Int(_)) => std::cmp::Ordering::Greater,
-            }
+        entries.sort_by(|(a, _), (b, _)| match (a, b) {
+            (ArrayKey::Int(i1), ArrayKey::Int(i2)) => i1.cmp(i2),
+            (ArrayKey::Str(s1), ArrayKey::Str(s2)) => s1.cmp(s2),
+            (ArrayKey::Int(_), ArrayKey::Str(_)) => std::cmp::Ordering::Less,
+            (ArrayKey::Str(_), ArrayKey::Int(_)) => std::cmp::Ordering::Greater,
         });
-        
+
         let sorted_map: IndexMap<_, _> = entries.into_iter().collect();
         arr_data.map = sorted_map;
-        
+
         let slot = vm.arena.get_mut(arr_handle);
         slot.value = Val::Array(std::rc::Rc::new(arr_data));
-        
+
         Ok(vm.arena.alloc(Val::Bool(true)))
     } else {
         Err("ksort() expects parameter 1 to be array".into())
@@ -195,19 +193,19 @@ pub fn php_array_unshift(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
 
     let arr_handle = args[0];
     let arr_val = vm.arena.get(arr_handle);
-    
+
     if let Val::Array(arr_rc) = &arr_val.value {
         let mut arr_data = (**arr_rc).clone();
         let old_len = arr_data.map.len() as i64;
-        
+
         // Rebuild array with new elements prepended
         let mut new_map = IndexMap::new();
-        
+
         // Add new elements first (from args[1..])
         for (i, &arg) in args[1..].iter().enumerate() {
             new_map.insert(ArrayKey::Int(i as i64), arg);
         }
-        
+
         // Then add existing elements with shifted indices
         let shift_by = (args.len() - 1) as i64;
         for (key, val_handle) in &arr_data.map {
@@ -220,13 +218,13 @@ pub fn php_array_unshift(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
                 }
             }
         }
-        
+
         arr_data.map = new_map;
         arr_data.next_free += shift_by;
-        
+
         let slot = vm.arena.get_mut(arr_handle);
         slot.value = Val::Array(std::rc::Rc::new(arr_data));
-        
+
         let new_len = old_len + shift_by;
         Ok(vm.arena.alloc(Val::Int(new_len)))
     } else {
@@ -241,7 +239,7 @@ pub fn php_current(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let arr_handle = args[0];
     let arr_val = vm.arena.get(arr_handle);
-    
+
     if let Val::Array(arr_rc) = &arr_val.value {
         // Get the first element (current element at internal pointer position 0)
         if let Some((_, val_handle)) = arr_rc.map.get_index(0) {
@@ -271,7 +269,7 @@ pub fn php_reset(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let arr_handle = args[0];
     let arr_val = vm.arena.get(arr_handle);
-    
+
     if let Val::Array(arr_rc) = &arr_val.value {
         if let Some((_, val_handle)) = arr_rc.map.get_index(0) {
             Ok(*val_handle)
@@ -290,7 +288,7 @@ pub fn php_end(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let arr_handle = args[0];
     let arr_val = vm.arena.get(arr_handle);
-    
+
     if let Val::Array(arr_rc) = &arr_val.value {
         let len = arr_rc.map.len();
         if len > 0 {

@@ -1,5 +1,8 @@
 use crate::builtins::spl;
-use crate::builtins::{array, class, datetime, exception, exec, filesystem, function, http, math, output_control, pcre, string, variable};
+use crate::builtins::{
+    array, class, datetime, exception, exec, filesystem, function, http, math, output_control,
+    pcre, string, variable,
+};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -110,7 +113,10 @@ impl EngineContext {
         );
         functions.insert(b"in_array".to_vec(), array::php_in_array as NativeHandler);
         functions.insert(b"ksort".to_vec(), array::php_ksort as NativeHandler);
-        functions.insert(b"array_unshift".to_vec(), array::php_array_unshift as NativeHandler);
+        functions.insert(
+            b"array_unshift".to_vec(),
+            array::php_array_unshift as NativeHandler,
+        );
         functions.insert(b"current".to_vec(), array::php_current as NativeHandler);
         functions.insert(b"next".to_vec(), array::php_next as NativeHandler);
         functions.insert(b"reset".to_vec(), array::php_reset as NativeHandler);
@@ -119,10 +125,7 @@ impl EngineContext {
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,
         );
-        functions.insert(
-            b"print_r".to_vec(),
-            variable::php_print_r as NativeHandler,
-        );
+        functions.insert(b"print_r".to_vec(), variable::php_print_r as NativeHandler);
         functions.insert(b"count".to_vec(), array::php_count as NativeHandler);
         functions.insert(
             b"is_string".to_vec(),
@@ -156,8 +159,14 @@ impl EngineContext {
         functions.insert(b"sprintf".to_vec(), string::php_sprintf as NativeHandler);
         functions.insert(b"printf".to_vec(), string::php_printf as NativeHandler);
         functions.insert(b"header".to_vec(), http::php_header as NativeHandler);
-        functions.insert(b"headers_sent".to_vec(), http::php_headers_sent as NativeHandler);
-        functions.insert(b"header_remove".to_vec(), http::php_header_remove as NativeHandler);
+        functions.insert(
+            b"headers_sent".to_vec(),
+            http::php_headers_sent as NativeHandler,
+        );
+        functions.insert(
+            b"header_remove".to_vec(),
+            http::php_header_remove as NativeHandler,
+        );
         functions.insert(b"abs".to_vec(), math::php_abs as NativeHandler);
         functions.insert(b"max".to_vec(), math::php_max as NativeHandler);
         functions.insert(b"min".to_vec(), math::php_min as NativeHandler);
@@ -223,8 +232,14 @@ impl EngineContext {
         functions.insert(b"getopt".to_vec(), variable::php_getopt as NativeHandler);
         functions.insert(b"ini_get".to_vec(), variable::php_ini_get as NativeHandler);
         functions.insert(b"ini_set".to_vec(), variable::php_ini_set as NativeHandler);
-        functions.insert(b"error_reporting".to_vec(), variable::php_error_reporting as NativeHandler);
-        functions.insert(b"error_get_last".to_vec(), variable::php_error_get_last as NativeHandler);
+        functions.insert(
+            b"error_reporting".to_vec(),
+            variable::php_error_reporting as NativeHandler,
+        );
+        functions.insert(
+            b"error_get_last".to_vec(),
+            variable::php_error_get_last as NativeHandler,
+        );
         functions.insert(
             b"sys_get_temp_dir".to_vec(),
             filesystem::php_sys_get_temp_dir as NativeHandler,
@@ -238,8 +253,12 @@ impl EngineContext {
             function::php_func_get_args as NativeHandler,
         );
         functions.insert(b"preg_match".to_vec(), pcre::preg_match as NativeHandler);
-        functions.insert(b"
-        ".to_vec(), pcre::preg_replace as NativeHandler);
+        functions.insert(
+            b"
+        "
+            .to_vec(),
+            pcre::preg_replace as NativeHandler,
+        );
         functions.insert(b"preg_split".to_vec(), pcre::preg_split as NativeHandler);
         functions.insert(b"preg_quote".to_vec(), pcre::preg_quote as NativeHandler);
         functions.insert(
@@ -455,18 +474,36 @@ impl EngineContext {
         );
 
         // Date/Time functions
-        functions.insert(b"checkdate".to_vec(), datetime::php_checkdate as NativeHandler);
+        functions.insert(
+            b"checkdate".to_vec(),
+            datetime::php_checkdate as NativeHandler,
+        );
         functions.insert(b"date".to_vec(), datetime::php_date as NativeHandler);
         functions.insert(b"gmdate".to_vec(), datetime::php_gmdate as NativeHandler);
         functions.insert(b"time".to_vec(), datetime::php_time as NativeHandler);
-        functions.insert(b"microtime".to_vec(), datetime::php_microtime as NativeHandler);
+        functions.insert(
+            b"microtime".to_vec(),
+            datetime::php_microtime as NativeHandler,
+        );
         functions.insert(b"mktime".to_vec(), datetime::php_mktime as NativeHandler);
-        functions.insert(b"gmmktime".to_vec(), datetime::php_gmmktime as NativeHandler);
-        functions.insert(b"strtotime".to_vec(), datetime::php_strtotime as NativeHandler);
+        functions.insert(
+            b"gmmktime".to_vec(),
+            datetime::php_gmmktime as NativeHandler,
+        );
+        functions.insert(
+            b"strtotime".to_vec(),
+            datetime::php_strtotime as NativeHandler,
+        );
         functions.insert(b"getdate".to_vec(), datetime::php_getdate as NativeHandler);
         functions.insert(b"idate".to_vec(), datetime::php_idate as NativeHandler);
-        functions.insert(b"gettimeofday".to_vec(), datetime::php_gettimeofday as NativeHandler);
-        functions.insert(b"localtime".to_vec(), datetime::php_localtime as NativeHandler);
+        functions.insert(
+            b"gettimeofday".to_vec(),
+            datetime::php_gettimeofday as NativeHandler,
+        );
+        functions.insert(
+            b"localtime".to_vec(),
+            datetime::php_localtime as NativeHandler,
+        );
         functions.insert(
             b"date_default_timezone_get".to_vec(),
             datetime::php_date_default_timezone_get as NativeHandler,
@@ -475,32 +512,92 @@ impl EngineContext {
             b"date_default_timezone_set".to_vec(),
             datetime::php_date_default_timezone_set as NativeHandler,
         );
-        functions.insert(b"date_sunrise".to_vec(), datetime::php_date_sunrise as NativeHandler);
-        functions.insert(b"date_sunset".to_vec(), datetime::php_date_sunset as NativeHandler);
-        functions.insert(b"date_sun_info".to_vec(), datetime::php_date_sun_info as NativeHandler);
-        functions.insert(b"date_parse".to_vec(), datetime::php_date_parse as NativeHandler);
+        functions.insert(
+            b"date_sunrise".to_vec(),
+            datetime::php_date_sunrise as NativeHandler,
+        );
+        functions.insert(
+            b"date_sunset".to_vec(),
+            datetime::php_date_sunset as NativeHandler,
+        );
+        functions.insert(
+            b"date_sun_info".to_vec(),
+            datetime::php_date_sun_info as NativeHandler,
+        );
+        functions.insert(
+            b"date_parse".to_vec(),
+            datetime::php_date_parse as NativeHandler,
+        );
         functions.insert(
             b"date_parse_from_format".to_vec(),
             datetime::php_date_parse_from_format as NativeHandler,
         );
 
         // Output Control functions
-        functions.insert(b"ob_start".to_vec(), output_control::php_ob_start as NativeHandler);
-        functions.insert(b"ob_clean".to_vec(), output_control::php_ob_clean as NativeHandler);
-        functions.insert(b"ob_flush".to_vec(), output_control::php_ob_flush as NativeHandler);
-        functions.insert(b"ob_end_clean".to_vec(), output_control::php_ob_end_clean as NativeHandler);
-        functions.insert(b"ob_end_flush".to_vec(), output_control::php_ob_end_flush as NativeHandler);
-        functions.insert(b"ob_get_clean".to_vec(), output_control::php_ob_get_clean as NativeHandler);
-        functions.insert(b"ob_get_contents".to_vec(), output_control::php_ob_get_contents as NativeHandler);
-        functions.insert(b"ob_get_flush".to_vec(), output_control::php_ob_get_flush as NativeHandler);
-        functions.insert(b"ob_get_length".to_vec(), output_control::php_ob_get_length as NativeHandler);
-        functions.insert(b"ob_get_level".to_vec(), output_control::php_ob_get_level as NativeHandler);
-        functions.insert(b"ob_get_status".to_vec(), output_control::php_ob_get_status as NativeHandler);
-        functions.insert(b"ob_implicit_flush".to_vec(), output_control::php_ob_implicit_flush as NativeHandler);
-        functions.insert(b"ob_list_handlers".to_vec(), output_control::php_ob_list_handlers as NativeHandler);
-        functions.insert(b"flush".to_vec(), output_control::php_flush as NativeHandler);
-        functions.insert(b"output_add_rewrite_var".to_vec(), output_control::php_output_add_rewrite_var as NativeHandler);
-        functions.insert(b"output_reset_rewrite_vars".to_vec(), output_control::php_output_reset_rewrite_vars as NativeHandler);
+        functions.insert(
+            b"ob_start".to_vec(),
+            output_control::php_ob_start as NativeHandler,
+        );
+        functions.insert(
+            b"ob_clean".to_vec(),
+            output_control::php_ob_clean as NativeHandler,
+        );
+        functions.insert(
+            b"ob_flush".to_vec(),
+            output_control::php_ob_flush as NativeHandler,
+        );
+        functions.insert(
+            b"ob_end_clean".to_vec(),
+            output_control::php_ob_end_clean as NativeHandler,
+        );
+        functions.insert(
+            b"ob_end_flush".to_vec(),
+            output_control::php_ob_end_flush as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_clean".to_vec(),
+            output_control::php_ob_get_clean as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_contents".to_vec(),
+            output_control::php_ob_get_contents as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_flush".to_vec(),
+            output_control::php_ob_get_flush as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_length".to_vec(),
+            output_control::php_ob_get_length as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_level".to_vec(),
+            output_control::php_ob_get_level as NativeHandler,
+        );
+        functions.insert(
+            b"ob_get_status".to_vec(),
+            output_control::php_ob_get_status as NativeHandler,
+        );
+        functions.insert(
+            b"ob_implicit_flush".to_vec(),
+            output_control::php_ob_implicit_flush as NativeHandler,
+        );
+        functions.insert(
+            b"ob_list_handlers".to_vec(),
+            output_control::php_ob_list_handlers as NativeHandler,
+        );
+        functions.insert(
+            b"flush".to_vec(),
+            output_control::php_flush as NativeHandler,
+        );
+        functions.insert(
+            b"output_add_rewrite_var".to_vec(),
+            output_control::php_output_add_rewrite_var as NativeHandler,
+        );
+        functions.insert(
+            b"output_reset_rewrite_vars".to_vec(),
+            output_control::php_output_reset_rewrite_vars as NativeHandler,
+        );
 
         Self {
             registry: ExtensionRegistry::new(),
@@ -554,7 +651,12 @@ impl RequestContext {
 impl RequestContext {
     fn register_builtin_classes(&mut self) {
         // Helper to register a native method
-        let register_native_method = |ctx: &mut RequestContext, class_sym: Symbol, name: &[u8], handler: NativeHandler, visibility: Visibility, is_static: bool| {
+        let register_native_method = |ctx: &mut RequestContext,
+                                      class_sym: Symbol,
+                                      name: &[u8],
+                                      handler: NativeHandler,
+                                      visibility: Visibility,
+                                      is_static: bool| {
             let method_sym = ctx.interner.intern(name);
             ctx.native_methods.insert(
                 (class_sym, method_sym),
@@ -572,7 +674,7 @@ impl RequestContext {
         // Predefined Interfaces and Classes
         // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c
         //=====================================================================
-        
+
         // Stringable interface (PHP 8.0+) - must be defined before Throwable
         let stringable_sym = self.interner.intern(b"Stringable");
         self.classes.insert(
@@ -591,7 +693,7 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        
+
         // Throwable interface (base for all exceptions/errors, extends Stringable)
         let throwable_sym = self.interner.intern(b"Throwable");
         self.classes.insert(
@@ -785,10 +887,38 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, closure_sym, b"bind", class::closure_bind, Visibility::Public, true);
-        register_native_method(self, closure_sym, b"bindTo", class::closure_bind_to, Visibility::Public, false);
-        register_native_method(self, closure_sym, b"call", class::closure_call, Visibility::Public, false);
-        register_native_method(self, closure_sym, b"fromCallable", class::closure_from_callable, Visibility::Public, true);
+        register_native_method(
+            self,
+            closure_sym,
+            b"bind",
+            class::closure_bind,
+            Visibility::Public,
+            true,
+        );
+        register_native_method(
+            self,
+            closure_sym,
+            b"bindTo",
+            class::closure_bind_to,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            closure_sym,
+            b"call",
+            class::closure_call,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            closure_sym,
+            b"fromCallable",
+            class::closure_from_callable,
+            Visibility::Public,
+            true,
+        );
 
         // stdClass - empty class for generic objects
         let stdclass_sym = self.interner.intern(b"stdClass");
@@ -827,14 +957,70 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, generator_sym, b"current", class::generator_current, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"key", class::generator_key, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"next", class::generator_next, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"rewind", class::generator_rewind, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"valid", class::generator_valid, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"send", class::generator_send, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"throw", class::generator_throw, Visibility::Public, false);
-        register_native_method(self, generator_sym, b"getReturn", class::generator_get_return, Visibility::Public, false);
+        register_native_method(
+            self,
+            generator_sym,
+            b"current",
+            class::generator_current,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"key",
+            class::generator_key,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"next",
+            class::generator_next,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"rewind",
+            class::generator_rewind,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"valid",
+            class::generator_valid,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"send",
+            class::generator_send,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"throw",
+            class::generator_throw,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            generator_sym,
+            b"getReturn",
+            class::generator_get_return,
+            Visibility::Public,
+            false,
+        );
 
         // Fiber class (final, PHP 8.1+)
         let fiber_sym = self.interner.intern(b"Fiber");
@@ -854,17 +1040,94 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, fiber_sym, b"__construct", class::fiber_construct, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"start", class::fiber_start, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"resume", class::fiber_resume, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"suspend", class::fiber_suspend, Visibility::Public, true);
-        register_native_method(self, fiber_sym, b"throw", class::fiber_throw, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"isStarted", class::fiber_is_started, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"isSuspended", class::fiber_is_suspended, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"isRunning", class::fiber_is_running, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"isTerminated", class::fiber_is_terminated, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"getReturn", class::fiber_get_return, Visibility::Public, false);
-        register_native_method(self, fiber_sym, b"getCurrent", class::fiber_get_current, Visibility::Public, true);
+        register_native_method(
+            self,
+            fiber_sym,
+            b"__construct",
+            class::fiber_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"start",
+            class::fiber_start,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"resume",
+            class::fiber_resume,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"suspend",
+            class::fiber_suspend,
+            Visibility::Public,
+            true,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"throw",
+            class::fiber_throw,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"isStarted",
+            class::fiber_is_started,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"isSuspended",
+            class::fiber_is_suspended,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"isRunning",
+            class::fiber_is_running,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"isTerminated",
+            class::fiber_is_terminated,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"getReturn",
+            class::fiber_get_return,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            fiber_sym,
+            b"getCurrent",
+            class::fiber_get_current,
+            Visibility::Public,
+            true,
+        );
 
         // WeakReference class (final, PHP 7.4+)
         let weak_reference_sym = self.interner.intern(b"WeakReference");
@@ -884,9 +1147,30 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, weak_reference_sym, b"__construct", class::weak_reference_construct, Visibility::Private, false);
-        register_native_method(self, weak_reference_sym, b"create", class::weak_reference_create, Visibility::Public, true);
-        register_native_method(self, weak_reference_sym, b"get", class::weak_reference_get, Visibility::Public, false);
+        register_native_method(
+            self,
+            weak_reference_sym,
+            b"__construct",
+            class::weak_reference_construct,
+            Visibility::Private,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_reference_sym,
+            b"create",
+            class::weak_reference_create,
+            Visibility::Public,
+            true,
+        );
+        register_native_method(
+            self,
+            weak_reference_sym,
+            b"get",
+            class::weak_reference_get,
+            Visibility::Public,
+            false,
+        );
 
         // WeakMap class (final, PHP 8.0+, implements ArrayAccess, Countable, IteratorAggregate)
         let weak_map_sym = self.interner.intern(b"WeakMap");
@@ -906,13 +1190,62 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, weak_map_sym, b"__construct", class::weak_map_construct, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"offsetExists", class::weak_map_offset_exists, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"offsetGet", class::weak_map_offset_get, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"offsetSet", class::weak_map_offset_set, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"offsetUnset", class::weak_map_offset_unset, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"count", class::weak_map_count, Visibility::Public, false);
-        register_native_method(self, weak_map_sym, b"getIterator", class::weak_map_get_iterator, Visibility::Public, false);
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"__construct",
+            class::weak_map_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"offsetExists",
+            class::weak_map_offset_exists,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"offsetGet",
+            class::weak_map_offset_get,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"offsetSet",
+            class::weak_map_offset_set,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"offsetUnset",
+            class::weak_map_offset_unset,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"count",
+            class::weak_map_count,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            weak_map_sym,
+            b"getIterator",
+            class::weak_map_get_iterator,
+            Visibility::Public,
+            false,
+        );
 
         // SensitiveParameterValue class (final, PHP 8.2+)
         let sensitive_param_sym = self.interner.intern(b"SensitiveParameterValue");
@@ -932,9 +1265,30 @@ impl RequestContext {
                 allows_dynamic_properties: false,
             },
         );
-        register_native_method(self, sensitive_param_sym, b"__construct", class::sensitive_parameter_value_construct, Visibility::Public, false);
-        register_native_method(self, sensitive_param_sym, b"getValue", class::sensitive_parameter_value_get_value, Visibility::Public, false);
-        register_native_method(self, sensitive_param_sym, b"__debugInfo", class::sensitive_parameter_value_debug_info, Visibility::Public, false);
+        register_native_method(
+            self,
+            sensitive_param_sym,
+            b"__construct",
+            class::sensitive_parameter_value_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            sensitive_param_sym,
+            b"getValue",
+            class::sensitive_parameter_value_get_value,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            sensitive_param_sym,
+            b"__debugInfo",
+            class::sensitive_parameter_value_debug_info,
+            Visibility::Public,
+            false,
+        );
 
         // __PHP_Incomplete_Class (used during unserialization)
         let incomplete_class_sym = self.interner.intern(b"__PHP_Incomplete_Class");
@@ -961,7 +1315,7 @@ impl RequestContext {
 
         // Exception class with methods
         let exception_sym = self.interner.intern(b"Exception");
-        
+
         // Add default property values
         let mut exception_props = IndexMap::new();
         let message_prop_sym = self.interner.intern(b"message");
@@ -970,14 +1324,29 @@ impl RequestContext {
         let line_prop_sym = self.interner.intern(b"line");
         let trace_prop_sym = self.interner.intern(b"trace");
         let previous_prop_sym = self.interner.intern(b"previous");
-        
-        exception_props.insert(message_prop_sym, (Val::String(Rc::new(Vec::new())), Visibility::Protected));
+
+        exception_props.insert(
+            message_prop_sym,
+            (Val::String(Rc::new(Vec::new())), Visibility::Protected),
+        );
         exception_props.insert(code_prop_sym, (Val::Int(0), Visibility::Protected));
-        exception_props.insert(file_prop_sym, (Val::String(Rc::new(b"unknown".to_vec())), Visibility::Protected));
+        exception_props.insert(
+            file_prop_sym,
+            (
+                Val::String(Rc::new(b"unknown".to_vec())),
+                Visibility::Protected,
+            ),
+        );
         exception_props.insert(line_prop_sym, (Val::Int(0), Visibility::Protected));
-        exception_props.insert(trace_prop_sym, (Val::Array(crate::core::value::ArrayData::new().into()), Visibility::Private));
+        exception_props.insert(
+            trace_prop_sym,
+            (
+                Val::Array(crate::core::value::ArrayData::new().into()),
+                Visibility::Private,
+            ),
+        );
         exception_props.insert(previous_prop_sym, (Val::Null, Visibility::Private));
-        
+
         self.classes.insert(
             exception_sym,
             ClassDef {
@@ -996,28 +1365,106 @@ impl RequestContext {
         );
 
         // Register exception native methods
-        register_native_method(self, exception_sym, b"__construct", exception::exception_construct, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getMessage", exception::exception_get_message, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getCode", exception::exception_get_code, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getFile", exception::exception_get_file, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getLine", exception::exception_get_line, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getTrace", exception::exception_get_trace, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getTraceAsString", exception::exception_get_trace_as_string, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"getPrevious", exception::exception_get_previous, Visibility::Public, false);
-        register_native_method(self, exception_sym, b"__toString", exception::exception_to_string, Visibility::Public, false);
+        register_native_method(
+            self,
+            exception_sym,
+            b"__construct",
+            exception::exception_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getMessage",
+            exception::exception_get_message,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getCode",
+            exception::exception_get_code,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getFile",
+            exception::exception_get_file,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getLine",
+            exception::exception_get_line,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getTrace",
+            exception::exception_get_trace,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getTraceAsString",
+            exception::exception_get_trace_as_string,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"getPrevious",
+            exception::exception_get_previous,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            exception_sym,
+            b"__toString",
+            exception::exception_to_string,
+            Visibility::Public,
+            false,
+        );
 
         // Error class (PHP 7+) - has same methods as Exception
         let error_sym = self.interner.intern(b"Error");
-        
+
         // Error has same properties as Exception
         let mut error_props = IndexMap::new();
-        error_props.insert(message_prop_sym, (Val::String(Rc::new(Vec::new())), Visibility::Protected));
+        error_props.insert(
+            message_prop_sym,
+            (Val::String(Rc::new(Vec::new())), Visibility::Protected),
+        );
         error_props.insert(code_prop_sym, (Val::Int(0), Visibility::Protected));
-        error_props.insert(file_prop_sym, (Val::String(Rc::new(b"unknown".to_vec())), Visibility::Protected));
+        error_props.insert(
+            file_prop_sym,
+            (
+                Val::String(Rc::new(b"unknown".to_vec())),
+                Visibility::Protected,
+            ),
+        );
         error_props.insert(line_prop_sym, (Val::Int(0), Visibility::Protected));
-        error_props.insert(trace_prop_sym, (Val::Array(crate::core::value::ArrayData::new().into()), Visibility::Private));
+        error_props.insert(
+            trace_prop_sym,
+            (
+                Val::Array(crate::core::value::ArrayData::new().into()),
+                Visibility::Private,
+            ),
+        );
         error_props.insert(previous_prop_sym, (Val::Null, Visibility::Private));
-        
+
         self.classes.insert(
             error_sym,
             ClassDef {
@@ -1036,15 +1483,78 @@ impl RequestContext {
         );
 
         // Register Error native methods (same as Exception)
-        register_native_method(self, error_sym, b"__construct", exception::exception_construct, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getMessage", exception::exception_get_message, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getCode", exception::exception_get_code, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getFile", exception::exception_get_file, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getLine", exception::exception_get_line, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getTrace", exception::exception_get_trace, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getTraceAsString", exception::exception_get_trace_as_string, Visibility::Public, false);
-        register_native_method(self, error_sym, b"getPrevious", exception::exception_get_previous, Visibility::Public, false);
-        register_native_method(self, error_sym, b"__toString", exception::exception_to_string, Visibility::Public, false);
+        register_native_method(
+            self,
+            error_sym,
+            b"__construct",
+            exception::exception_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getMessage",
+            exception::exception_get_message,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getCode",
+            exception::exception_get_code,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getFile",
+            exception::exception_get_file,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getLine",
+            exception::exception_get_line,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getTrace",
+            exception::exception_get_trace,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getTraceAsString",
+            exception::exception_get_trace_as_string,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"getPrevious",
+            exception::exception_get_previous,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            error_sym,
+            b"__toString",
+            exception::exception_to_string,
+            Visibility::Public,
+            false,
+        );
 
         // RuntimeException
         let runtime_exception_sym = self.interner.intern(b"RuntimeException");
@@ -1169,24 +1679,66 @@ impl RequestContext {
         self.insert_builtin_constant(b"PATH_SEPARATOR", Val::String(Rc::new(vec![path_sep_byte])));
 
         // Output Control constants - Phase flags
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_START", Val::Int(output_control::PHP_OUTPUT_HANDLER_START));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_WRITE", Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FLUSH", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CLEAN", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FINAL", Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CONT", Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_END", Val::Int(output_control::PHP_OUTPUT_HANDLER_END));
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_START",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_START),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_WRITE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_FLUSH",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_CLEAN",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_FINAL",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_CONT",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_END",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_END),
+        );
 
         // Output Control constants - Control flags
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_CLEANABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_FLUSHABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_REMOVABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_STDFLAGS", Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS));
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_CLEANABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_FLUSHABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_REMOVABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_STDFLAGS",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS),
+        );
 
         // Output Control constants - Status flags
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_STARTED", Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_DISABLED", Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED));
-        self.insert_builtin_constant(b"PHP_OUTPUT_HANDLER_PROCESSED", Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED));
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_STARTED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_DISABLED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED),
+        );
+        self.insert_builtin_constant(
+            b"PHP_OUTPUT_HANDLER_PROCESSED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED),
+        );
 
         // Error reporting constants
         self.insert_builtin_constant(b"E_ERROR", Val::Int(1));
