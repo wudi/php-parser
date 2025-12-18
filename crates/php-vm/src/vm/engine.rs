@@ -314,17 +314,19 @@ impl VM {
     }
 
     /// Convert bytes to lowercase for case-insensitive lookups
-    #[inline]
-    fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
+    #[inline(always)]
+    pub(super) fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
         bytes.iter().map(|b| b.to_ascii_lowercase()).collect()
     }
 
+    #[inline]
     fn method_lookup_key(&self, name: Symbol) -> Option<Symbol> {
         let name_bytes = self.context.interner.lookup(name)?;
         let lower = Self::to_lowercase_bytes(name_bytes);
         self.context.interner.find(&lower)
     }
 
+    #[inline]
     fn intern_lowercase_symbol(&mut self, name: Symbol) -> Result<Symbol, VmError> {
         let name_bytes = self
             .context
@@ -655,13 +657,14 @@ impl VM {
     }
 
     #[inline]
-    fn push_frame(&mut self, mut frame: CallFrame) {
+    pub(super) fn push_frame(&mut self, mut frame: CallFrame) {
         if frame.stack_base.is_none() {
             frame.stack_base = Some(self.operand_stack.len());
         }
         self.frames.push(frame);
     }
 
+    #[inline]
     fn collect_call_args<T>(&mut self, arg_count: T) -> Result<ArgList, VmError>
     where
         T: Into<usize>,
@@ -700,6 +703,7 @@ impl VM {
         Ok(cwd.join(candidate))
     }
 
+    #[inline]
     fn canonical_path_string(path: &Path) -> String {
         std::fs::canonicalize(path)
             .unwrap_or_else(|_| path.to_path_buf())
@@ -1149,7 +1153,7 @@ impl VM {
     /// Create and push a method frame
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_execute_data initialization
     #[inline]
-    fn push_method_frame(
+    pub(super) fn push_method_frame(
         &mut self,
         func: Rc<UserFunc>,
         this: Option<Handle>,
@@ -1179,7 +1183,7 @@ impl VM {
     /// Create and push a closure frame with captures
     /// Reference: $PHP_SRC_PATH/Zend/zend_closures.c
     #[inline]
-    fn push_closure_frame(&mut self, closure: &ClosureData, args: ArgList) {
+    pub(super) fn push_closure_frame(&mut self, closure: &ClosureData, args: ArgList) {
         let mut frame = CallFrame::new(closure.func.chunk.clone());
         frame.func = Some(closure.func.clone());
         frame.args = args;
@@ -1190,6 +1194,35 @@ impl VM {
         }
 
         self.push_frame(frame);
+    }
+
+    /// Bind function/method parameters to frame locals, handling by-ref semantics
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_bind_args
+    #[inline]
+    pub(super) fn bind_params_to_frame(
+        &mut self,
+        frame: &mut CallFrame,
+        params: &[crate::compiler::chunk::FuncParam],
+    ) -> Result<(), VmError> {
+        for (i, param) in params.iter().enumerate() {
+            if i < frame.args.len() {
+                let arg_handle = frame.args[i];
+                if param.by_ref {
+                    // For by-ref params, mark as reference and use directly
+                    if !self.arena.get(arg_handle).is_ref {
+                        self.arena.get_mut(arg_handle).is_ref = true;
+                    }
+                    frame.locals.insert(param.name, arg_handle);
+                } else {
+                    // For by-value params, clone the value
+                    let val = self.arena.get(arg_handle).value.clone();
+                    let final_handle = self.arena.alloc(val);
+                    frame.locals.insert(param.name, final_handle);
+                }
+            }
+            // Note: Default values are handled by OpCode::RecvInit, not here
+        }
+        Ok(())
     }
 
     /// Check if a class allows dynamic properties
@@ -1405,290 +1438,6 @@ impl VM {
 
         self.frames.clear();
         false
-    }
-
-    fn execute_pending_call(&mut self, call: PendingCall) -> Result<(), VmError> {
-        let PendingCall {
-            func_name,
-            func_handle,
-            args,
-            is_static: call_is_static,
-            class_name,
-            this_handle: call_this,
-        } = call;
-        if let Some(name) = func_name {
-            if let Some(class_name) = class_name {
-                // Method call
-                let method_lookup = self.find_method(class_name, name);
-                if let Some((method, visibility, is_static, defining_class)) = method_lookup {
-                    if is_static != call_is_static {
-                        if is_static {
-                            // PHP allows calling static non-statically with notices; we allow.
-                        } else {
-                            if call_this.is_none() {
-                                return Err(VmError::RuntimeError(
-                                    "Non-static method called statically".into(),
-                                ));
-                            }
-                        }
-                    }
-
-                    self.check_method_visibility(defining_class, visibility, Some(name))?;
-
-                    let mut frame = CallFrame::new(method.chunk.clone());
-                    frame.func = Some(method.clone());
-                    frame.this = call_this;
-                    frame.class_scope = Some(defining_class);
-                    frame.called_scope = Some(class_name);
-                    frame.args = args;
-
-                    for (i, param) in method.params.iter().enumerate() {
-                        if i < frame.args.len() {
-                            let arg_handle = frame.args[i];
-                            if param.by_ref {
-                                if !self.arena.get(arg_handle).is_ref {
-                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                }
-                                frame.locals.insert(param.name, arg_handle);
-                            } else {
-                                let val = self.arena.get(arg_handle).value.clone();
-                                let final_handle = self.arena.alloc(val);
-                                frame.locals.insert(param.name, final_handle);
-                            }
-                        }
-                    }
-
-                    self.push_frame(frame);
-                } else {
-                    let name_str =
-                        String::from_utf8_lossy(self.context.interner.lookup(name).unwrap_or(b""));
-                    let class_str = String::from_utf8_lossy(
-                        self.context.interner.lookup(class_name).unwrap_or(b""),
-                    );
-                    return Err(VmError::RuntimeError(format!(
-                        "Call to undefined method {}::{}",
-                        class_str, name_str
-                    )));
-                }
-            } else {
-                self.invoke_function_symbol(name, args)?;
-            }
-        } else if let Some(callable_handle) = func_handle {
-            self.invoke_callable_value(callable_handle, args)?;
-        } else {
-            return Err(VmError::RuntimeError(
-                "Dynamic function call not supported yet".into(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn invoke_function_symbol(&mut self, name: Symbol, args: ArgList) -> Result<(), VmError> {
-        let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
-        let lower_name = Self::to_lowercase_bytes(name_bytes);
-
-        // Check extension registry first (new way)
-        if let Some(handler) = self.context.engine.registry.get_function(&lower_name) {
-            let res = handler(self, &args).map_err(VmError::RuntimeError)?;
-            self.operand_stack.push(res);
-            return Ok(());
-        }
-
-        // Fall back to legacy functions HashMap (backward compatibility)
-        if let Some(handler) = self.context.engine.functions.get(&lower_name) {
-            let res = handler(self, &args).map_err(VmError::RuntimeError)?;
-            self.operand_stack.push(res);
-            return Ok(());
-        }
-
-        if let Some(func) = self.context.user_functions.get(&name) {
-            let mut frame = CallFrame::new(func.chunk.clone());
-            frame.func = Some(func.clone());
-            frame.args = args;
-
-            if func.is_generator {
-                let gen_data = GeneratorData {
-                    state: GeneratorState::Created(frame),
-                    current_val: None,
-                    current_key: None,
-                    auto_key: 0,
-                    sub_iter: None,
-                    sent_val: None,
-                };
-                let obj_data = ObjectData {
-                    class: self.context.interner.intern(b"Generator"),
-                    properties: IndexMap::new(),
-                    internal: Some(Rc::new(RefCell::new(gen_data))),
-                    dynamic_properties: std::collections::HashSet::new(),
-                };
-                let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
-                let obj_handle = self.arena.alloc(Val::Object(payload_handle));
-                self.operand_stack.push(obj_handle);
-                return Ok(());
-            }
-
-            for (i, param) in func.params.iter().enumerate() {
-                if i < frame.args.len() {
-                    let arg_handle = frame.args[i];
-                    if param.by_ref {
-                        if !self.arena.get(arg_handle).is_ref {
-                            self.arena.get_mut(arg_handle).is_ref = true;
-                        }
-                        frame.locals.insert(param.name, arg_handle);
-                    } else {
-                        let val = self.arena.get(arg_handle).value.clone();
-                        let final_handle = self.arena.alloc(val);
-                        frame.locals.insert(param.name, final_handle);
-                    }
-                }
-            }
-
-            self.push_frame(frame);
-            Ok(())
-        } else {
-            Err(VmError::RuntimeError(format!(
-                "Call to undefined function: {}",
-                String::from_utf8_lossy(name_bytes)
-            )))
-        }
-    }
-
-    fn invoke_callable_value(
-        &mut self,
-        callable_handle: Handle,
-        args: ArgList,
-    ) -> Result<(), VmError> {
-        let callable_zval = self.arena.get(callable_handle);
-        match &callable_zval.value {
-            Val::String(s) => {
-                let sym = self.context.interner.intern(s);
-                self.invoke_function_symbol(sym, args)
-            }
-            Val::Object(payload_handle) => {
-                let payload_val = self.arena.get(*payload_handle);
-                if let Val::ObjPayload(obj_data) = &payload_val.value {
-                    if let Some(internal) = &obj_data.internal {
-                        if let Ok(closure) = internal.clone().downcast::<ClosureData>() {
-                            self.push_closure_frame(&closure, args);
-                            return Ok(());
-                        }
-                    }
-
-                    let invoke_sym = self.context.interner.intern(b"__invoke");
-                    if let Some((method, visibility, _, defining_class)) =
-                        self.find_method(obj_data.class, invoke_sym)
-                    {
-                        self.check_method_visibility(defining_class, visibility, Some(invoke_sym))?;
-                        self.push_method_frame(
-                            method,
-                            Some(callable_handle),
-                            defining_class,
-                            obj_data.class,
-                            args,
-                        );
-                        Ok(())
-                    } else {
-                        Err(VmError::RuntimeError(
-                            "Object is not a closure and does not implement __invoke".into(),
-                        ))
-                    }
-                } else {
-                    Err(VmError::RuntimeError("Invalid object payload".into()))
-                }
-            }
-            Val::Array(map) => {
-                if map.map.len() != 2 {
-                    return Err(VmError::RuntimeError(
-                        "Callable array must have exactly 2 elements".into(),
-                    ));
-                }
-
-                let class_or_obj = map
-                    .map
-                    .get_index(0)
-                    .map(|(_, v)| *v)
-                    .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
-                let method_handle = map
-                    .map
-                    .get_index(1)
-                    .map(|(_, v)| *v)
-                    .ok_or(VmError::RuntimeError("Invalid callable array".into()))?;
-
-                let method_name_bytes = self.convert_to_string(method_handle)?;
-                let method_sym = self.context.interner.intern(&method_name_bytes);
-
-                match &self.arena.get(class_or_obj).value {
-                    Val::String(class_name_bytes) => {
-                        let class_sym = self.context.interner.intern(class_name_bytes);
-                        let class_sym = self.resolve_class_name(class_sym)?;
-
-                        if let Some((method, visibility, is_static, defining_class)) =
-                            self.find_method(class_sym, method_sym)
-                        {
-                            self.check_method_visibility(
-                                defining_class,
-                                visibility,
-                                Some(method_sym),
-                            )?;
-
-                            // Static method call: no $this
-                            self.push_method_frame(method, None, defining_class, class_sym, args);
-                            Ok(())
-                        } else {
-                            let class_str = String::from_utf8_lossy(class_name_bytes);
-                            let method_str = String::from_utf8_lossy(&method_name_bytes);
-                            Err(VmError::RuntimeError(format!(
-                                "Call to undefined method {}::{}",
-                                class_str, method_str
-                            )))
-                        }
-                    }
-                    Val::Object(payload_handle) => {
-                        let payload_val = self.arena.get(*payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_val.value {
-                            if let Some((method, visibility, _, defining_class)) =
-                                self.find_method(obj_data.class, method_sym)
-                            {
-                                self.check_method_visibility(
-                                    defining_class,
-                                    visibility,
-                                    Some(method_sym),
-                                )?;
-
-                                self.push_method_frame(
-                                    method,
-                                    Some(class_or_obj),
-                                    defining_class,
-                                    obj_data.class,
-                                    args,
-                                );
-                                Ok(())
-                            } else {
-                                let class_str = String::from_utf8_lossy(
-                                    self.context.interner.lookup(obj_data.class).unwrap_or(b"?"),
-                                );
-                                let method_str = String::from_utf8_lossy(&method_name_bytes);
-                                Err(VmError::RuntimeError(format!(
-                                    "Call to undefined method {}::{}",
-                                    class_str, method_str
-                                )))
-                            }
-                        } else {
-                            Err(VmError::RuntimeError(
-                                "Invalid object in callable array".into(),
-                            ))
-                        }
-                    }
-                    _ => Err(VmError::RuntimeError(
-                        "First element of callable array must be object or class name".into(),
-                    )),
-                }
-            }
-            _ => Err(VmError::RuntimeError(format!(
-                "Call expects function name or closure (got {})",
-                self.describe_handle(callable_handle)
-            ))),
-        }
     }
 
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {

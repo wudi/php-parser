@@ -1,5 +1,6 @@
 mod array_access;
 pub mod assign_op;
+mod callable;
 mod class_resolution;
 pub mod engine;
 mod error_construction;
