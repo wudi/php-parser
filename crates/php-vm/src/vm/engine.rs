@@ -658,6 +658,30 @@ impl VM {
         Ok(())
     }
 
+    /// Walk the inheritance chain and apply a predicate
+    /// Reference: $PHP_SRC_PATH/Zend/zend_inheritance.c
+    fn walk_inheritance_chain<F, T>(
+        &self,
+        start_class: Symbol,
+        mut predicate: F,
+    ) -> Option<T>
+    where
+        F: FnMut(&ClassDef, Symbol) -> Option<T>,
+    {
+        let mut current = Some(start_class);
+        while let Some(class_sym) = current {
+            if let Some(class_def) = self.context.classes.get(&class_sym) {
+                if let Some(result) = predicate(class_def, class_sym) {
+                    return Some(result);
+                }
+                current = class_def.parent;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
     pub fn find_method(
         &self,
         class_name: Symbol,
@@ -665,47 +689,40 @@ impl VM {
     ) -> Option<(Rc<UserFunc>, Visibility, bool, Symbol)> {
         // Walk the inheritance chain (class -> parent -> parent -> ...)
         // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_std_get_method
-        let mut current_class = Some(class_name);
+        let lower_method_key = self.method_lookup_key(method_name);
+        let search_bytes = self.context.interner.lookup(method_name).map(Self::to_lowercase_bytes);
 
-        while let Some(cls) = current_class {
-            if let Some(def) = self.context.classes.get(&cls) {
-                // Try direct lookup with case-insensitive key
-                if let Some(key) = self.method_lookup_key(method_name) {
-                    if let Some(entry) = def.methods.get(&key) {
-                        return Some((
-                            entry.func.clone(),
-                            entry.visibility,
-                            entry.is_static,
-                            entry.declaring_class,
-                        ));
-                    }
+        self.walk_inheritance_chain(class_name, |def, _cls_sym| {
+            // Try direct lookup with case-insensitive key
+            if let Some(key) = lower_method_key {
+                if let Some(entry) = def.methods.get(&key) {
+                    return Some((
+                        entry.func.clone(),
+                        entry.visibility,
+                        entry.is_static,
+                        entry.declaring_class,
+                    ));
                 }
+            }
 
-                // Fallback: scan all methods with case-insensitive comparison
-                if let Some(search_name) = self.context.interner.lookup(method_name) {
-                    let search_lower = Self::to_lowercase_bytes(search_name);
-                    for entry in def.methods.values() {
-                        if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
-                            if Self::to_lowercase_bytes(stored_bytes) == search_lower {
-                                return Some((
-                                    entry.func.clone(),
-                                    entry.visibility,
-                                    entry.is_static,
-                                    entry.declaring_class,
-                                ));
-                            }
+            // Fallback: scan all methods with case-insensitive comparison
+            if let Some(ref search_lower) = search_bytes {
+                for entry in def.methods.values() {
+                    if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
+                        if Self::to_lowercase_bytes(stored_bytes) == *search_lower {
+                            return Some((
+                                entry.func.clone(),
+                                entry.visibility,
+                                entry.is_static,
+                                entry.declaring_class,
+                            ));
                         }
                     }
                 }
-
-                // Move up the inheritance chain
-                current_class = def.parent;
-            } else {
-                break;
             }
-        }
 
-        None
+            None
+        })
     }
 
     pub fn find_native_method(
@@ -714,23 +731,9 @@ impl VM {
         method_name: Symbol,
     ) -> Option<crate::runtime::context::NativeMethodEntry> {
         // Walk the inheritance chain to find native methods
-        let mut current_class = Some(class_name);
-
-        while let Some(cls) = current_class {
-            // Check native_methods map
-            if let Some(entry) = self.context.native_methods.get(&(cls, method_name)) {
-                return Some(entry.clone());
-            }
-
-            // Move up the inheritance chain
-            if let Some(def) = self.context.classes.get(&cls) {
-                current_class = def.parent;
-            } else {
-                break;
-            }
-        }
-
-        None
+        self.walk_inheritance_chain(class_name, |_def, cls| {
+            self.context.native_methods.get(&(cls, method_name)).cloned()
+        })
     }
 
     pub fn collect_methods(&self, class_name: Symbol, caller_scope: Option<Symbol>) -> Vec<Symbol> {
@@ -780,18 +783,13 @@ impl VM {
     }
 
     pub fn has_property(&self, class_name: Symbol, prop_name: Symbol) -> bool {
-        let mut current_class = Some(class_name);
-        while let Some(name) = current_class {
-            if let Some(def) = self.context.classes.get(&name) {
-                if def.properties.contains_key(&prop_name) {
-                    return true;
-                }
-                current_class = def.parent;
+        self.walk_inheritance_chain(class_name, |def, _cls| {
+            if def.properties.contains_key(&prop_name) {
+                Some(true)
             } else {
-                break;
+                None
             }
-        }
-        false
+        }).is_some()
     }
 
     pub fn collect_properties(
@@ -860,6 +858,66 @@ impl VM {
         self.is_subclass_of(class_name, array_access_sym)
     }
 
+    /// Extract class symbol from object handle
+    /// Reference: $PHP_SRC_PATH/Zend/zend_object_handlers.c
+    fn extract_object_class(&self, obj_handle: Handle) -> Result<Symbol, VmError> {
+        let obj_val = &self.arena.get(obj_handle).value;
+        match obj_val {
+            Val::Object(payload_handle) => {
+                let payload = self.arena.get(*payload_handle);
+                match &payload.value {
+                    Val::ObjPayload(obj_data) => Ok(obj_data.class),
+                    _ => Err(VmError::RuntimeError("Invalid object payload".into())),
+                }
+            }
+            _ => Err(VmError::RuntimeError("Not an object".into())),
+        }
+    }
+
+    /// Execute a user-defined method with given arguments
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_call_function
+    fn invoke_user_method(
+        &mut self,
+        this_handle: Handle,
+        func: Rc<UserFunc>,
+        args: Vec<Handle>,
+        scope: Symbol,
+        called_scope: Symbol,
+    ) -> Result<(), VmError> {
+        let mut frame = CallFrame::new(func.chunk.clone());
+        frame.func = Some(func);
+        frame.this = Some(this_handle);
+        frame.class_scope = Some(scope);
+        frame.called_scope = Some(called_scope);
+        frame.args = args.into();
+        
+        self.push_frame(frame);
+        
+        // Execute until this frame completes
+        let target_depth = self.frames.len() - 1;
+        self.run_loop(target_depth)
+    }
+
+    /// Generic ArrayAccess method invoker
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - array access handlers
+    fn call_array_access_method(
+        &mut self,
+        obj_handle: Handle,
+        method_name: &[u8],
+        args: Vec<Handle>,
+    ) -> Result<Option<Handle>, VmError> {
+        let method_sym = self.context.interner.intern(method_name);
+        let class_name = self.extract_object_class(obj_handle)?;
+        
+        let (user_func, _, _, defined_class) = self.find_method(class_name, method_sym)
+            .ok_or_else(|| VmError::RuntimeError(
+                format!("ArrayAccess::{} not found", String::from_utf8_lossy(method_name))
+            ))?;
+        
+        self.invoke_user_method(obj_handle, user_func, args, defined_class, class_name)?;
+        Ok(self.last_return_value.take())
+    }
+
     /// Call ArrayAccess::offsetExists($offset)
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_call_method
     fn call_array_access_offset_exists(
@@ -867,58 +925,9 @@ impl VM {
         obj_handle: Handle,
         offset_handle: Handle,
     ) -> Result<bool, VmError> {
-        let method_name = self.context.interner.intern(b"offsetExists");
-        
-        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
-            let payload = self.arena.get(payload_handle);
-            if let Val::ObjPayload(obj_data) = &payload.value {
-                obj_data.class
-            } else {
-                return Err(VmError::RuntimeError("Invalid object payload".into()));
-            }
-        } else {
-            return Err(VmError::RuntimeError("Not an object".into()));
-        };
-
-        // Try to find and call the method
-        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
-            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
-            let mut frame = CallFrame::new(user_func.chunk.clone());
-            frame.func = Some(user_func.clone());
-            frame.this = Some(obj_handle);
-            frame.class_scope = Some(defined_class);
-            frame.called_scope = Some(class_name);
-            frame.args = args;
-            
-            self.push_frame(frame);
-            
-            // Execute method by running its opcode loop
-            let target_depth = self.frames.len() - 1;
-            loop {
-                if self.frames.len() <= target_depth {
-                    break;
-                }
-                let frame = self.frames.last_mut().unwrap();
-                if frame.ip >= frame.chunk.code.len() {
-                    let _ = self.pop_frame();
-                    break;
-                }
-                let op = frame.chunk.code[frame.ip].clone();
-                frame.ip += 1;
-                self.execute_opcode(op, target_depth)?;
-            }
-            
-            // Get result
-            let result_handle = self.last_return_value.take()
-                .unwrap_or_else(|| self.arena.alloc(Val::Null));
-            let result_val = &self.arena.get(result_handle).value;
-            Ok(result_val.to_bool())
-        } else {
-            // Method not found - this should not happen for proper ArrayAccess implementation
-            Err(VmError::RuntimeError(format!(
-                "ArrayAccess::offsetExists not found in class"
-            )))
-        }
+        let result = self.call_array_access_method(obj_handle, b"offsetExists", vec![offset_handle])?
+            .unwrap_or_else(|| self.arena.alloc(Val::Null));
+        Ok(self.arena.get(result).value.to_bool())
     }
 
     /// Call ArrayAccess::offsetGet($offset)
@@ -928,53 +937,8 @@ impl VM {
         obj_handle: Handle,
         offset_handle: Handle,
     ) -> Result<Handle, VmError> {
-        let method_name = self.context.interner.intern(b"offsetGet");
-        
-        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
-            let payload = self.arena.get(payload_handle);
-            if let Val::ObjPayload(obj_data) = &payload.value {
-                obj_data.class
-            } else {
-                return Err(VmError::RuntimeError("Invalid object payload".into()));
-            }
-        } else {
-            return Err(VmError::RuntimeError("Not an object".into()));
-        };
-
-        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
-            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
-            let mut frame = CallFrame::new(user_func.chunk.clone());
-            frame.func = Some(user_func.clone());
-            frame.this = Some(obj_handle);
-            frame.class_scope = Some(defined_class);
-            frame.called_scope = Some(class_name);
-            frame.args = args;
-            
-            self.push_frame(frame);
-            
-            let target_depth = self.frames.len() - 1;
-            loop {
-                if self.frames.len() <= target_depth {
-                    break;
-                }
-                let frame = self.frames.last_mut().unwrap();
-                if frame.ip >= frame.chunk.code.len() {
-                    let _ = self.pop_frame();
-                    break;
-                }
-                let op = frame.chunk.code[frame.ip].clone();
-                frame.ip += 1;
-                self.execute_opcode(op, target_depth)?;
-            }
-            
-            let result_handle = self.last_return_value.take()
-                .unwrap_or_else(|| self.arena.alloc(Val::Null));
-            Ok(result_handle)
-        } else {
-            Err(VmError::RuntimeError(format!(
-                "ArrayAccess::offsetGet not found in class"
-            )))
-        }
+        self.call_array_access_method(obj_handle, b"offsetGet", vec![offset_handle])?
+            .ok_or_else(|| VmError::RuntimeError("offsetGet returned void".into()))
     }
 
     /// Call ArrayAccess::offsetSet($offset, $value)
@@ -985,53 +949,8 @@ impl VM {
         offset_handle: Handle,
         value_handle: Handle,
     ) -> Result<(), VmError> {
-        let method_name = self.context.interner.intern(b"offsetSet");
-        
-        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
-            let payload = self.arena.get(payload_handle);
-            if let Val::ObjPayload(obj_data) = &payload.value {
-                obj_data.class
-            } else {
-                return Err(VmError::RuntimeError("Invalid object payload".into()));
-            }
-        } else {
-            return Err(VmError::RuntimeError("Not an object".into()));
-        };
-
-        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
-            let args = smallvec::SmallVec::from_vec(vec![offset_handle, value_handle]);
-            let mut frame = CallFrame::new(user_func.chunk.clone());
-            frame.func = Some(user_func.clone());
-            frame.this = Some(obj_handle);
-            frame.class_scope = Some(defined_class);
-            frame.called_scope = Some(class_name);
-            frame.args = args;
-            
-            self.push_frame(frame);
-            
-            let target_depth = self.frames.len() - 1;
-            loop {
-                if self.frames.len() <= target_depth {
-                    break;
-                }
-                let frame = self.frames.last_mut().unwrap();
-                if frame.ip >= frame.chunk.code.len() {
-                    let _ = self.pop_frame();
-                    break;
-                }
-                let op = frame.chunk.code[frame.ip].clone();
-                frame.ip += 1;
-                self.execute_opcode(op, target_depth)?;
-            }
-            
-            // offsetSet returns void, discard result
-            self.last_return_value = None;
-            Ok(())
-        } else {
-            Err(VmError::RuntimeError(format!(
-                "ArrayAccess::offsetSet not found in class"
-            )))
-        }
+        self.call_array_access_method(obj_handle, b"offsetSet", vec![offset_handle, value_handle])?;
+        Ok(())
     }
 
     /// Call ArrayAccess::offsetUnset($offset)
@@ -1041,53 +960,8 @@ impl VM {
         obj_handle: Handle,
         offset_handle: Handle,
     ) -> Result<(), VmError> {
-        let method_name = self.context.interner.intern(b"offsetUnset");
-        
-        let class_name = if let Val::Object(payload_handle) = self.arena.get(obj_handle).value {
-            let payload = self.arena.get(payload_handle);
-            if let Val::ObjPayload(obj_data) = &payload.value {
-                obj_data.class
-            } else {
-                return Err(VmError::RuntimeError("Invalid object payload".into()));
-            }
-        } else {
-            return Err(VmError::RuntimeError("Not an object".into()));
-        };
-
-        if let Some((user_func, _, _, defined_class)) = self.find_method(class_name, method_name) {
-            let args = smallvec::SmallVec::from_vec(vec![offset_handle]);
-            let mut frame = CallFrame::new(user_func.chunk.clone());
-            frame.func = Some(user_func.clone());
-            frame.this = Some(obj_handle);
-            frame.class_scope = Some(defined_class);
-            frame.called_scope = Some(class_name);
-            frame.args = args;
-            
-            self.push_frame(frame);
-            
-            let target_depth = self.frames.len() - 1;
-            loop {
-                if self.frames.len() <= target_depth {
-                    break;
-                }
-                let frame = self.frames.last_mut().unwrap();
-                if frame.ip >= frame.chunk.code.len() {
-                    let _ = self.pop_frame();
-                    break;
-                }
-                let op = frame.chunk.code[frame.ip].clone();
-                frame.ip += 1;
-                self.execute_opcode(op, target_depth)?;
-            }
-            
-            // offsetUnset returns void, discard result
-            self.last_return_value = None;
-            Ok(())
-        } else {
-            Err(VmError::RuntimeError(format!(
-                "ArrayAccess::offsetUnset not found in class"
-            )))
-        }
+        self.call_array_access_method(obj_handle, b"offsetUnset", vec![offset_handle])?;
+        Ok(())
     }
 
     fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
@@ -9538,132 +9412,122 @@ impl VM {
         }
         Ok(())
     }
+}
 
+/// Arithmetic operation types
+/// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+#[derive(Debug, Clone, Copy)]
+enum ArithOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+}
+
+impl ArithOp {
+    fn apply_int(&self, a: i64, b: i64) -> Option<i64> {
+        match self {
+            ArithOp::Add => Some(a.wrapping_add(b)),
+            ArithOp::Sub => Some(a.wrapping_sub(b)),
+            ArithOp::Mul => Some(a.wrapping_mul(b)),
+            ArithOp::Mod if b != 0 => Some(a % b),
+            _ => None, // Div/Pow always use float, Mod checks zero
+        }
+    }
+    
+    fn apply_float(&self, a: f64, b: f64) -> f64 {
+        match self {
+            ArithOp::Add => a + b,
+            ArithOp::Sub => a - b,
+            ArithOp::Mul => a * b,
+            ArithOp::Div => a / b,
+            ArithOp::Pow => a.powf(b),
+            ArithOp::Mod => unreachable!(), // Mod uses int only
+        }
+    }
+    
+    fn always_float(&self) -> bool {
+        matches!(self, ArithOp::Div | ArithOp::Pow)
+    }
+}
+
+impl VM {
     // Arithmetic operations following PHP type juggling
     // Reference: $PHP_SRC_PATH/Zend/zend_operators.c
 
-    fn arithmetic_add(&mut self) -> Result<(), VmError> {
+    /// Generic binary arithmetic operation
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+    fn binary_arithmetic(&mut self, op: ArithOp) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
 
-        // Array + Array = union
-        if let (Val::Array(a_arr), Val::Array(b_arr)) = (a_val, b_val) {
-            let mut result = (**a_arr).clone();
-            for (k, v) in b_arr.map.iter() {
-                result.map.entry(k.clone()).or_insert(*v);
+        // Special case: Array + Array = union (only for Add)
+        if matches!(op, ArithOp::Add) {
+            if let (Val::Array(a_arr), Val::Array(b_arr)) = (a_val, b_val) {
+                let mut result = (**a_arr).clone();
+                for (k, v) in b_arr.map.iter() {
+                    result.map.entry(k.clone()).or_insert(*v);
+                }
+                self.operand_stack.push(self.arena.alloc(Val::Array(Rc::new(result))));
+                return Ok(());
             }
-            let res_handle = self.arena.alloc(Val::Array(Rc::new(result)));
-            self.operand_stack.push(res_handle);
+        }
+
+        // Check for division/modulo by zero
+        if matches!(op, ArithOp::Div) && b_val.to_float() == 0.0 {
+            self.report_error(ErrorLevel::Warning, "Division by zero");
+            self.operand_stack.push(self.arena.alloc(Val::Float(f64::INFINITY)));
+            return Ok(());
+        }
+        if matches!(op, ArithOp::Mod) && b_val.to_int() == 0 {
+            self.report_error(ErrorLevel::Warning, "Modulo by zero");
+            self.operand_stack.push(self.arena.alloc(Val::Bool(false)));
             return Ok(());
         }
 
-        // Numeric addition
-        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
+        // Determine result type and compute
+        let needs_float = op.always_float() 
+            || matches!(a_val, Val::Float(_)) 
+            || matches!(b_val, Val::Float(_));
+        
         let result = if needs_float {
-            Val::Float(a_val.to_float() + b_val.to_float())
+            Val::Float(op.apply_float(a_val.to_float(), b_val.to_float()))
+        } else if let Some(int_result) = op.apply_int(a_val.to_int(), b_val.to_int()) {
+            Val::Int(int_result)
         } else {
-            Val::Int(a_val.to_int() + b_val.to_int())
+            Val::Float(op.apply_float(a_val.to_float(), b_val.to_float()))
         };
 
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
+        self.operand_stack.push(self.arena.alloc(result));
         Ok(())
+    }
+
+    fn arithmetic_add(&mut self) -> Result<(), VmError> {
+        self.binary_arithmetic(ArithOp::Add)
     }
 
     fn arithmetic_sub(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
-        let result = if needs_float {
-            Val::Float(a_val.to_float() - b_val.to_float())
-        } else {
-            Val::Int(a_val.to_int() - b_val.to_int())
-        };
-
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_arithmetic(ArithOp::Sub)
     }
 
     fn arithmetic_mul(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let needs_float = matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
-        let result = if needs_float {
-            Val::Float(a_val.to_float() * b_val.to_float())
-        } else {
-            Val::Int(a_val.to_int() * b_val.to_int())
-        };
-
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_arithmetic(ArithOp::Mul)
     }
 
     fn arithmetic_div(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let divisor = b_val.to_float();
-        if divisor == 0.0 {
-            self.error_handler
-                .report(ErrorLevel::Warning, "Division by zero");
-            let res_handle = self.arena.alloc(Val::Float(f64::INFINITY));
-            self.operand_stack.push(res_handle);
-            return Ok(());
-        }
-
-        // PHP always returns float for division
-        let result = Val::Float(a_val.to_float() / divisor);
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_arithmetic(ArithOp::Div)
     }
 
     fn arithmetic_mod(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let divisor = b_val.to_int();
-        if divisor == 0 {
-            self.error_handler
-                .report(ErrorLevel::Warning, "Modulo by zero");
-            let res_handle = self.arena.alloc(Val::Bool(false));
-            self.operand_stack.push(res_handle);
-            return Ok(());
-        }
-
-        let result = Val::Int(a_val.to_int() % divisor);
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_arithmetic(ArithOp::Mod)
     }
 
     fn arithmetic_pow(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
-
-        let base = a_val.to_float();
-        let exp = b_val.to_float();
-        let result = Val::Float(base.powf(exp));
-
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_arithmetic(ArithOp::Pow)
     }
 
     fn bitwise_and(&mut self) -> Result<(), VmError> {
