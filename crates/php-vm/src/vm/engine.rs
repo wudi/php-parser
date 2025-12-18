@@ -7781,7 +7781,7 @@ impl VM {
 
                 // Use increment_value for proper PHP type handling
                 use crate::vm::inc_dec::increment_value;
-                let new_val = increment_value(current_val)?;
+                let new_val = increment_value(current_val, &mut *self.error_handler)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -7819,7 +7819,7 @@ impl VM {
 
                 // Use decrement_value for proper PHP type handling
                 use crate::vm::inc_dec::decrement_value;
-                let new_val = decrement_value(current_val)?;
+                let new_val = decrement_value(current_val, &mut *self.error_handler)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -7857,7 +7857,7 @@ impl VM {
 
                 // Use increment_value for proper PHP type handling
                 use crate::vm::inc_dec::increment_value;
-                let new_val = increment_value(current_val.clone())?;
+                let new_val = increment_value(current_val.clone(), &mut *self.error_handler)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -7896,7 +7896,7 @@ impl VM {
 
                 // Use decrement_value for proper PHP type handling
                 use crate::vm::inc_dec::decrement_value;
-                let new_val = decrement_value(current_val.clone())?;
+                let new_val = decrement_value(current_val.clone(), &mut *self.error_handler)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {

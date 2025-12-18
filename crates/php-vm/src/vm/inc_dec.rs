@@ -2,12 +2,12 @@
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_function/decrement_function
 
 use crate::core::value::Val;
-use crate::vm::engine::VmError;
+use crate::vm::engine::{ErrorHandler, ErrorLevel, VmError};
 use std::rc::Rc;
 
 /// Increment a value in-place, following PHP semantics
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_function
-pub fn increment_value(val: Val) -> Result<Val, VmError> {
+pub fn increment_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result<Val, VmError> {
     match val {
         // INT: increment by 1, overflow to float
         Val::Int(i) => {
@@ -25,13 +25,15 @@ pub fn increment_value(val: Val) -> Result<Val, VmError> {
         Val::Null => Ok(Val::Int(1)),
 
         // STRING: special handling
-        Val::String(s) => increment_string(s),
+        Val::String(s) => increment_string(s, error_handler),
 
         // BOOL: warning + no effect (PHP 8.3+)
         Val::Bool(_) => {
             // In PHP 8.3+, this generates a warning but doesn't change the value
-            // For now, we'll just return the original value
-            // TODO: Add warning to error handler
+            error_handler.report(
+                ErrorLevel::Warning,
+                "Increment on type bool has no effect, this will change in the next major version of PHP",
+            );
             Ok(val)
         }
 
@@ -46,7 +48,7 @@ pub fn increment_value(val: Val) -> Result<Val, VmError> {
 
 /// Decrement a value in-place, following PHP semantics
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - decrement_function
-pub fn decrement_value(val: Val) -> Result<Val, VmError> {
+pub fn decrement_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result<Val, VmError> {
     match val {
         // INT: decrement by 1, underflow to float
         Val::Int(i) => {
@@ -61,19 +63,26 @@ pub fn decrement_value(val: Val) -> Result<Val, VmError> {
         Val::Float(f) => Ok(Val::Float(f - 1.0)),
 
         // STRING: only numeric strings are decremented
-        Val::String(s) => decrement_string(s),
+        Val::String(s) => decrement_string(s, error_handler),
 
         // NULL: PHP treats NULL-- as 0 - 1 = -1
         // But actually PHP keeps it as NULL in some versions, check exact behavior
-        // Reference shows NULL-- stays NULL but emits deprecated warning in PHP 8.3
+        // Reference shows NULL-- stays NULL but emits warning in PHP 8.3
         Val::Null => {
-            // TODO: Add deprecated warning
+            error_handler.report(
+                ErrorLevel::Warning,
+                "Decrement on type null has no effect, this will change in the next major version of PHP",
+            );
             Ok(Val::Null)
         }
 
         // BOOL: warning + no effect (PHP 8.3+)
         Val::Bool(_) => {
             // In PHP 8.3+, this generates a warning but doesn't change the value
+            error_handler.report(
+                ErrorLevel::Warning,
+                "Decrement on type bool has no effect, this will change in the next major version of PHP",
+            );
             Ok(val)
         }
 
@@ -88,7 +97,7 @@ pub fn decrement_value(val: Val) -> Result<Val, VmError> {
 
 /// Increment a string value following PHP's Perl-style string increment
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_string
-fn increment_string(s: Rc<Vec<u8>>) -> Result<Val, VmError> {
+fn increment_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Result<Val, VmError> {
     // Empty string becomes "1"
     if s.is_empty() {
         return Ok(Val::String(Rc::new(b"1".to_vec())));
@@ -115,6 +124,12 @@ fn increment_string(s: Rc<Vec<u8>>) -> Result<Val, VmError> {
 
     // Non-numeric string: Perl-style alphanumeric increment
     // Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_string
+    // PHP 8.3+ emits deprecation warning for non-numeric string increment
+    error_handler.report(
+        ErrorLevel::Deprecated,
+        "Increment on non-numeric string is deprecated, use str_increment() instead",
+    );
+    
     let mut result = (*s).clone();
     
     // Find the last alphanumeric character
@@ -171,10 +186,13 @@ fn increment_string(s: Rc<Vec<u8>>) -> Result<Val, VmError> {
 
 /// Decrement a string value - only numeric strings are affected
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - decrement_function
-fn decrement_string(s: Rc<Vec<u8>>) -> Result<Val, VmError> {
+fn decrement_string(s: Rc<Vec<u8>>, error_handler: &mut dyn ErrorHandler) -> Result<Val, VmError> {
     // Empty string: deprecated warning, becomes -1
     if s.is_empty() {
-        // TODO: Add deprecated warning "Decrement on empty string is deprecated"
+        error_handler.report(
+            ErrorLevel::Deprecated,
+            "Decrement on empty string is deprecated as non-numeric",
+        );
         return Ok(Val::Int(-1));
     }
 
@@ -205,17 +223,43 @@ fn decrement_string(s: Rc<Vec<u8>>) -> Result<Val, VmError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    // Mock error handler for testing
+    struct MockErrorHandler {
+        warnings: RefCell<Vec<String>>,
+    }
+
+    impl MockErrorHandler {
+        fn new() -> Self {
+            Self {
+                warnings: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn has_warning(&self, msg: &str) -> bool {
+            self.warnings.borrow().iter().any(|w| w.contains(msg))
+        }
+    }
+
+    impl ErrorHandler for MockErrorHandler {
+        fn report(&mut self, _level: ErrorLevel, message: &str) {
+            self.warnings.borrow_mut().push(message.to_string());
+        }
+    }
 
     #[test]
     fn test_increment_int() {
-        assert_eq!(increment_value(Val::Int(5)).unwrap(), Val::Int(6));
-        assert_eq!(increment_value(Val::Int(0)).unwrap(), Val::Int(1));
-        assert_eq!(increment_value(Val::Int(-1)).unwrap(), Val::Int(0));
+        let mut handler = MockErrorHandler::new();
+        assert_eq!(increment_value(Val::Int(5), &mut handler).unwrap(), Val::Int(6));
+        assert_eq!(increment_value(Val::Int(0), &mut handler).unwrap(), Val::Int(1));
+        assert_eq!(increment_value(Val::Int(-1), &mut handler).unwrap(), Val::Int(0));
     }
 
     #[test]
     fn test_increment_int_overflow() {
-        let result = increment_value(Val::Int(i64::MAX)).unwrap();
+        let mut handler = MockErrorHandler::new();
+        let result = increment_value(Val::Int(i64::MAX), &mut handler).unwrap();
         match result {
             Val::Float(f) => assert!((f - 9223372036854775808.0).abs() < 1.0),
             _ => panic!("Expected float"),
@@ -224,68 +268,111 @@ mod tests {
 
     #[test]
     fn test_increment_float() {
-        assert_eq!(increment_value(Val::Float(5.5)).unwrap(), Val::Float(6.5));
+        let mut handler = MockErrorHandler::new();
+        assert_eq!(increment_value(Val::Float(5.5), &mut handler).unwrap(), Val::Float(6.5));
     }
 
     #[test]
     fn test_increment_null() {
-        assert_eq!(increment_value(Val::Null).unwrap(), Val::Int(1));
+        let mut handler = MockErrorHandler::new();
+        assert_eq!(increment_value(Val::Null, &mut handler).unwrap(), Val::Int(1));
     }
 
     #[test]
     fn test_increment_string_numeric() {
+        let mut handler = MockErrorHandler::new();
         assert_eq!(
-            increment_value(Val::String(Rc::new(b"5".to_vec()))).unwrap(),
+            increment_value(Val::String(Rc::new(b"5".to_vec())), &mut handler).unwrap(),
             Val::Int(6)
         );
         assert_eq!(
-            increment_value(Val::String(Rc::new(b"5.5".to_vec()))).unwrap(),
+            increment_value(Val::String(Rc::new(b"5.5".to_vec())), &mut handler).unwrap(),
             Val::Float(6.5)
         );
     }
 
     #[test]
     fn test_increment_string_alphanumeric() {
+        let mut handler = MockErrorHandler::new();
         // Test basic increment
-        let result = increment_value(Val::String(Rc::new(b"a".to_vec()))).unwrap();
+        let result = increment_value(Val::String(Rc::new(b"a".to_vec())), &mut handler).unwrap();
         if let Val::String(s) = result {
             assert_eq!(&*s, b"b");
         } else {
             panic!("Expected string");
         }
+        // Should have deprecation warning for non-numeric string increment
+        assert!(handler.has_warning("non-numeric string"));
 
         // Test carry
-        let result = increment_value(Val::String(Rc::new(b"z".to_vec()))).unwrap();
+        let mut handler2 = MockErrorHandler::new();
+        let result = increment_value(Val::String(Rc::new(b"z".to_vec())), &mut handler2).unwrap();
         if let Val::String(s) = result {
             assert_eq!(&*s, b"aa");
         } else {
             panic!("Expected string");
         }
+        assert!(handler2.has_warning("non-numeric string"));
+    }
+
+    #[test]
+    fn test_increment_bool_warning() {
+        let mut handler = MockErrorHandler::new();
+        let result = increment_value(Val::Bool(true), &mut handler).unwrap();
+        assert_eq!(result, Val::Bool(true));
+        assert!(handler.has_warning("bool"));
     }
 
     #[test]
     fn test_decrement_int() {
-        assert_eq!(decrement_value(Val::Int(5)).unwrap(), Val::Int(4));
-        assert_eq!(decrement_value(Val::Int(0)).unwrap(), Val::Int(-1));
+        let mut handler = MockErrorHandler::new();
+        assert_eq!(decrement_value(Val::Int(5), &mut handler).unwrap(), Val::Int(4));
+        assert_eq!(decrement_value(Val::Int(0), &mut handler).unwrap(), Val::Int(-1));
     }
 
     #[test]
     fn test_decrement_string_numeric() {
+        let mut handler = MockErrorHandler::new();
         assert_eq!(
-            decrement_value(Val::String(Rc::new(b"5".to_vec()))).unwrap(),
+            decrement_value(Val::String(Rc::new(b"5".to_vec())), &mut handler).unwrap(),
             Val::Int(4)
         );
     }
 
     #[test]
     fn test_decrement_string_non_numeric() {
+        let mut handler = MockErrorHandler::new();
         // Non-numeric strings don't change
         let s = Rc::new(b"abc".to_vec());
-        let result = decrement_value(Val::String(s.clone())).unwrap();
+        let result = decrement_value(Val::String(s.clone()), &mut handler).unwrap();
         if let Val::String(result_s) = result {
             assert_eq!(&*result_s, &*s);
         } else {
             panic!("Expected string");
         }
+    }
+
+    #[test]
+    fn test_decrement_null_warning() {
+        let mut handler = MockErrorHandler::new();
+        let result = decrement_value(Val::Null, &mut handler).unwrap();
+        assert_eq!(result, Val::Null);
+        assert!(handler.has_warning("null"));
+    }
+
+    #[test]
+    fn test_decrement_bool_warning() {
+        let mut handler = MockErrorHandler::new();
+        let result = decrement_value(Val::Bool(false), &mut handler).unwrap();
+        assert_eq!(result, Val::Bool(false));
+        assert!(handler.has_warning("bool"));
+    }
+
+    #[test]
+    fn test_decrement_empty_string_warning() {
+        let mut handler = MockErrorHandler::new();
+        let result = decrement_value(Val::String(Rc::new(Vec::new())), &mut handler).unwrap();
+        assert_eq!(result, Val::Int(-1));
+        assert!(handler.has_warning("empty string"));
     }
 }
