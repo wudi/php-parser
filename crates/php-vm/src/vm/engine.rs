@@ -2100,6 +2100,35 @@ impl VM {
         Ok(())
     }
 
+    fn bitwise_not(&mut self) -> Result<(), VmError> {
+        let handle = self.pop_operand()?;
+        let val = self.arena.get(handle).value.clone();
+        let res = match val {
+            Val::Int(i) => Val::Int(!i),
+            Val::String(s) => {
+                // Bitwise NOT on strings flips each byte
+                let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
+                Val::String(Rc::new(inverted))
+            }
+            _ => {
+                let i = val.to_int();
+                Val::Int(!i)
+            }
+        };
+        let res_handle = self.arena.alloc(res);
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+
+    fn bool_not(&mut self) -> Result<(), VmError> {
+        let handle = self.pop_operand()?;
+        let val = &self.arena.get(handle).value;
+        let b = val.to_bool();
+        let res_handle = self.arena.alloc(Val::Bool(!b));
+        self.operand_stack.push(res_handle);
+        Ok(())
+    }
+
     fn exec_math_op(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
             OpCode::Add => self.arithmetic_add()?,
@@ -2113,193 +2142,188 @@ impl VM {
             OpCode::BitwiseXor => self.bitwise_xor()?,
             OpCode::ShiftLeft => self.bitwise_shl()?,
             OpCode::ShiftRight => self.bitwise_shr()?,
-            OpCode::BitwiseNot => {
-                let handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = self.arena.get(handle).value.clone();
-                let res = match val {
-                    Val::Int(i) => Val::Int(!i),
-                    Val::String(s) => {
-                        // Bitwise NOT on strings flips each byte
-                        let inverted: Vec<u8> = s.iter().map(|&b| !b).collect();
-                        Val::String(Rc::new(inverted))
-                    }
-                    _ => {
-                        let i = val.to_int();
-                        Val::Int(!i)
-                    }
-                };
-                let res_handle = self.arena.alloc(res);
-                self.operand_stack.push(res_handle);
-            }
-            OpCode::BoolNot => {
-                let handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let b = val.to_bool();
-                let res_handle = self.arena.alloc(Val::Bool(!b));
-                self.operand_stack.push(res_handle);
-            }
+            OpCode::BitwiseNot => self.bitwise_not()?,
+            OpCode::BoolNot => self.bool_not()?,
             _ => unreachable!("Not a math op"),
+        }
+        Ok(())
+    }
+
+    fn set_ip(&mut self, target: usize) -> Result<(), VmError> {
+        let frame = self.current_frame_mut()?;
+        frame.ip = target;
+        Ok(())
+    }
+
+    fn jump_if<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
+    where
+        F: Fn(&Val) -> bool,
+    {
+        let handle = self.pop_operand()?;
+        let val = &self.arena.get(handle).value;
+        if condition(val) {
+            self.set_ip(target)?;
+        }
+        Ok(())
+    }
+
+    fn jump_peek_or_pop<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
+    where
+        F: Fn(&Val) -> bool,
+    {
+        let handle = self
+            .operand_stack
+            .peek()
+            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+        let val = &self.arena.get(handle).value;
+
+        if condition(val) {
+            self.set_ip(target)?;
+        } else {
+            self.operand_stack.pop();
         }
         Ok(())
     }
 
     fn exec_control_flow(&mut self, op: OpCode) -> Result<(), VmError> {
         match op {
-            OpCode::Jmp(target) => {
-                let frame = self.current_frame_mut()?;
-                frame.ip = target as usize;
-            }
-            OpCode::JmpIfFalse(target) => {
-                let handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let b = val.to_bool();
-                if !b {
-                    let frame = self.current_frame_mut()?;
-                    frame.ip = target as usize;
-                }
-            }
-            OpCode::JmpIfTrue(target) => {
-                let handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let b = val.to_bool();
-                if b {
-                    let frame = self.current_frame_mut()?;
-                    frame.ip = target as usize;
-                }
-            }
-            OpCode::JmpZEx(target) => {
-                let handle = self
-                    .operand_stack
-                    .peek()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let b = val.to_bool();
-                if !b {
-                    let frame = self.current_frame_mut()?;
-                    frame.ip = target as usize;
-                } else {
-                    self.operand_stack.pop();
-                }
-            }
-            OpCode::JmpNzEx(target) => {
-                let handle = self
-                    .operand_stack
-                    .peek()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let b = val.to_bool();
-                if b {
-                    let frame = self.current_frame_mut()?;
-                    frame.ip = target as usize;
-                } else {
-                    self.operand_stack.pop();
-                }
-            }
+            OpCode::Jmp(target) => self.set_ip(target as usize)?,
+            OpCode::JmpIfFalse(target) => self.jump_if(target as usize, |v| !v.to_bool())?,
+            OpCode::JmpIfTrue(target) => self.jump_if(target as usize, |v| v.to_bool())?,
+            OpCode::JmpZEx(target) => self.jump_peek_or_pop(target as usize, |v| !v.to_bool())?,
+            OpCode::JmpNzEx(target) => self.jump_peek_or_pop(target as usize, |v| v.to_bool())?,
             OpCode::Coalesce(target) => {
-                let handle = self
-                    .operand_stack
-                    .peek()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val = &self.arena.get(handle).value;
-                let is_null = matches!(val, Val::Null);
-
-                if !is_null {
-                    let frame = self.current_frame_mut()?;
-                    frame.ip = target as usize;
-                } else {
-                    self.operand_stack.pop();
-                }
+                self.jump_peek_or_pop(target as usize, |v| !matches!(v, Val::Null))?
             }
             _ => unreachable!("Not a control flow op"),
         }
         Ok(())
     }
 
+    fn exec_throw(&mut self) -> Result<(), VmError> {
+        let ex_handle = self
+            .operand_stack
+            .pop()
+            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+        // Validate that the thrown value is an object
+        let (is_object, payload_handle_opt) = {
+            let ex_val = &self.arena.get(ex_handle).value;
+            match ex_val {
+                Val::Object(ph) => (true, Some(*ph)),
+                _ => (false, None),
+            }
+        };
+
+        if !is_object {
+            return Err(VmError::RuntimeError("Can only throw objects".into()));
+        }
+
+        let payload_handle = payload_handle_opt.unwrap();
+
+        // Validate that the object implements Throwable interface
+        let throwable_sym = self.context.interner.intern(b"Throwable");
+        if !self.is_instance_of(ex_handle, throwable_sym) {
+            // Get the class name for error message
+            let class_name =
+                if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
+                    String::from_utf8_lossy(
+                        self.context
+                            .interner
+                            .lookup(obj_data.class)
+                            .unwrap_or(b"Object"),
+                    )
+                    .to_string()
+                } else {
+                    "Object".to_string()
+                };
+
+            return Err(VmError::RuntimeError(format!(
+                "Cannot throw objects that do not implement Throwable ({})",
+                class_name
+            )));
+        }
+
+        // Set exception properties (file, line, trace) at throw time
+        // This mimics PHP's behavior of capturing context when exception is thrown
+        let file_sym = self.context.interner.intern(b"file");
+        let line_sym = self.context.interner.intern(b"line");
+
+        // Get current file and line from frame
+        let (file_path, line_no) = if let Some(frame) = self.frames.last() {
+            let file = frame
+                .chunk
+                .file_path
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            let line = if frame.ip > 0 && frame.ip <= frame.chunk.lines.len() {
+                frame.chunk.lines[frame.ip - 1]
+            } else {
+                0
+            };
+            (file, line)
+        } else {
+            ("unknown".to_string(), 0)
+        };
+
+        // Allocate property values first
+        let file_val = self
+            .arena
+            .alloc(Val::String(file_path.into_bytes().into()));
+        let line_val = self.arena.alloc(Val::Int(line_no as i64));
+
+        // Now mutate the object to set file and line
+        let payload = self.arena.get_mut(payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.properties.insert(file_sym, file_val);
+            obj_data.properties.insert(line_sym, line_val);
+        }
+
+        Err(VmError::Exception(ex_handle))
+    }
+
+    fn exec_load_var(&mut self, sym: Symbol) -> Result<(), VmError> {
+        let handle = {
+            let frame = self.current_frame()?;
+            frame.locals.get(&sym).copied()
+        };
+
+        if let Some(handle) = handle {
+            self.operand_stack.push(handle);
+        } else {
+            let name = self.context.interner.lookup(sym);
+            if name == Some(b"this") {
+                let frame = self.current_frame()?;
+                if let Some(this_val) = frame.this {
+                    self.operand_stack.push(this_val);
+                } else {
+                    return Err(VmError::RuntimeError(
+                        "Using $this when not in object context".into(),
+                    ));
+                }
+            } else if self.is_superglobal(sym) {
+                if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                    let frame = self.current_frame_mut()?;
+                    frame.locals.entry(sym).or_insert(handle);
+                    self.operand_stack.push(handle);
+                } else {
+                    let null = self.arena.alloc(Val::Null);
+                    self.operand_stack.push(null);
+                }
+            } else {
+                let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
+                let msg = format!("Undefined variable: ${}", var_name);
+                self.report_error(ErrorLevel::Notice, &msg);
+                let null = self.arena.alloc(Val::Null);
+                self.operand_stack.push(null);
+            }
+        }
+        Ok(())
+    }
+
     fn execute_opcode(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
         match op {
-            OpCode::Throw => {
-                let ex_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                // Validate that the thrown value is an object
-                let (is_object, payload_handle_opt) = {
-                    let ex_val = &self.arena.get(ex_handle).value;
-                    match ex_val {
-                        Val::Object(ph) => (true, Some(*ph)),
-                        _ => (false, None),
-                    }
-                };
-
-                if !is_object {
-                    return Err(VmError::RuntimeError(
-                        "Can only throw objects".into(),
-                    ));
-                }
-
-                let payload_handle = payload_handle_opt.unwrap();
-
-                // Validate that the object implements Throwable interface
-                let throwable_sym = self.context.interner.intern(b"Throwable");
-                if !self.is_instance_of(ex_handle, throwable_sym) {
-                    // Get the class name for error message
-                    let class_name = if let Val::ObjPayload(obj_data) = &self.arena.get(payload_handle).value {
-                        String::from_utf8_lossy(
-                            self.context.interner.lookup(obj_data.class).unwrap_or(b"Object")
-                        ).to_string()
-                    } else {
-                        "Object".to_string()
-                    };
-                    
-                    return Err(VmError::RuntimeError(
-                        format!("Cannot throw objects that do not implement Throwable ({})", class_name)
-                    ));
-                }
-
-                // Set exception properties (file, line, trace) at throw time
-                // This mimics PHP's behavior of capturing context when exception is thrown
-                let file_sym = self.context.interner.intern(b"file");
-                let line_sym = self.context.interner.intern(b"line");
-                
-                // Get current file and line from frame
-                let (file_path, line_no) = if let Some(frame) = self.frames.last() {
-                    let file = frame.chunk.file_path.clone().unwrap_or_else(|| "unknown".to_string());
-                    let line = if frame.ip > 0 && frame.ip <= frame.chunk.lines.len() {
-                        frame.chunk.lines[frame.ip - 1]
-                    } else {
-                        0
-                    };
-                    (file, line)
-                } else {
-                    ("unknown".to_string(), 0)
-                };
-                
-                // Allocate property values first
-                let file_val = self.arena.alloc(Val::String(file_path.into_bytes().into()));
-                let line_val = self.arena.alloc(Val::Int(line_no as i64));
-                
-                // Now mutate the object to set file and line
-                let payload = self.arena.get_mut(payload_handle);
-                if let Val::ObjPayload(ref mut obj_data) = payload.value {
-                    obj_data.properties.insert(file_sym, file_val);
-                    obj_data.properties.insert(line_sym, line_val);
-                }
-
-                return Err(VmError::Exception(ex_handle));
-            }
+            OpCode::Throw => self.exec_throw()?,
             OpCode::Catch => {
                 // Exception object is already on the operand stack (pushed by handler); nothing else to do.
             }
@@ -2318,43 +2342,7 @@ impl VM {
             | OpCode::BitwiseNot
             | OpCode::BoolNot => self.exec_math_op(op)?,
 
-            OpCode::LoadVar(sym) => {
-                let handle = {
-                    let frame = self.current_frame()?;
-                    frame.locals.get(&sym).copied()
-                };
-
-                if let Some(handle) = handle {
-                    self.operand_stack.push(handle);
-                } else {
-                    let name = self.context.interner.lookup(sym);
-                    if name == Some(b"this") {
-                        let frame = self.current_frame()?;
-                        if let Some(this_val) = frame.this {
-                            self.operand_stack.push(this_val);
-                        } else {
-                            return Err(VmError::RuntimeError(
-                                "Using $this when not in object context".into(),
-                            ));
-                        }
-                    } else if self.is_superglobal(sym) {
-                        if let Some(handle) = self.ensure_superglobal_handle(sym) {
-                            let frame = self.current_frame_mut()?;
-                            frame.locals.entry(sym).or_insert(handle);
-                            self.operand_stack.push(handle);
-                        } else {
-                            let null = self.arena.alloc(Val::Null);
-                            self.operand_stack.push(null);
-                        }
-                    } else {
-                        let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
-                        let msg = format!("Undefined variable: ${}", var_name);
-                        self.report_error(ErrorLevel::Notice, &msg);
-                        let null = self.arena.alloc(Val::Null);
-                        self.operand_stack.push(null);
-                    }
-                }
-            }
+            OpCode::LoadVar(sym) => self.exec_load_var(sym)?,
             OpCode::LoadVarDynamic => {
                 let name_handle = self
                     .operand_stack
