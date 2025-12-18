@@ -262,8 +262,7 @@ impl AssignOpType {
     }
 
     fn bitwise_or(left: Val, right: Val) -> Result<Val, VmError> {
-        match (left, right) {
-            (Val::Int(a), Val::Int(b)) => Ok(Val::Int(a | b)),
+        match (&left, &right) {
             (Val::String(a), Val::String(b)) => {
                 // PHP performs bitwise OR on strings character by character
                 let mut result = Vec::new();
@@ -275,13 +274,17 @@ impl AssignOpType {
                 }
                 Ok(Val::String(result.into()))
             }
-            _ => Ok(Val::Int(0)),
+            _ => {
+                // Convert to int for bitwise operation (handles Bool, Null, etc.)
+                let a = left.to_int();
+                let b = right.to_int();
+                Ok(Val::Int(a | b))
+            }
         }
     }
 
     fn bitwise_and(left: Val, right: Val) -> Result<Val, VmError> {
-        match (left, right) {
-            (Val::Int(a), Val::Int(b)) => Ok(Val::Int(a & b)),
+        match (&left, &right) {
             (Val::String(a), Val::String(b)) => {
                 // PHP performs bitwise AND on strings character by character
                 let mut result = Vec::new();
@@ -291,25 +294,33 @@ impl AssignOpType {
                 }
                 Ok(Val::String(result.into()))
             }
-            _ => Ok(Val::Int(0)),
+            _ => {
+                // Convert to int for bitwise operation (handles Bool, Null, etc.)
+                let a = left.to_int();
+                let b = right.to_int();
+                Ok(Val::Int(a & b))
+            }
         }
     }
 
     fn bitwise_xor(left: Val, right: Val) -> Result<Val, VmError> {
-        match (left, right) {
-            (Val::Int(a), Val::Int(b)) => Ok(Val::Int(a ^ b)),
+        match (&left, &right) {
             (Val::String(a), Val::String(b)) => {
                 // PHP performs bitwise XOR on strings character by character
+                // Uses MIN length (stops at shorter string)
                 let mut result = Vec::new();
-                let max_len = a.len().max(b.len());
-                for i in 0..max_len {
-                    let byte_a = if i < a.len() { a[i] } else { 0 };
-                    let byte_b = if i < b.len() { b[i] } else { 0 };
-                    result.push(byte_a ^ byte_b);
+                let min_len = a.len().min(b.len());
+                for i in 0..min_len {
+                    result.push(a[i] ^ b[i]);
                 }
                 Ok(Val::String(result.into()))
             }
-            _ => Ok(Val::Int(0)),
+            _ => {
+                // Convert to int for bitwise operation (handles Bool, Null, etc.)
+                let a = left.to_int();
+                let b = right.to_int();
+                Ok(Val::Int(a ^ b))
+            }
         }
     }
 

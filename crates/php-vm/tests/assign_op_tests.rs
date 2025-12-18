@@ -365,7 +365,6 @@ return $s->value;
 // TODO: These currently return Int because the emitter might be converting strings to ints
 // before the operation. Need to investigate the compiler path for bitwise ops on strings.
 #[test]
-#[ignore] // Bitwise string ops not fully supported yet
 fn test_bitwise_or_string() {
     let code = r#"
 $a = "a";
@@ -380,7 +379,6 @@ return $a;
 }
 
 #[test]
-#[ignore] // Bitwise string ops not fully supported yet
 fn test_bitwise_and_string() {
     let code = r#"
 $a = "g";
@@ -395,7 +393,6 @@ return $a;
 }
 
 #[test]
-#[ignore] // Bitwise string ops not fully supported yet
 fn test_bitwise_xor_string() {
     let code = r#"
 $a = "a";

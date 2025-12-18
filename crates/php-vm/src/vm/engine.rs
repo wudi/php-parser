@@ -9727,10 +9727,12 @@ impl VM {
     fn bitwise_and(&mut self) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
+        let a_val = self.arena.get(a_handle).value.clone();
+        let b_val = self.arena.get(b_handle).value.clone();
 
-        let result = Val::Int(a_val.to_int() & b_val.to_int());
+        // Use AssignOpType for proper string handling
+        use crate::vm::assign_op::AssignOpType;
+        let result = AssignOpType::BwAnd.apply(a_val, b_val)?;
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
@@ -9739,10 +9741,12 @@ impl VM {
     fn bitwise_or(&mut self) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
+        let a_val = self.arena.get(a_handle).value.clone();
+        let b_val = self.arena.get(b_handle).value.clone();
 
-        let result = Val::Int(a_val.to_int() | b_val.to_int());
+        // Use AssignOpType for proper string handling
+        use crate::vm::assign_op::AssignOpType;
+        let result = AssignOpType::BwOr.apply(a_val, b_val)?;
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
@@ -9751,10 +9755,12 @@ impl VM {
     fn bitwise_xor(&mut self) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
-        let a_val = &self.arena.get(a_handle).value;
-        let b_val = &self.arena.get(b_handle).value;
+        let a_val = self.arena.get(a_handle).value.clone();
+        let b_val = self.arena.get(b_handle).value.clone();
 
-        let result = Val::Int(a_val.to_int() ^ b_val.to_int());
+        // Use AssignOpType for proper string handling
+        use crate::vm::assign_op::AssignOpType;
+        let result = AssignOpType::BwXor.apply(a_val, b_val)?;
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
