@@ -37,7 +37,7 @@
 //! - PHP Manual: https://www.php.net/manual/en/language.operators.comparison.php
 
 use crate::core::value::Val;
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 
 impl VM {
     /// Execute Equal operation: $result = $left == $right
@@ -103,15 +103,11 @@ impl VM {
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - compare_function
     #[inline]
     pub(crate) fn exec_spaceship(&mut self) -> Result<(), VmError> {
-        use crate::core::value::Handle;
-        let b_handle: Handle = self.operand_stack.pop()
-            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-        let a_handle: Handle = self.operand_stack.pop()
-            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
 
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
-        
+
         let result = php_compare(a_val, b_val);
         let result_handle = self.arena.alloc(Val::Int(result));
         self.operand_stack.push(result_handle);
@@ -129,28 +125,30 @@ fn php_loose_equals(a: &Val, b: &Val) -> bool {
         (Val::Int(x), Val::Int(y)) => x == y,
         (Val::Float(x), Val::Float(y)) => x == y,
         (Val::String(x), Val::String(y)) => x == y,
-        
+
         // Numeric comparisons with type juggling
         (Val::Int(x), Val::Float(y)) => *x as f64 == *y,
         (Val::Float(x), Val::Int(y)) => *x == *y as f64,
-        
+
         // Bool comparisons (convert to bool)
         (Val::Bool(x), _) => *x == b.to_bool(),
         (_, Val::Bool(y)) => a.to_bool() == *y,
-        
+
         // Null comparisons
         (Val::Null, _) => !b.to_bool(),
         (_, Val::Null) => !a.to_bool(),
-        
+
         // String/numeric comparisons
-        (Val::String(_), Val::Int(_)) | (Val::String(_), Val::Float(_)) |
-        (Val::Int(_), Val::String(_)) | (Val::Float(_), Val::String(_)) => {
+        (Val::String(_), Val::Int(_))
+        | (Val::String(_), Val::Float(_))
+        | (Val::Int(_), Val::String(_))
+        | (Val::Float(_), Val::String(_)) => {
             // Convert both to numeric and compare
             let a_num = a.to_float();
             let b_num = b.to_float();
             a_num == b_num
-        },
-        
+        }
+
         _ => false,
     }
 }
@@ -161,44 +159,98 @@ fn php_compare(a: &Val, b: &Val) -> i64 {
     match (a, b) {
         // Integer comparisons
         (Val::Int(x), Val::Int(y)) => {
-            if x < y { -1 } else if x > y { 1 } else { 0 }
-        },
-        
+            if x < y {
+                -1
+            } else if x > y {
+                1
+            } else {
+                0
+            }
+        }
+
         // Float comparisons
         (Val::Float(x), Val::Float(y)) => {
-            if x < y { -1 } else if x > y { 1 } else { 0 }
-        },
-        
+            if x < y {
+                -1
+            } else if x > y {
+                1
+            } else {
+                0
+            }
+        }
+
         // Mixed numeric
         (Val::Int(x), Val::Float(y)) => {
             let xf = *x as f64;
-            if xf < *y { -1 } else if xf > *y { 1 } else { 0 }
-        },
+            if xf < *y {
+                -1
+            } else if xf > *y {
+                1
+            } else {
+                0
+            }
+        }
         (Val::Float(x), Val::Int(y)) => {
             let yf = *y as f64;
-            if x < &yf { -1 } else if x > &yf { 1 } else { 0 }
-        },
-        
+            if x < &yf {
+                -1
+            } else if x > &yf {
+                1
+            } else {
+                0
+            }
+        }
+
         // String comparisons (lexicographic)
         (Val::String(x), Val::String(y)) => {
-            if x < y { -1 } else if x > y { 1 } else { 0 }
-        },
-        
+            if x < y {
+                -1
+            } else if x > y {
+                1
+            } else {
+                0
+            }
+        }
+
         // Bool comparisons
         (Val::Bool(x), Val::Bool(y)) => {
-            if x < y { -1 } else if x > y { 1 } else { 0 }
-        },
-        
+            if x < y {
+                -1
+            } else if x > y {
+                1
+            } else {
+                0
+            }
+        }
+
         // Null comparisons
         (Val::Null, Val::Null) => 0,
-        (Val::Null, _) => if b.to_bool() { -1 } else { 0 },
-        (_, Val::Null) => if a.to_bool() { 1 } else { 0 },
-        
+        (Val::Null, _) => {
+            if b.to_bool() {
+                -1
+            } else {
+                0
+            }
+        }
+        (_, Val::Null) => {
+            if a.to_bool() {
+                1
+            } else {
+                0
+            }
+        }
+
         // Type juggling for other cases
         _ => {
             let a_num = a.to_float();
             let b_num = b.to_float();
-            if a_num < b_num { -1 } else if a_num > b_num { 1 } else { 0 }
+            if a_num < b_num {
+                -1
+            } else if a_num > b_num {
+                1
+            } else {
+                0
+            }
         }
     }
 }

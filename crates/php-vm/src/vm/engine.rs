@@ -2,12 +2,12 @@ use crate::compiler::chunk::{ClosureData, CodeChunk, ReturnType, UserFunc};
 use crate::core::heap::Arena;
 use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val, Visibility};
 use crate::runtime::context::{ClassDef, EngineContext, MethodEntry, RequestContext};
+use crate::vm::error_formatting::MemberKind;
 use crate::vm::frame::{
     ArgList, CallFrame, GeneratorData, GeneratorState, SubGenState, SubIterator,
 };
 use crate::vm::opcode::OpCode;
 use crate::vm::stack::Stack;
-use crate::vm::error_formatting::MemberKind;
 use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,28 +20,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub enum VmError {
     /// Stack underflow during operation
-    StackUnderflow { 
-        operation: &'static str 
-    },
+    StackUnderflow { operation: &'static str },
     /// Type error during operation
-    TypeError { 
-        expected: String, 
-        got: String, 
-        operation: &'static str 
+    TypeError {
+        expected: String,
+        got: String,
+        operation: &'static str,
     },
     /// Undefined variable access
-    UndefinedVariable { 
-        name: String 
-    },
+    UndefinedVariable { name: String },
     /// Undefined function call
-    UndefinedFunction { 
-        name: String 
-    },
+    UndefinedFunction { name: String },
     /// Undefined method call
-    UndefinedMethod { 
-        class: String, 
-        method: String 
-    },
+    UndefinedMethod { class: String, method: String },
     /// Division by zero
     DivisionByZero,
     /// Generic runtime error (for gradual migration)
@@ -56,8 +47,16 @@ impl std::fmt::Display for VmError {
             VmError::StackUnderflow { operation } => {
                 write!(f, "Stack underflow during {}", operation)
             }
-            VmError::TypeError { expected, got, operation } => {
-                write!(f, "Type error in {}: expected {}, got {}", operation, expected, got)
+            VmError::TypeError {
+                expected,
+                got,
+                operation,
+            } => {
+                write!(
+                    f,
+                    "Type error in {}: expected {}, got {}",
+                    operation, expected, got
+                )
             }
             VmError::UndefinedVariable { name } => {
                 write!(f, "Undefined variable: ${}", name)
@@ -100,10 +99,10 @@ impl ErrorLevel {
     /// Convert error level to the corresponding bitmask value
     pub fn to_bitmask(self) -> u32 {
         match self {
-            ErrorLevel::Error => 1,       // E_ERROR
-            ErrorLevel::Warning => 2,     // E_WARNING
-            ErrorLevel::ParseError => 4,  // E_PARSE
-            ErrorLevel::Notice => 8,      // E_NOTICE
+            ErrorLevel::Error => 1,         // E_ERROR
+            ErrorLevel::Warning => 2,       // E_WARNING
+            ErrorLevel::ParseError => 4,    // E_PARSE
+            ErrorLevel::Notice => 8,        // E_NOTICE
             ErrorLevel::UserError => 256,   // E_USER_ERROR
             ErrorLevel::UserWarning => 512, // E_USER_WARNING
             ErrorLevel::UserNotice => 1024, // E_USER_NOTICE
@@ -332,10 +331,10 @@ impl VM {
         insert_str(self, &mut data, b"SERVER_SOFTWARE", b"php-vm");
         insert_str(self, &mut data, b"SERVER_ADDR", b"127.0.0.1");
         insert_str(self, &mut data, b"REMOTE_ADDR", b"127.0.0.1");
-        
+
         Self::insert_array_value(&mut data, b"REMOTE_PORT", self.arena.alloc(Val::Int(0)));
         Self::insert_array_value(&mut data, b"SERVER_PORT", self.arena.alloc(Val::Int(80)));
-        
+
         insert_str(self, &mut data, b"REQUEST_SCHEME", b"http");
         insert_str(self, &mut data, b"HTTPS", b"off");
         insert_str(self, &mut data, b"QUERY_STRING", b"");
@@ -364,14 +363,19 @@ impl VM {
         insert_str(self, &mut data, b"DOCUMENT_ROOT", document_root.as_bytes());
         insert_str(self, &mut data, b"SCRIPT_NAME", script_name.as_bytes());
         insert_str(self, &mut data, b"PHP_SELF", script_name.as_bytes());
-        insert_str(self, &mut data, b"SCRIPT_FILENAME", script_filename.as_bytes());
+        insert_str(
+            self,
+            &mut data,
+            b"SCRIPT_FILENAME",
+            script_filename.as_bytes(),
+        );
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
         let request_time = now.as_secs() as i64;
         let request_time_float = now.as_secs_f64();
-        
+
         Self::insert_array_value(
             &mut data,
             b"REQUEST_TIME",
@@ -445,17 +449,22 @@ impl VM {
             return Ok(());
         }
 
-        let elapsed = self.execution_start_time
+        let elapsed = self
+            .execution_start_time
             .elapsed()
             .map_err(|e| VmError::RuntimeError(format!("Time error: {}", e)))?;
-        
+
         let elapsed_secs = elapsed.as_secs() as i64;
-        
+
         if elapsed_secs >= self.context.max_execution_time {
             return Err(VmError::RuntimeError(format!(
                 "Maximum execution time of {} second{} exceeded",
                 self.context.max_execution_time,
-                if self.context.max_execution_time == 1 { "" } else { "s" }
+                if self.context.max_execution_time == 1 {
+                    ""
+                } else {
+                    "s"
+                }
             )));
         }
 
@@ -466,7 +475,7 @@ impl VM {
     /// Also stores the error in context.last_error for error_get_last()
     pub(crate) fn report_error(&mut self, level: ErrorLevel, message: &str) {
         let level_bitmask = level.to_bitmask();
-        
+
         // Store this as the last error regardless of error_reporting level
         self.context.last_error = Some(crate::runtime::context::ErrorInfo {
             error_type: level_bitmask as i64,
@@ -474,7 +483,7 @@ impl VM {
             file: "Unknown".to_string(),
             line: 0,
         });
-        
+
         // Only report if the error level is enabled in error_reporting
         if (self.context.error_reporting & level_bitmask) != 0 {
             self.error_handler.report(level, message);
@@ -498,7 +507,7 @@ impl VM {
         // If output buffering is active, write to the buffer
         if let Some(buffer) = self.output_buffers.last_mut() {
             buffer.content.extend_from_slice(bytes);
-            
+
             // Check if we need to flush based on chunk_size
             if buffer.chunk_size > 0 && buffer.content.len() >= buffer.chunk_size {
                 // Auto-flush when chunk size is reached
@@ -524,7 +533,11 @@ impl VM {
     }
 
     /// Call a user-defined function
-    pub fn call_user_function(&mut self, callable: Handle, args: &[Handle]) -> Result<Handle, String> {
+    pub fn call_user_function(
+        &mut self,
+        callable: Handle,
+        args: &[Handle],
+    ) -> Result<Handle, String> {
         // This is a simplified version - the actual implementation would need to handle
         // different callable types (closures, function names, arrays with [object, method], etc.)
         match &self.arena.get(callable).value {
@@ -534,7 +547,10 @@ impl VM {
                 if let Some(func) = self.context.engine.functions.get(name_bytes) {
                     func(self, args)
                 } else {
-                    Err(format!("Call to undefined function {}", String::from_utf8_lossy(name_bytes)))
+                    Err(format!(
+                        "Call to undefined function {}",
+                        String::from_utf8_lossy(name_bytes)
+                    ))
                 }
             }
             _ => {
@@ -589,13 +605,6 @@ impl VM {
             .ok_or_else(|| VmError::RuntimeError("Frame stack empty".into()))
     }
 
-    #[inline(always)]
-    fn pop_operand(&mut self) -> Result<Handle, VmError> {
-        self.operand_stack
-            .pop()
-            .ok_or_else(|| VmError::RuntimeError("Operand stack empty".into()))
-    }
-
     #[inline]
     fn push_frame(&mut self, mut frame: CallFrame) {
         if frame.stack_base.is_none() {
@@ -611,7 +620,7 @@ impl VM {
         let count = arg_count.into();
         let mut args = ArgList::with_capacity(count);
         for _ in 0..count {
-            args.push(self.pop_operand()?);
+            args.push(self.pop_operand_required()?);
         }
         args.reverse();
         Ok(args)
@@ -656,10 +665,12 @@ impl VM {
             .interner
             .lookup(class_name)
             .ok_or_else(|| VmError::RuntimeError("Invalid class name".into()))?;
-        
+
         // Create a string handle for the class name
-        let class_name_handle = self.arena.alloc(Val::String(Rc::new(class_name_bytes.to_vec())));
-        
+        let class_name_handle = self
+            .arena
+            .alloc(Val::String(Rc::new(class_name_bytes.to_vec())));
+
         // Call each autoloader
         let autoloaders = self.context.autoloaders.clone();
         for autoloader_handle in autoloaders {
@@ -671,14 +682,14 @@ impl VM {
                 if depth > 0 {
                     self.run_loop(depth - 1)?;
                 }
-                
+
                 // Check if the class was loaded
                 if self.context.classes.contains_key(&class_name) {
                     return Ok(());
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -714,7 +725,11 @@ impl VM {
         // Walk the inheritance chain (class -> parent -> parent -> ...)
         // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_std_get_method
         let lower_method_key = self.method_lookup_key(method_name);
-        let search_bytes = self.context.interner.lookup(method_name).map(Self::to_lowercase_bytes);
+        let search_bytes = self
+            .context
+            .interner
+            .lookup(method_name)
+            .map(Self::to_lowercase_bytes);
 
         self.walk_inheritance_chain(class_name, |def, _cls_sym| {
             // Try direct lookup with case-insensitive key
@@ -756,7 +771,10 @@ impl VM {
     ) -> Option<crate::runtime::context::NativeMethodEntry> {
         // Walk the inheritance chain to find native methods
         self.walk_inheritance_chain(class_name, |_def, cls| {
-            self.context.native_methods.get(&(cls, method_name)).cloned()
+            self.context
+                .native_methods
+                .get(&(cls, method_name))
+                .cloned()
         })
     }
 
@@ -813,7 +831,8 @@ impl VM {
             } else {
                 None
             }
-        }).is_some()
+        })
+        .is_some()
     }
 
     pub fn collect_properties(
@@ -915,9 +934,9 @@ impl VM {
         frame.class_scope = Some(scope);
         frame.called_scope = Some(called_scope);
         frame.args = args.into();
-        
+
         self.push_frame(frame);
-        
+
         // Execute until this frame completes
         let target_depth = self.frames.len() - 1;
         self.run_loop(target_depth)
@@ -974,9 +993,9 @@ impl VM {
     ) -> Result<(Val, Visibility, Symbol), VmError> {
         // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - constant access
         let found = self.walk_inheritance_chain(start_class, |def, cls| {
-            def.constants.get(&const_name).map(|(val, vis)| {
-                (val.clone(), *vis, cls)
-            })
+            def.constants
+                .get(&const_name)
+                .map(|(val, vis)| (val.clone(), *vis, cls))
         });
 
         if let Some((val, vis, defining_class)) = found {
@@ -1032,9 +1051,9 @@ impl VM {
     ) -> Result<(Val, Visibility, Symbol), VmError> {
         // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - static property access
         let found = self.walk_inheritance_chain(start_class, |def, cls| {
-            def.static_properties.get(&prop_name).map(|(val, vis)| {
-                (val.clone(), *vis, cls)
-            })
+            def.static_properties
+                .get(&prop_name)
+                .map(|(val, vis)| (val.clone(), *vis, cls))
         });
 
         if let Some((val, vis, defining_class)) = found {
@@ -1097,11 +1116,9 @@ impl VM {
         match visibility {
             Visibility::Public => true,
             Visibility::Private => caller_scope == Some(defining_class),
-            Visibility::Protected => {
-                caller_scope.map_or(false, |scope| {
-                    scope == defining_class || self.is_subclass_of(scope, defining_class)
-                })
-            }
+            Visibility::Protected => caller_scope.map_or(false, |scope| {
+                scope == defining_class || self.is_subclass_of(scope, defining_class)
+            }),
         }
     }
     /// Unified visibility checker for class members
@@ -1120,7 +1137,12 @@ impl VM {
                 if caller_scope == Some(defining_class) {
                     Ok(())
                 } else {
-                    self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                    self.build_visibility_error(
+                        defining_class,
+                        visibility,
+                        member_kind,
+                        member_name,
+                    )
                 }
             }
             Visibility::Protected => {
@@ -1129,10 +1151,20 @@ impl VM {
                     if scope == defining_class || self.is_subclass_of(scope, defining_class) {
                         Ok(())
                     } else {
-                        self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                        self.build_visibility_error(
+                            defining_class,
+                            visibility,
+                            member_kind,
+                            member_name,
+                        )
                     }
                 } else {
-                    self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                    self.build_visibility_error(
+                        defining_class,
+                        visibility,
+                        member_kind,
+                        member_name,
+                    )
                 }
             }
         }
@@ -1145,7 +1177,8 @@ impl VM {
         member_kind: MemberKind,
         member_name: Option<Symbol>,
     ) -> Result<(), VmError> {
-        let message = self.format_visibility_error(defining_class, visibility, member_kind, member_name);
+        let message =
+            self.format_visibility_error(defining_class, visibility, member_kind, member_name);
         Err(VmError::RuntimeError(message))
     }
 
@@ -1217,11 +1250,11 @@ impl VM {
         frame.func = Some(closure.func.clone());
         frame.args = args;
         frame.this = closure.this;
-        
+
         for (sym, handle) in &closure.captures {
             frame.locals.insert(*sym, *handle);
         }
-        
+
         self.push_frame(frame);
     }
 
@@ -1285,7 +1318,12 @@ impl VM {
                     if current_scope == Some(defined_class) {
                         Ok(())
                     } else {
-                        self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
+                        self.build_visibility_error(
+                            defined_class,
+                            vis,
+                            MemberKind::Property,
+                            Some(prop_name),
+                        )
                     }
                 }
                 Visibility::Protected => {
@@ -1293,10 +1331,20 @@ impl VM {
                         if scope == defined_class || self.is_subclass_of(scope, defined_class) {
                             Ok(())
                         } else {
-                            self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
+                            self.build_visibility_error(
+                                defined_class,
+                                vis,
+                                MemberKind::Property,
+                                Some(prop_name),
+                            )
                         }
                     } else {
-                        self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
+                        self.build_visibility_error(
+                            defined_class,
+                            vis,
+                            MemberKind::Property,
+                            Some(prop_name),
+                        )
                     }
                 }
             }
@@ -1444,13 +1492,13 @@ impl VM {
                             let frame = &mut self.frames[frame_idx];
                             frame.ip = entry.target as usize;
                             self.operand_stack.push(ex_handle);
-                            
+
                             // If this catch has a finally, we'll execute it after the catch
                             if let Some(_finally_tgt) = entry.finally_target {
                                 // Mark that we need to execute finally after catch completes
                                 // Store it for later execution
                             }
-                            
+
                             found_catch = true;
                             break;
                         }
@@ -1477,7 +1525,7 @@ impl VM {
         // In PHP, finally blocks execute even when exception is not caught
         // For now, we'll just track them but not execute (simplified implementation)
         // Full implementation would require executing finally blocks and re-throwing
-        
+
         self.frames.clear();
         false
     }
@@ -1654,7 +1702,13 @@ impl VM {
                         self.find_method(obj_data.class, invoke_sym)
                     {
                         self.check_method_visibility(defining_class, visibility, Some(invoke_sym))?;
-                        self.push_method_frame(method, Some(callable_handle), defining_class, obj_data.class, args);
+                        self.push_method_frame(
+                            method,
+                            Some(callable_handle),
+                            defining_class,
+                            obj_data.class,
+                            args,
+                        );
                         Ok(())
                     } else {
                         Err(VmError::RuntimeError(
@@ -1724,7 +1778,13 @@ impl VM {
                                     Some(method_sym),
                                 )?;
 
-                                self.push_method_frame(method, Some(class_or_obj), defining_class, obj_data.class, args);
+                                self.push_method_frame(
+                                    method,
+                                    Some(class_or_obj),
+                                    defining_class,
+                                    obj_data.class,
+                                    args,
+                                );
                                 Ok(())
                             } else {
                                 let class_str = String::from_utf8_lossy(
@@ -1775,13 +1835,19 @@ impl VM {
     }
 
     /// Call a callable (function, closure, method) and return its result
-    pub fn call_callable(&mut self, callable_handle: Handle, args: ArgList) -> Result<Handle, VmError> {
+    pub fn call_callable(
+        &mut self,
+        callable_handle: Handle,
+        args: ArgList,
+    ) -> Result<Handle, VmError> {
         self.invoke_callable_value(callable_handle, args)?;
         let depth = self.frames.len();
         if depth > 0 {
             self.run_loop(depth - 1)?;
         }
-        Ok(self.last_return_value.unwrap_or_else(|| self.arena.alloc(Val::Null)))
+        Ok(self
+            .last_return_value
+            .unwrap_or_else(|| self.arena.alloc(Val::Null)))
     }
 
     pub(crate) fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
@@ -1872,7 +1938,7 @@ impl VM {
         };
 
         let ret_val = if self.operand_stack.len() > frame_base {
-            self.pop_operand()?
+            self.pop_operand_required()?
         } else {
             self.arena.alloc(Val::Null)
         };
@@ -1883,7 +1949,8 @@ impl VM {
             let frame = self.current_frame()?;
             frame.func.as_ref().and_then(|f| {
                 f.return_type.as_ref().map(|rt| {
-                    let func_name = self.context
+                    let func_name = self
+                        .context
                         .interner
                         .lookup(f.chunk.name)
                         .map(|b| String::from_utf8_lossy(b).to_string())
@@ -1970,7 +2037,7 @@ impl VM {
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
         const TIMEOUT_CHECK_INTERVAL: u64 = 1000; // Check every 1000 instructions
         let mut instructions_until_timeout_check = TIMEOUT_CHECK_INTERVAL;
-        
+
         while self.frames.len() > target_depth {
             // Periodically check execution timeout (countdown is faster than modulo)
             instructions_until_timeout_check -= 1;
@@ -1985,7 +2052,7 @@ impl VM {
                     self.frames.pop();
                     continue;
                 }
-                let op = frame.chunk.code[frame.ip].clone();
+                let op = frame.chunk.code[frame.ip];
                 frame.ip += 1;
                 op
             };
@@ -2019,15 +2086,10 @@ impl VM {
                 self.operand_stack.push(handle);
             }
             OpCode::Pop => {
-                if self.operand_stack.pop().is_none() {
-                    return Err(VmError::RuntimeError("Stack underflow".into()));
-                }
+                let _ = self.pop_operand_required()?;
             }
             OpCode::Dup => {
-                let handle = self
-                    .operand_stack
-                    .peek()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let handle = self.peek_operand()?;
                 self.operand_stack.push(handle);
             }
             OpCode::Nop => {}
@@ -2037,7 +2099,7 @@ impl VM {
     }
 
     pub(crate) fn bitwise_not(&mut self) -> Result<(), VmError> {
-        let handle = self.pop_operand()?;
+        let handle = self.pop_operand_required()?;
         // Match on reference to avoid cloning unless necessary
         let res = match &self.arena.get(handle).value {
             Val::Int(i) => Val::Int(!i),
@@ -2058,7 +2120,7 @@ impl VM {
     }
 
     pub(crate) fn bool_not(&mut self) -> Result<(), VmError> {
-        let handle = self.pop_operand()?;
+        let handle = self.pop_operand_required()?;
         let val = &self.arena.get(handle).value;
         let b = val.to_bool();
         let res_handle = self.arena.alloc(Val::Bool(!b));
@@ -2097,7 +2159,7 @@ impl VM {
     where
         F: Fn(&Val) -> bool,
     {
-        let handle = self.pop_operand()?;
+        let handle = self.pop_operand_required()?;
         let val = &self.arena.get(handle).value;
         if condition(val) {
             self.set_ip(target)?;
@@ -2109,10 +2171,7 @@ impl VM {
     where
         F: Fn(&Val) -> bool,
     {
-        let handle = self
-            .operand_stack
-            .peek()
-            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+        let handle = self.peek_operand()?;
         let val = &self.arena.get(handle).value;
 
         if condition(val) {
@@ -2205,9 +2264,7 @@ impl VM {
         };
 
         // Allocate property values first
-        let file_val = self
-            .arena
-            .alloc(Val::String(file_path.into_bytes().into()));
+        let file_val = self.arena.alloc(Val::String(file_path.into_bytes().into()));
         let line_val = self.arena.alloc(Val::Int(line_no as i64));
 
         // Now mutate the object to set file and line
@@ -2261,7 +2318,11 @@ impl VM {
 
     /// Direct opcode execution (for internal use and trait delegation)
     /// This is the actual implementation method that can be called directly
-    pub(crate) fn execute_opcode_direct(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
+    pub(crate) fn execute_opcode_direct(
+        &mut self,
+        op: OpCode,
+        target_depth: usize,
+    ) -> Result<(), VmError> {
         self.execute_opcode(op, target_depth)
     }
 
@@ -2272,7 +2333,7 @@ impl VM {
                 // Exception object is already on the operand stack (pushed by handler); nothing else to do.
             }
             OpCode::Const(_) | OpCode::Pop | OpCode::Dup | OpCode::Nop => self.exec_stack_op(op)?,
-            
+
             // Arithmetic operations - delegated to opcodes::arithmetic
             OpCode::Add => self.exec_add()?,
             OpCode::Sub => self.exec_sub()?,
@@ -2468,9 +2529,10 @@ impl VM {
                     let val = self.arena.get(val_handle).value.clone();
 
                     use crate::vm::assign_op::AssignOpType;
-                    let op_type = AssignOpType::from_u8(op)
-                        .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
-                    
+                    let op_type = AssignOpType::from_u8(op).ok_or_else(|| {
+                        VmError::RuntimeError(format!("Invalid assign op: {}", op))
+                    })?;
+
                     let res = op_type.apply(current_val, val)?;
 
                     self.arena.get_mut(var_handle).value = res.clone();
@@ -3294,12 +3356,10 @@ impl VM {
                                                 handle: iterable_handle,
                                                 state: SubGenState::Initial,
                                             },
-                                            val => {
-                                                return Err(VmError::RuntimeError(format!(
+                                            val => return Err(VmError::RuntimeError(format!(
                                                 "Yield from expects array or traversable, got {:?}",
                                                 val
-                                            )))
-                                            }
+                                            ))),
                                         };
                                         data.sub_iter = Some(iter.clone());
                                         (iter, true)
@@ -3457,9 +3517,9 @@ impl VM {
                                                                     &obj_data.internal
                                                                 {
                                                                     if let Ok(parent_gen_data) = internal.clone().downcast::<RefCell<GeneratorData>>() {
-                                                                            let mut parent_data = parent_gen_data.borrow_mut();
-                                                                            parent_data.sub_iter = Some(sub_iter.clone());
-                                                                        }
+                                                                        let mut parent_data = parent_gen_data.borrow_mut();
+                                                                        parent_data.sub_iter = Some(sub_iter.clone());
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -3700,7 +3760,7 @@ impl VM {
                             self.frames.pop();
                             break;
                         }
-                        let op = frame.chunk.code[frame.ip].clone();
+                        let op = frame.chunk.code[frame.ip];
                         frame.ip += 1;
                         op
                     };
@@ -3766,7 +3826,7 @@ impl VM {
                     Val::Array(map) => {
                         let key_val = &self.arena.get(key_handle).value;
                         let key = self.array_key_from_value(key_val)?;
-                        
+
                         if let Some(val_handle) = map.map.get(&key) {
                             self.operand_stack.push(*val_handle);
                         } else {
@@ -3787,10 +3847,10 @@ impl VM {
                         // String offset access
                         // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_fetch_dimension_address_read_R
                         let dim_val = &self.arena.get(key_handle).value;
-                        
+
                         // Convert offset to integer (PHP coerces any type to int for string offsets)
                         let offset = dim_val.to_int();
-                        
+
                         // Handle negative offsets (count from end)
                         // Reference: PHP 7.1+ supports negative string offsets
                         let len = s.len() as i64;
@@ -3833,7 +3893,8 @@ impl VM {
 
                             if self.implements_array_access(class_name) {
                                 // Call offsetGet method
-                                let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                                let result =
+                                    self.call_array_access_offset_get(array_handle, key_handle)?;
                                 self.operand_stack.push(result);
                             } else {
                                 // Object doesn't implement ArrayAccess
@@ -3860,7 +3921,8 @@ impl VM {
 
                         if self.implements_array_access(class_name) {
                             // Call offsetGet method
-                            let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                            let result =
+                                self.call_array_access_offset_get(array_handle, key_handle)?;
                             self.operand_stack.push(result);
                         } else {
                             // Object doesn't implement ArrayAccess
@@ -3954,17 +4016,18 @@ impl VM {
                                 let class_name = obj_data.class;
                                 if self.implements_array_access(class_name) {
                                     // Call offsetGet
-                                    let result = self.call_array_access_offset_get(array_handle, key_handle)?;
+                                    let result = self
+                                        .call_array_access_offset_get(array_handle, key_handle)?;
                                     self.arena.get(result).value.clone()
                                 } else {
                                     return Err(VmError::RuntimeError(
                                         "Trying to access offset on non-array".into(),
-                                    ))
+                                    ));
                                 }
                             } else {
                                 return Err(VmError::RuntimeError(
                                     "Trying to access offset on non-array".into(),
-                                ))
+                                ));
                             }
                         }
                         _ => {
@@ -4132,7 +4195,7 @@ impl VM {
                 // Check if this is an ArrayAccess object
                 // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_UNSET_DIM_SPEC
                 let array_val = &self.arena.get(array_handle).value;
-                
+
                 if let Val::Object(payload_handle) = array_val {
                     let payload = self.arena.get(*payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload.value {
@@ -5035,7 +5098,7 @@ impl VM {
                 if !self.context.classes.contains_key(&class_name) {
                     self.trigger_autoload(class_name)?;
                 }
-                
+
                 if self.context.classes.contains_key(&class_name) {
                     let properties =
                         self.collect_properties(class_name, PropertyCollectionMode::All);
@@ -5107,11 +5170,12 @@ impl VM {
                         self.push_frame(frame);
                     } else {
                         // Check for native constructor
-                        let native_constructor = self.find_native_method(class_name, constructor_name);
+                        let native_constructor =
+                            self.find_native_method(class_name, constructor_name);
                         if let Some(native_entry) = native_constructor {
                             // Call native constructor
                             let args = self.collect_call_args(arg_count)?;
-                            
+
                             // Set this in current frame temporarily
                             let saved_this = self.frames.last().and_then(|f| f.this);
                             if let Some(frame) = self.frames.last_mut() {
@@ -5119,7 +5183,8 @@ impl VM {
                             }
 
                             // Call native handler
-                            let _result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+                            let _result = (native_entry.handler)(self, &args)
+                                .map_err(VmError::RuntimeError)?;
 
                             // Restore previous this
                             if let Some(frame) = self.frames.last_mut() {
@@ -5128,38 +5193,42 @@ impl VM {
 
                             self.operand_stack.push(obj_handle);
                         } else {
-                        // No constructor found
-                        // For built-in exception/error classes, accept args silently (they have implicit constructors)
-                        let is_builtin_exception = {
-                            let class_name_bytes = self
-                                .context
-                                .interner
-                                .lookup(class_name)
-                                .unwrap_or(b"");
-                            matches!(
-                                class_name_bytes,
-                                b"Exception" | b"Error" | b"Throwable" | b"RuntimeException" |
-                                b"LogicException" | b"TypeError" | b"ArithmeticError" |
-                                b"DivisionByZeroError" | b"ParseError" | b"ArgumentCountError"
-                            )
-                        };
+                            // No constructor found
+                            // For built-in exception/error classes, accept args silently (they have implicit constructors)
+                            let is_builtin_exception = {
+                                let class_name_bytes =
+                                    self.context.interner.lookup(class_name).unwrap_or(b"");
+                                matches!(
+                                    class_name_bytes,
+                                    b"Exception"
+                                        | b"Error"
+                                        | b"Throwable"
+                                        | b"RuntimeException"
+                                        | b"LogicException"
+                                        | b"TypeError"
+                                        | b"ArithmeticError"
+                                        | b"DivisionByZeroError"
+                                        | b"ParseError"
+                                        | b"ArgumentCountError"
+                                )
+                            };
 
-                        if arg_count > 0 && !is_builtin_exception {
-                            let class_name_bytes = self
-                                .context
-                                .interner
-                                .lookup(class_name)
-                                .unwrap_or(b"<unknown>");
-                            let class_name_str = String::from_utf8_lossy(class_name_bytes);
-                            return Err(VmError::RuntimeError(format!("Class {} does not have a constructor, so you cannot pass any constructor arguments", class_name_str).into()));
-                        }
-                        
-                        // Discard constructor arguments for built-in exceptions
-                        for _ in 0..arg_count {
-                            self.operand_stack.pop();
-                        }
-                        
-                        self.operand_stack.push(obj_handle);
+                            if arg_count > 0 && !is_builtin_exception {
+                                let class_name_bytes = self
+                                    .context
+                                    .interner
+                                    .lookup(class_name)
+                                    .unwrap_or(b"<unknown>");
+                                let class_name_str = String::from_utf8_lossy(class_name_bytes);
+                                return Err(VmError::RuntimeError(format!("Class {} does not have a constructor, so you cannot pass any constructor arguments", class_name_str).into()));
+                            }
+
+                            // Discard constructor arguments for built-in exceptions
+                            for _ in 0..arg_count {
+                                self.operand_stack.pop();
+                            }
+
+                            self.operand_stack.push(obj_handle);
                         }
                     }
                 } else {
@@ -5541,7 +5610,11 @@ impl VM {
                 // Check for native method first
                 let native_method = self.find_native_method(class_name, method_name);
                 if let Some(native_entry) = native_method {
-                    self.check_method_visibility(native_entry.declaring_class, native_entry.visibility, Some(method_name))?;
+                    self.check_method_visibility(
+                        native_entry.declaring_class,
+                        native_entry.visibility,
+                        Some(method_name),
+                    )?;
 
                     // Collect args and pop object
                     let args = self.collect_call_args(arg_count)?;
@@ -5554,7 +5627,8 @@ impl VM {
                     }
 
                     // Call native handler
-                    let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+                    let result =
+                        (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
 
                     // Restore previous this
                     if let Some(frame) = self.frames.last_mut() {
@@ -5563,106 +5637,105 @@ impl VM {
 
                     self.operand_stack.push(result);
                 } else {
+                    let mut method_lookup = self.find_method(class_name, method_name);
 
-                let mut method_lookup = self.find_method(class_name, method_name);
-
-                if method_lookup.is_none() {
-                    // Fallback: Check if we are in a scope that has this method as private.
-                    // This handles calling private methods of parent class from parent scope on child object.
-                    if let Some(scope) = self.get_current_class() {
-                        if let Some((func, vis, is_static, decl_class)) =
-                            self.find_method(scope, method_name)
-                        {
-                            if vis == Visibility::Private && decl_class == scope {
-                                method_lookup = Some((func, vis, is_static, decl_class));
+                    if method_lookup.is_none() {
+                        // Fallback: Check if we are in a scope that has this method as private.
+                        // This handles calling private methods of parent class from parent scope on child object.
+                        if let Some(scope) = self.get_current_class() {
+                            if let Some((func, vis, is_static, decl_class)) =
+                                self.find_method(scope, method_name)
+                            {
+                                if vis == Visibility::Private && decl_class == scope {
+                                    method_lookup = Some((func, vis, is_static, decl_class));
+                                }
                             }
                         }
                     }
-                }
 
-                if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
-                    self.check_method_visibility(defined_class, visibility, Some(method_name))?;
+                    if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
+                        self.check_method_visibility(defined_class, visibility, Some(method_name))?;
 
-                    let args = self.collect_call_args(arg_count)?;
-
-                    let obj_handle = self.operand_stack.pop().unwrap();
-
-                    let mut frame = CallFrame::new(user_func.chunk.clone());
-                    frame.func = Some(user_func.clone());
-                    if !is_static {
-                        frame.this = Some(obj_handle);
-                    }
-                    frame.class_scope = Some(defined_class);
-                    frame.called_scope = Some(class_name);
-                    frame.args = args;
-
-                    self.push_frame(frame);
-                } else {
-                    // Method not found. Check for __call.
-                    let call_magic = self.context.interner.intern(b"__call");
-                    if let Some((magic_func, _, _, magic_class)) =
-                        self.find_method(class_name, call_magic)
-                    {
-                        // Found __call.
-
-                        // Pop args
                         let args = self.collect_call_args(arg_count)?;
 
                         let obj_handle = self.operand_stack.pop().unwrap();
 
-                        // Create array from args
-                        let mut array_map = IndexMap::new();
-                        for (i, arg) in args.into_iter().enumerate() {
-                            array_map.insert(ArrayKey::Int(i as i64), arg);
+                        let mut frame = CallFrame::new(user_func.chunk.clone());
+                        frame.func = Some(user_func.clone());
+                        if !is_static {
+                            frame.this = Some(obj_handle);
                         }
-                        let args_array_handle = self.arena.alloc(Val::Array(
-                            crate::core::value::ArrayData::from(array_map).into(),
-                        ));
-
-                        // Create method name string
-                        let method_name_str = self
-                            .context
-                            .interner
-                            .lookup(method_name)
-                            .expect("Method name should be interned")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
-
-                        // Prepare frame for __call
-                        let mut frame = CallFrame::new(magic_func.chunk.clone());
-                        frame.func = Some(magic_func.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(magic_class);
+                        frame.class_scope = Some(defined_class);
                         frame.called_scope = Some(class_name);
-                        let mut frame_args = ArgList::new();
-                        frame_args.push(name_handle);
-                        frame_args.push(args_array_handle);
-                        frame.args = frame_args;
-
-                        // Pass args: $name, $arguments
-                        // Param 0: name
-                        if let Some(param) = magic_func.params.get(0) {
-                            frame.locals.insert(param.name, frame.args[0]);
-                        }
-                        // Param 1: arguments
-                        if let Some(param) = magic_func.params.get(1) {
-                            frame.locals.insert(param.name, frame.args[1]);
-                        }
+                        frame.args = args;
 
                         self.push_frame(frame);
                     } else {
-                        let method_str = String::from_utf8_lossy(
-                            self.context
+                        // Method not found. Check for __call.
+                        let call_magic = self.context.interner.intern(b"__call");
+                        if let Some((magic_func, _, _, magic_class)) =
+                            self.find_method(class_name, call_magic)
+                        {
+                            // Found __call.
+
+                            // Pop args
+                            let args = self.collect_call_args(arg_count)?;
+
+                            let obj_handle = self.operand_stack.pop().unwrap();
+
+                            // Create array from args
+                            let mut array_map = IndexMap::new();
+                            for (i, arg) in args.into_iter().enumerate() {
+                                array_map.insert(ArrayKey::Int(i as i64), arg);
+                            }
+                            let args_array_handle = self.arena.alloc(Val::Array(
+                                crate::core::value::ArrayData::from(array_map).into(),
+                            ));
+
+                            // Create method name string
+                            let method_name_str = self
+                                .context
                                 .interner
                                 .lookup(method_name)
-                                .unwrap_or(b"<unknown>"),
-                        );
-                        return Err(VmError::RuntimeError(format!(
-                            "Call to undefined method {}",
-                            method_str
-                        )));
+                                .expect("Method name should be interned")
+                                .to_vec();
+                            let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
+
+                            // Prepare frame for __call
+                            let mut frame = CallFrame::new(magic_func.chunk.clone());
+                            frame.func = Some(magic_func.clone());
+                            frame.this = Some(obj_handle);
+                            frame.class_scope = Some(magic_class);
+                            frame.called_scope = Some(class_name);
+                            let mut frame_args = ArgList::new();
+                            frame_args.push(name_handle);
+                            frame_args.push(args_array_handle);
+                            frame.args = frame_args;
+
+                            // Pass args: $name, $arguments
+                            // Param 0: name
+                            if let Some(param) = magic_func.params.get(0) {
+                                frame.locals.insert(param.name, frame.args[0]);
+                            }
+                            // Param 1: arguments
+                            if let Some(param) = magic_func.params.get(1) {
+                                frame.locals.insert(param.name, frame.args[1]);
+                            }
+
+                            self.push_frame(frame);
+                        } else {
+                            let method_str = String::from_utf8_lossy(
+                                self.context
+                                    .interner
+                                    .lookup(method_name)
+                                    .unwrap_or(b"<unknown>"),
+                            );
+                            return Err(VmError::RuntimeError(format!(
+                                "Call to undefined method {}",
+                                method_str
+                            )));
+                        }
                     }
-                }
                 }
             }
             OpCode::UnsetObj => {
@@ -5894,7 +5967,7 @@ impl VM {
                                 self.frames.pop();
                                 break;
                             }
-                            let op = frame.chunk.code[frame.ip].clone();
+                            let op = frame.chunk.code[frame.ip];
                             frame.ip += 1;
                             op
                         };
@@ -6022,7 +6095,7 @@ impl VM {
                                             self.frames.pop();
                                             break;
                                         }
-                                        let op = frame.chunk.code[frame.ip].clone();
+                                        let op = frame.chunk.code[frame.ip];
                                         frame.ip += 1;
                                         op
                                     };
@@ -6420,10 +6493,10 @@ impl VM {
                         // String offset access
                         // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_fetch_dimension_address_read_R
                         let dim_val = &self.arena.get(dim).value;
-                        
+
                         // Convert offset to integer (PHP coerces any type to int for string offsets)
                         let offset = dim_val.to_int();
-                        
+
                         // Handle negative offsets (count from end)
                         // Reference: PHP 7.1+ supports negative string offsets
                         let len = s.len() as i64;
@@ -6501,9 +6574,7 @@ impl VM {
                                     None
                                 }
                             }
-                            &Val::ObjPayload(ref obj_data) => {
-                                Some(obj_data.class)
-                            }
+                            &Val::ObjPayload(ref obj_data) => Some(obj_data.class),
                             _ => None,
                         };
 
@@ -6632,7 +6703,7 @@ impl VM {
                 let obj = &self.arena.get(obj_handle).value;
                 if let Val::Object(obj_data_handle) = obj {
                     let sym = self.context.interner.intern(&prop_name);
-                    
+
                     // Extract class name and check property
                     let (class_name, prop_handle_opt, has_prop) = {
                         let payload = self.arena.get(*obj_data_handle);
@@ -6975,13 +7046,17 @@ impl VM {
                                 } else if type_val == 0 {
                                     // isset: offsetExists returned true, so isset is true
                                     // BUT we still need to get the value to check if it's null
-                                    match self.call_array_access_offset_get(container_handle, dim_handle) {
+                                    match self
+                                        .call_array_access_offset_get(container_handle, dim_handle)
+                                    {
                                         Ok(h) => Some(h),
                                         Err(_) => None,
                                     }
                                 } else {
                                     // empty: need to check the actual value via offsetGet
-                                    match self.call_array_access_offset_get(container_handle, dim_handle) {
+                                    match self
+                                        .call_array_access_offset_get(container_handle, dim_handle)
+                                    {
                                         Ok(h) => Some(h),
                                         Err(_) => None,
                                     }
@@ -6992,7 +7067,10 @@ impl VM {
                     } else {
                         // Non-ArrayAccess object used as array - fatal error
                         let class_name_str = String::from_utf8_lossy(
-                            self.context.interner.lookup(class_name).unwrap_or(b"Unknown")
+                            self.context
+                                .interner
+                                .lookup(class_name)
+                                .unwrap_or(b"Unknown"),
                         );
                         return Err(VmError::RuntimeError(format!(
                             "Cannot use object of type {} as array",
@@ -7015,7 +7093,7 @@ impl VM {
                             // String offset access for isset/empty
                             let offset = self.arena.get(dim_handle).value.to_int();
                             let len = s.len() as i64;
-                            
+
                             // Handle negative offsets (PHP 7.1+)
                             let actual_offset = if offset < 0 {
                                 let adjusted = len + offset;
@@ -7027,7 +7105,7 @@ impl VM {
                             } else {
                                 Some(offset as usize)
                             };
-                            
+
                             // For strings, if offset is valid, create a temp string value
                             if let Some(idx) = actual_offset {
                                 if idx < s.len() {
@@ -7104,7 +7182,7 @@ impl VM {
                 };
 
                 let container = &self.arena.get(container_handle).value;
-                
+
                 // Check for __isset first
                 let (val_handle_opt, should_check_isset_magic) = match container {
                     Val::Object(obj_handle) => {
@@ -7154,7 +7232,7 @@ impl VM {
                             _ => vec![].into(),
                         };
                         let sym = self.context.interner.intern(&prop_name);
-                        
+
                         let class_name = {
                             let payload = self.arena.get(*obj_handle);
                             if let Val::ObjPayload(data) = &payload.value {
@@ -7181,7 +7259,6 @@ impl VM {
                             }
 
                             self.push_frame(frame);
-                            
 
                             // __isset returns a boolean value
                             self.last_return_value
@@ -7324,7 +7401,7 @@ impl VM {
                 use crate::vm::assign_op::AssignOpType;
                 let op_type = AssignOpType::from_u8(op)
                     .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
-                
+
                 let res = op_type.apply(current_val.clone(), val)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
@@ -7508,7 +7585,6 @@ impl VM {
                                 }
 
                                 self.push_frame(frame);
-                                
 
                                 if let Some(ret_val) = self.last_return_value {
                                     self.arena.get(ret_val).value.clone()
@@ -7544,7 +7620,6 @@ impl VM {
                             }
 
                             self.push_frame(frame);
-                            
 
                             if let Some(ret_val) = self.last_return_value {
                                 self.arena.get(ret_val).value.clone()
@@ -7559,11 +7634,11 @@ impl VM {
 
                 // 2. Perform Op
                 let val = self.arena.get(val_handle).value.clone();
-                
+
                 use crate::vm::assign_op::AssignOpType;
                 let op_type = AssignOpType::from_u8(op)
                     .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
-                
+
                 let res = op_type.apply(current_val, val)?;
 
                 // 3. Set new value
@@ -7763,7 +7838,6 @@ impl VM {
                                 }
 
                                 self.push_frame(frame);
-                                
 
                                 if let Some(ret_val) = self.last_return_value {
                                     self.arena.get(ret_val).value.clone()
@@ -7777,8 +7851,7 @@ impl VM {
                     } else {
                         // Try __get
                         let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) =
-                            self.find_method(cn, magic_get)
+                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
                         {
                             let prop_name_bytes = self
                                 .context
@@ -7799,7 +7872,6 @@ impl VM {
                             }
 
                             self.push_frame(frame);
-                            
 
                             if let Some(ret_val) = self.last_return_value {
                                 self.arena.get(ret_val).value.clone()
@@ -7871,7 +7943,6 @@ impl VM {
                         }
 
                         self.push_frame(frame);
-                        
                     } else {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
@@ -7955,7 +8026,6 @@ impl VM {
                                 }
 
                                 self.push_frame(frame);
-                                
 
                                 if let Some(ret_val) = self.last_return_value {
                                     self.arena.get(ret_val).value.clone()
@@ -7969,8 +8039,7 @@ impl VM {
                     } else {
                         // Try __get
                         let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) =
-                            self.find_method(cn, magic_get)
+                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
                         {
                             let prop_name_bytes = self
                                 .context
@@ -7991,7 +8060,6 @@ impl VM {
                             }
 
                             self.push_frame(frame);
-                            
 
                             if let Some(ret_val) = self.last_return_value {
                                 self.arena.get(ret_val).value.clone()
@@ -8064,7 +8132,6 @@ impl VM {
                         }
 
                         self.push_frame(frame);
-                        
                     } else {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
@@ -8148,7 +8215,6 @@ impl VM {
                                 }
 
                                 self.push_frame(frame);
-                                
 
                                 if let Some(ret_val) = self.last_return_value {
                                     self.arena.get(ret_val).value.clone()
@@ -8162,8 +8228,7 @@ impl VM {
                     } else {
                         // Try __get
                         let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) =
-                            self.find_method(cn, magic_get)
+                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
                         {
                             let prop_name_bytes = self
                                 .context
@@ -8184,7 +8249,6 @@ impl VM {
                             }
 
                             self.push_frame(frame);
-                            
 
                             if let Some(ret_val) = self.last_return_value {
                                 self.arena.get(ret_val).value.clone()
@@ -8257,7 +8321,6 @@ impl VM {
                         }
 
                         self.push_frame(frame);
-                        
                     } else {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
@@ -8469,7 +8532,7 @@ impl VM {
                             Val::String(s) => ArrayKey::Str(s.clone()),
                             _ => ArrayKey::Int(0),
                         };
-                        
+
                         if let Some(val_handle) = map.map.get(&key) {
                             !matches!(self.arena.get(*val_handle).value, Val::Null)
                         } else {
@@ -8483,16 +8546,21 @@ impl VM {
                             let class_name = obj_data.class;
                             if self.implements_array_access(class_name) {
                                 // Call offsetExists
-                                match self.call_array_access_offset_exists(array_handle, key_handle) {
+                                match self.call_array_access_offset_exists(array_handle, key_handle)
+                                {
                                     Ok(exists) => {
                                         if !exists {
                                             false
                                         } else {
                                             // offsetExists returned true, now check if value is not null
-                                            match self.call_array_access_offset_get(array_handle, key_handle) {
-                                                Ok(val_handle) => {
-                                                    !matches!(self.arena.get(val_handle).value, Val::Null)
-                                                }
+                                            match self.call_array_access_offset_get(
+                                                array_handle,
+                                                key_handle,
+                                            ) {
+                                                Ok(val_handle) => !matches!(
+                                                    self.arena.get(val_handle).value,
+                                                    Val::Null
+                                                ),
                                                 Err(_) => false,
                                             }
                                         }
@@ -8511,19 +8579,19 @@ impl VM {
                         // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ISSET_ISEMPTY_DIM_OBJ
                         let offset = self.arena.get(key_handle).value.to_int();
                         let len = s.len() as i64;
-                        
+
                         // Handle negative offsets
                         let actual_offset = if offset < 0 {
                             let adjusted = len + offset;
                             if adjusted < 0 {
-                                -1i64 as usize  // Out of bounds - use impossible value
+                                -1i64 as usize // Out of bounds - use impossible value
                             } else {
                                 adjusted as usize
                             }
                         } else {
                             offset as usize
                         };
-                        
+
                         actual_offset < s.len()
                     }
                     _ => false,
@@ -9078,7 +9146,7 @@ impl ArithOp {
             _ => None, // Div/Pow always use float, Mod checks zero
         }
     }
-    
+
     fn apply_float(&self, a: f64, b: f64) -> f64 {
         match self {
             ArithOp::Add => a + b,
@@ -9089,7 +9157,7 @@ impl ArithOp {
             ArithOp::Mod => unreachable!(), // Mod uses int only
         }
     }
-    
+
     fn always_float(&self) -> bool {
         matches!(self, ArithOp::Div | ArithOp::Pow)
     }
@@ -9102,8 +9170,7 @@ impl VM {
     /// Generic binary arithmetic operation
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
     fn binary_arithmetic(&mut self, op: ArithOp) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
 
@@ -9114,7 +9181,8 @@ impl VM {
                 for (k, v) in b_arr.map.iter() {
                     result.map.entry(k.clone()).or_insert(*v);
                 }
-                self.operand_stack.push(self.arena.alloc(Val::Array(Rc::new(result))));
+                self.operand_stack
+                    .push(self.arena.alloc(Val::Array(Rc::new(result))));
                 return Ok(());
             }
         }
@@ -9122,7 +9190,8 @@ impl VM {
         // Check for division/modulo by zero
         if matches!(op, ArithOp::Div) && b_val.to_float() == 0.0 {
             self.report_error(ErrorLevel::Warning, "Division by zero");
-            self.operand_stack.push(self.arena.alloc(Val::Float(f64::INFINITY)));
+            self.operand_stack
+                .push(self.arena.alloc(Val::Float(f64::INFINITY)));
             return Ok(());
         }
         if matches!(op, ArithOp::Mod) && b_val.to_int() == 0 {
@@ -9132,10 +9201,9 @@ impl VM {
         }
 
         // Determine result type and compute
-        let needs_float = op.always_float() 
-            || matches!(a_val, Val::Float(_)) 
-            || matches!(b_val, Val::Float(_));
-        
+        let needs_float =
+            op.always_float() || matches!(a_val, Val::Float(_)) || matches!(b_val, Val::Float(_));
+
         let result = if needs_float {
             Val::Float(op.apply_float(a_val.to_float(), b_val.to_float()))
         } else if let Some(int_result) = op.apply_int(a_val.to_int(), b_val.to_int()) {
@@ -9174,12 +9242,14 @@ impl VM {
 
     /// Generic binary bitwise operation using AssignOpType
     /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
-    fn binary_bitwise(&mut self, op_type: crate::vm::assign_op::AssignOpType) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
+    fn binary_bitwise(
+        &mut self,
+        op_type: crate::vm::assign_op::AssignOpType,
+    ) -> Result<(), VmError> {
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
         let a_val = self.arena.get(a_handle).value.clone();
         let b_val = self.arena.get(b_handle).value.clone();
-        
+
         let result = op_type.apply(a_val, b_val)?;
         self.operand_stack.push(self.arena.alloc(result));
         Ok(())
@@ -9198,14 +9268,13 @@ impl VM {
     }
 
     fn binary_shift(&mut self, is_shr: bool) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
+        let (a_handle, b_handle) = self.pop_binary_operands()?;
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
 
         let shift_amount = b_val.to_int();
         let value = a_val.to_int();
-        
+
         let result = if shift_amount < 0 || shift_amount >= 64 {
             if is_shr {
                 Val::Int(value >> 63)
@@ -9219,7 +9288,7 @@ impl VM {
                 Val::Int(value.wrapping_shl(shift_amount as u32))
             }
         };
-        
+
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
@@ -9291,7 +9360,7 @@ impl VM {
         // Check if this is an ArrayAccess object
         // Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_ASSIGN_DIM_SPEC
         let array_val = &self.arena.get(array_handle).value;
-        
+
         if let Val::Object(payload_handle) = array_val {
             let payload = self.arena.get(*payload_handle);
             if let Val::ObjPayload(obj_data) = &payload.value {
@@ -9347,7 +9416,11 @@ impl VM {
     /// Note: Array append now uses O(1) ArrayData::push() instead of O(n) index computation
     /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
 
-    pub(crate) fn append_array(&mut self, array_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
+    pub(crate) fn append_array(
+        &mut self,
+        array_handle: Handle,
+        val_handle: Handle,
+    ) -> Result<(), VmError> {
         let is_ref = self.arena.get(array_handle).is_ref;
 
         if is_ref {
@@ -9436,7 +9509,8 @@ impl VM {
                         let class_name = obj_data.class;
                         if self.implements_array_access(class_name) {
                             // Call offsetGet
-                            current_handle = self.call_array_access_offset_get(current_handle, *key_handle)?;
+                            current_handle =
+                                self.call_array_access_offset_get(current_handle, *key_handle)?;
                         } else {
                             // Object doesn't implement ArrayAccess
                             self.report_error(
@@ -9527,18 +9601,24 @@ impl VM {
                         // Multiple keys: fetch the intermediate value and recurse
                         let first_key = keys[0];
                         let remaining_keys = &keys[1..];
-                        
+
                         // Call offsetGet to get the intermediate value
-                        let intermediate = self.call_array_access_offset_get(current_handle, first_key)?;
-                        
+                        let intermediate =
+                            self.call_array_access_offset_get(current_handle, first_key)?;
+
                         // Recurse on the intermediate value
-                        let new_intermediate = self.assign_nested_recursive(intermediate, remaining_keys, val_handle)?;
-                        
+                        let new_intermediate =
+                            self.assign_nested_recursive(intermediate, remaining_keys, val_handle)?;
+
                         // If the intermediate value changed, call offsetSet to update it
                         if new_intermediate != intermediate {
-                            self.call_array_access_offset_set(current_handle, first_key, new_intermediate)?;
+                            self.call_array_access_offset_set(
+                                current_handle,
+                                first_key,
+                                new_intermediate,
+                            )?;
                         }
-                        
+
                         return Ok(current_handle);
                     }
                 }
@@ -9728,12 +9808,10 @@ impl VM {
                 Ok(ArrayKey::Str(s.clone()))
             }
             Val::Null => Ok(ArrayKey::Str(Rc::new(Vec::new()))),
-            Val::Object(payload_handle) => {
-                Err(VmError::RuntimeError(format!(
-                    "TypeError: Cannot access offset of type {} on array",
-                    self.describe_object_class(*payload_handle)
-                )))
-            }
+            Val::Object(payload_handle) => Err(VmError::RuntimeError(format!(
+                "TypeError: Cannot access offset of type {} on array",
+                self.describe_object_class(*payload_handle)
+            ))),
             _ => Err(VmError::RuntimeError(format!(
                 "Illegal offset type {}",
                 value.type_name()
@@ -9743,7 +9821,11 @@ impl VM {
 
     /// Check if a value matches the expected return type
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_verify_internal_return_type, zend_check_type
-    fn check_return_type(&mut self, val_handle: Handle, ret_type: &ReturnType) -> Result<bool, VmError> {
+    fn check_return_type(
+        &mut self,
+        val_handle: Handle,
+        ret_type: &ReturnType,
+    ) -> Result<bool, VmError> {
         let val = &self.arena.get(val_handle).value;
 
         match ret_type {
@@ -9853,7 +9935,7 @@ impl VM {
     /// Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_is_callable
     fn is_callable(&mut self, val_handle: Handle) -> bool {
         let val = &self.arena.get(val_handle).value;
-        
+
         match val {
             // String: function name
             Val::String(s) => {
@@ -9874,7 +9956,7 @@ impl VM {
                     if self.is_instance_of_class(obj_data.class, closure_sym) {
                         return true;
                     }
-                    
+
                     // Check if it has __invoke method
                     let invoke_sym = self.context.interner.intern(b"__invoke");
                     if let Some(_) = self.find_method(obj_data.class, invoke_sym) {
@@ -9888,24 +9970,26 @@ impl VM {
                 if arr_data.map.len() != 2 {
                     return false;
                 }
-                
+
                 // Check if we have indices 0 and 1
                 let key0 = ArrayKey::Int(0);
                 let key1 = ArrayKey::Int(1);
-                
-                if let (Some(&class_or_obj_handle), Some(&method_handle)) = 
-                    (arr_data.map.get(&key0), arr_data.map.get(&key1)) {
-                    
+
+                if let (Some(&class_or_obj_handle), Some(&method_handle)) =
+                    (arr_data.map.get(&key0), arr_data.map.get(&key1))
+                {
                     // Method name must be a string
                     let method_val = &self.arena.get(method_handle).value;
                     if let Val::String(method_name) = method_val {
                         let method_sym = self.context.interner.intern(method_name);
-                        
+
                         let class_or_obj_val = &self.arena.get(class_or_obj_handle).value;
                         match class_or_obj_val {
                             // [object, method]
                             Val::Object(payload_handle) => {
-                                if let Val::ObjPayload(obj_data) = &self.arena.get(*payload_handle).value {
+                                if let Val::ObjPayload(obj_data) =
+                                    &self.arena.get(*payload_handle).value
+                                {
                                     // Check if method exists
                                     self.find_method(obj_data.class, method_sym).is_some()
                                 } else {
@@ -9941,14 +10025,14 @@ impl VM {
         if obj_class == target_class {
             return true;
         }
-        
+
         // Check parent classes
         if let Some(class_def) = self.context.classes.get(&obj_class) {
             if let Some(parent) = class_def.parent {
                 return self.is_instance_of_class(parent, target_class);
             }
         }
-        
+
         false
     }
 
@@ -9969,23 +10053,22 @@ impl VM {
             ReturnType::False => "false".to_string(),
             ReturnType::Callable => "callable".to_string(),
             ReturnType::Iterable => "iterable".to_string(),
-            ReturnType::Named(sym) => {
-                self.context.interner.lookup(*sym)
-                    .map(|bytes| String::from_utf8_lossy(bytes).to_string())
-                    .unwrap_or_else(|| "object".to_string())
-            }
-            ReturnType::Union(types) => {
-                types.iter()
-                    .map(|t| self.return_type_to_string(t))
-                    .collect::<Vec<_>>()
-                    .join("|")
-            }
-            ReturnType::Intersection(types) => {
-                types.iter()
-                    .map(|t| self.return_type_to_string(t))
-                    .collect::<Vec<_>>()
-                    .join("&")
-            }
+            ReturnType::Named(sym) => self
+                .context
+                .interner
+                .lookup(*sym)
+                .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                .unwrap_or_else(|| "object".to_string()),
+            ReturnType::Union(types) => types
+                .iter()
+                .map(|t| self.return_type_to_string(t))
+                .collect::<Vec<_>>()
+                .join("|"),
+            ReturnType::Intersection(types) => types
+                .iter()
+                .map(|t| self.return_type_to_string(t))
+                .collect::<Vec<_>>()
+                .join("&"),
             ReturnType::Nullable(inner) => {
                 format!("?{}", self.return_type_to_string(inner))
             }
@@ -10057,7 +10140,9 @@ mod tests {
 
         let mut vm = create_vm();
         // Create a reference array so assign_dim modifies it in-place
-        let array_zval = vm.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()));
+        let array_zval = vm
+            .arena
+            .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
         vm.arena.get_mut(array_zval).is_ref = true;
         let key_handle = vm.arena.alloc(Val::Int(0));
         let val_handle = vm.arena.alloc(Val::Int(99));
@@ -10289,7 +10374,7 @@ mod tests {
 
         let result = vm.run(Rc::new(chunk));
         match result {
-            Err(VmError::RuntimeError(msg)) => assert_eq!(msg, "Stack underflow"),
+            Err(VmError::StackUnderflow { operation }) => assert_eq!(operation, "pop"),
             other => panic!("Expected stack underflow error, got {:?}", other),
         }
     }

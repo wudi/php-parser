@@ -46,7 +46,7 @@
 //! - Zend: `$PHP_SRC_PATH/Zend/zend_hash.c` - Hash table implementation
 
 use crate::core::value::{ArrayData, Val};
-use crate::vm::engine::{VM, VmError};
+use crate::vm::engine::{VmError, VM};
 use std::rc::Rc;
 
 impl VM {
@@ -67,7 +67,7 @@ impl VM {
         let val_handle = self.pop_operand_required()?;
         let key_handle = self.pop_operand_required()?;
         let array_handle = self.pop_operand_required()?;
-        
+
         self.assign_dim_value(array_handle, key_handle, val_handle)?;
         Ok(())
     }
@@ -80,7 +80,7 @@ impl VM {
         let val_handle = self.pop_operand_required()?;
         let key_handle = self.pop_operand_required()?;
         let array_handle = self.pop_operand_required()?;
-        
+
         // assign_dim pushes the result array to the stack
         self.assign_dim(array_handle, key_handle, val_handle)?;
         Ok(())
@@ -92,7 +92,7 @@ impl VM {
     pub(crate) fn exec_append_array(&mut self) -> Result<(), VmError> {
         let val_handle = self.pop_operand_required()?;
         let array_handle = self.pop_operand_required()?;
-        
+
         self.append_array(array_handle, val_handle)?;
         Ok(())
     }
@@ -103,7 +103,7 @@ impl VM {
     pub(crate) fn exec_fetch_dim(&mut self) -> Result<(), VmError> {
         let key_handle = self.pop_operand_required()?;
         let array_handle = self.pop_operand_required()?;
-        
+
         let result = self.fetch_nested_dim(array_handle, &[key_handle])?;
         self.operand_stack.push(result);
         Ok(())
@@ -116,7 +116,7 @@ impl VM {
         let val_handle = self.pop_operand_required()?;
         let keys = self.pop_n_operands(key_count as usize)?;
         let array_handle = self.pop_operand_required()?;
-        
+
         self.assign_nested_dim(array_handle, &keys, val_handle)?;
         Ok(())
     }
@@ -127,19 +127,13 @@ impl VM {
     pub(crate) fn exec_fetch_nested_dim_op(&mut self, key_count: u8) -> Result<(), VmError> {
         // Stack: [array, key_n, ..., key_1] (top is key_1)
         // Array is at depth + 1 from top (0-indexed)
-        
-        let array_handle = self
-            .operand_stack
-            .peek_at(key_count as usize)
-            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+        let array_handle = self.peek_operand_at(key_count as usize)?;
 
         let mut keys = Vec::with_capacity(key_count as usize);
         for i in 0..key_count {
             // Peek keys from bottom to top to get them in order
-            let key_handle = self
-                .operand_stack
-                .peek_at((key_count - 1 - i) as usize)
-                .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+            let key_handle = self.peek_operand_at((key_count - 1 - i) as usize)?;
             keys.push(key_handle);
         }
 
@@ -177,13 +171,13 @@ mod tests {
         // Instead, test the lower-level functionality directly
         let array = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
         vm.arena.get_mut(array).is_ref = true; // Mark as reference
-        
+
         let key = vm.arena.alloc(Val::String(b"name".to_vec().into()));
         let value = vm.arena.alloc(Val::String(b"Alice".to_vec().into()));
 
         // Use assign_dim directly
         vm.assign_dim(array, key, value).unwrap();
-        
+
         // Should push the result
         let result = vm.operand_stack.pop().unwrap();
         assert_eq!(result, array); // Same handle since it's a reference
@@ -191,7 +185,10 @@ mod tests {
         // Verify the value was stored
         let array_val = vm.arena.get(result);
         if let Val::Array(data) = &array_val.value {
-            let stored = data.map.get(&ArrayKey::Str(b"name".to_vec().into())).unwrap();
+            let stored = data
+                .map
+                .get(&ArrayKey::Str(b"name".to_vec().into()))
+                .unwrap();
             let stored_val = vm.arena.get(*stored);
             assert!(matches!(stored_val.value, Val::String(ref s) if s.as_ref() == b"Alice"));
         } else {
@@ -258,18 +255,18 @@ mod tests {
 
         let result = vm.operand_stack.pop().unwrap();
         let array_val = vm.arena.get(result);
-        
+
         if let Val::Array(data) = &array_val.value {
             assert_eq!(data.map.len(), 2);
-            
+
             // Check keys are 0 and 1
             assert!(data.map.contains_key(&ArrayKey::Int(0)));
             assert!(data.map.contains_key(&ArrayKey::Int(1)));
-            
+
             // Check values
             let val0 = vm.arena.get(*data.map.get(&ArrayKey::Int(0)).unwrap());
             let val1 = vm.arena.get(*data.map.get(&ArrayKey::Int(1)).unwrap());
-            
+
             assert!(matches!(val0.value, Val::String(ref s) if s.as_ref() == b"first"));
             assert!(matches!(val1.value, Val::String(ref s) if s.as_ref() == b"second"));
         } else {
@@ -286,7 +283,7 @@ mod tests {
         let val10 = vm.arena.alloc(Val::Int(10));
         let mut map = indexmap::IndexMap::new();
         map.insert(ArrayKey::Int(10), val10);
-        
+
         // Use From trait to properly compute next_free
         let array_data = Rc::new(ArrayData::from(map));
         let array_handle = vm.arena.alloc(Val::Array(array_data));
@@ -300,7 +297,7 @@ mod tests {
 
         let result = vm.operand_stack.pop().unwrap();
         let array_val = vm.arena.get(result);
-        
+
         if let Val::Array(data) = &array_val.value {
             // Should have keys 10 and 11
             assert!(data.map.contains_key(&ArrayKey::Int(10)));
@@ -318,10 +315,9 @@ mod tests {
         // Create array with string key
         let value = vm.arena.alloc(Val::Int(123));
         let mut array_data = Rc::new(ArrayData::new());
-        Rc::make_mut(&mut array_data).map.insert(
-            ArrayKey::Str(b"test".to_vec().into()),
-            value,
-        );
+        Rc::make_mut(&mut array_data)
+            .map
+            .insert(ArrayKey::Str(b"test".to_vec().into()), value);
 
         let array_handle = vm.arena.alloc(Val::Array(array_data));
         let key_handle = vm.arena.alloc(Val::String(b"test".to_vec().into()));
@@ -345,7 +341,7 @@ mod tests {
 
         vm.operand_stack.push(array_handle);
         vm.operand_stack.push(key_handle);
-        
+
         // Should not panic - returns Null for undefined keys
         vm.exec_fetch_dim().unwrap();
 
@@ -383,14 +379,14 @@ mod tests {
                 .map
                 .get(&ArrayKey::Str(b"outer".to_vec().into()))
                 .expect("outer key exists");
-            
+
             let inner_val = vm.arena.get(*inner_handle);
             if let Val::Array(inner_data) = &inner_val.value {
                 let value_handle = inner_data
                     .map
                     .get(&ArrayKey::Str(b"inner".to_vec().into()))
                     .expect("inner key exists");
-                
+
                 let stored_val = vm.arena.get(*value_handle);
                 assert!(matches!(stored_val.value, Val::Int(999)));
             } else {
