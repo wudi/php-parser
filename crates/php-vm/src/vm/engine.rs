@@ -1014,33 +1014,12 @@ impl VM {
         const_name: Symbol,
     ) -> Result<(Val, Visibility, Symbol), VmError> {
         // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - constant access
-        // First pass: find the constant anywhere in hierarchy (ignoring visibility)
-        let mut current_class = start_class;
-        let mut found: Option<(Val, Visibility, Symbol)> = None;
+        let found = self.walk_inheritance_chain(start_class, |def, cls| {
+            def.constants.get(&const_name).map(|(val, vis)| {
+                (val.clone(), *vis, cls)
+            })
+        });
 
-        loop {
-            if let Some(class_def) = self.context.classes.get(&current_class) {
-                if let Some((val, vis)) = class_def.constants.get(&const_name) {
-                    found = Some((val.clone(), *vis, current_class));
-                    break;
-                }
-                if let Some(parent) = class_def.parent {
-                    current_class = parent;
-                } else {
-                    break;
-                }
-            } else {
-                let class_str = String::from_utf8_lossy(
-                    self.context.interner.lookup(start_class).unwrap_or(b"???"),
-                );
-                return Err(VmError::RuntimeError(format!(
-                    "Class {} not found",
-                    class_str
-                )));
-            }
-        }
-
-        // Second pass: check visibility if found
         if let Some((val, vis, defining_class)) = found {
             self.check_const_visibility(defining_class, vis)?;
             Ok((val, vis, defining_class))
@@ -1093,33 +1072,12 @@ impl VM {
         prop_name: Symbol,
     ) -> Result<(Val, Visibility, Symbol), VmError> {
         // Reference: $PHP_SRC_PATH/Zend/zend_compile.c - static property access
-        // First pass: find the property anywhere in hierarchy (ignoring visibility)
-        let mut current_class = start_class;
-        let mut found: Option<(Val, Visibility, Symbol)> = None;
+        let found = self.walk_inheritance_chain(start_class, |def, cls| {
+            def.static_properties.get(&prop_name).map(|(val, vis)| {
+                (val.clone(), *vis, cls)
+            })
+        });
 
-        loop {
-            if let Some(class_def) = self.context.classes.get(&current_class) {
-                if let Some((val, vis)) = class_def.static_properties.get(&prop_name) {
-                    found = Some((val.clone(), *vis, current_class));
-                    break;
-                }
-                if let Some(parent) = class_def.parent {
-                    current_class = parent;
-                } else {
-                    break;
-                }
-            } else {
-                let class_str = String::from_utf8_lossy(
-                    self.context.interner.lookup(start_class).unwrap_or(b"???"),
-                );
-                return Err(VmError::RuntimeError(format!(
-                    "Class {} not found",
-                    class_str
-                )));
-            }
-        }
-
-        // Second pass: check visibility if found
         if let Some((val, vis, defining_class)) = found {
             // Check visibility using same logic as instance properties
             let caller_scope = self.get_current_class();
@@ -9530,46 +9488,29 @@ impl VM {
         self.binary_arithmetic(ArithOp::Pow)
     }
 
-    fn bitwise_and(&mut self) -> Result<(), VmError> {
+    /// Generic binary bitwise operation using AssignOpType
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c
+    fn binary_bitwise(&mut self, op_type: crate::vm::assign_op::AssignOpType) -> Result<(), VmError> {
         let b_handle = self.pop_operand()?;
         let a_handle = self.pop_operand()?;
         let a_val = self.arena.get(a_handle).value.clone();
         let b_val = self.arena.get(b_handle).value.clone();
-
-        // Use AssignOpType for proper string handling
-        use crate::vm::assign_op::AssignOpType;
-        let result = AssignOpType::BwAnd.apply(a_val, b_val)?;
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
+        
+        let result = op_type.apply(a_val, b_val)?;
+        self.operand_stack.push(self.arena.alloc(result));
         Ok(())
+    }
+
+    fn bitwise_and(&mut self) -> Result<(), VmError> {
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwAnd)
     }
 
     fn bitwise_or(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = self.arena.get(a_handle).value.clone();
-        let b_val = self.arena.get(b_handle).value.clone();
-
-        // Use AssignOpType for proper string handling
-        use crate::vm::assign_op::AssignOpType;
-        let result = AssignOpType::BwOr.apply(a_val, b_val)?;
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwOr)
     }
 
     fn bitwise_xor(&mut self) -> Result<(), VmError> {
-        let b_handle = self.pop_operand()?;
-        let a_handle = self.pop_operand()?;
-        let a_val = self.arena.get(a_handle).value.clone();
-        let b_val = self.arena.get(b_handle).value.clone();
-
-        // Use AssignOpType for proper string handling
-        use crate::vm::assign_op::AssignOpType;
-        let result = AssignOpType::BwXor.apply(a_val, b_val)?;
-        let res_handle = self.arena.alloc(result);
-        self.operand_stack.push(res_handle);
-        Ok(())
+        self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwXor)
     }
 
     fn bitwise_shl(&mut self) -> Result<(), VmError> {
