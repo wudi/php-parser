@@ -2762,95 +2762,11 @@ impl VM {
                     let current_val = self.arena.get(var_handle).value.clone();
                     let val = self.arena.get(val_handle).value.clone();
 
-                    let res = match op {
-                        0 => match (current_val, val) {
-                            // Add
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a + b),
-                            _ => Val::Null,
-                        },
-                        1 => match (current_val, val) {
-                            // Sub
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a - b),
-                            _ => Val::Null,
-                        },
-                        2 => match (current_val, val) {
-                            // Mul
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a * b),
-                            _ => Val::Null,
-                        },
-                        3 => match (current_val, val) {
-                            // Div
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a / b),
-                            _ => Val::Null,
-                        },
-                        4 => match (current_val, val) {
-                            // Mod
-                            (Val::Int(a), Val::Int(b)) => {
-                                if b == 0 {
-                                    return Err(VmError::RuntimeError("Modulo by zero".into()));
-                                }
-                                Val::Int(a % b)
-                            }
-                            _ => Val::Null,
-                        },
-                        5 => match (current_val, val) {
-                            // ShiftLeft
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a << b),
-                            _ => Val::Null,
-                        },
-                        6 => match (current_val, val) {
-                            // ShiftRight
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a >> b),
-                            _ => Val::Null,
-                        },
-                        7 => match (current_val, val) {
-                            // Concat
-                            (Val::String(a), Val::String(b)) => {
-                                let mut s = String::from_utf8_lossy(&a).to_string();
-                                s.push_str(&String::from_utf8_lossy(&b));
-                                Val::String(s.into_bytes().into())
-                            }
-                            (Val::String(a), Val::Int(b)) => {
-                                let mut s = String::from_utf8_lossy(&a).to_string();
-                                s.push_str(&b.to_string());
-                                Val::String(s.into_bytes().into())
-                            }
-                            (Val::Int(a), Val::String(b)) => {
-                                let mut s = a.to_string();
-                                s.push_str(&String::from_utf8_lossy(&b));
-                                Val::String(s.into_bytes().into())
-                            }
-                            _ => Val::Null,
-                        },
-                        8 => match (current_val, val) {
-                            // BitwiseOr
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a | b),
-                            _ => Val::Null,
-                        },
-                        9 => match (current_val, val) {
-                            // BitwiseAnd
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a & b),
-                            _ => Val::Null,
-                        },
-                        10 => match (current_val, val) {
-                            // BitwiseXor
-                            (Val::Int(a), Val::Int(b)) => Val::Int(a ^ b),
-                            _ => Val::Null,
-                        },
-                        11 => match (current_val, val) {
-                            // Pow
-                            (Val::Int(a), Val::Int(b)) => {
-                                if b < 0 {
-                                    return Err(VmError::RuntimeError(
-                                        "Negative exponent not supported for int pow".into(),
-                                    ));
-                                }
-                                Val::Int(a.pow(b as u32))
-                            }
-                            _ => Val::Null,
-                        },
-                        _ => Val::Null,
-                    };
+                    use crate::vm::assign_op::AssignOpType;
+                    let op_type = AssignOpType::from_u8(op)
+                        .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
+                    
+                    let res = op_type.apply(current_val, val)?;
 
                     self.arena.get_mut(var_handle).value = res.clone();
                     let res_handle = self.arena.alloc(res);
@@ -7822,48 +7738,12 @@ impl VM {
 
                 let val = self.arena.get(val_handle).value.clone();
 
-                let res = match op {
-                    0 => match (current_val.clone(), val) {
-                        // Add
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a + b),
-                        _ => Val::Null,
-                    },
-                    1 => match (current_val.clone(), val) {
-                        // Sub
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a - b),
-                        _ => Val::Null,
-                    },
-                    2 => match (current_val.clone(), val) {
-                        // Mul
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a * b),
-                        _ => Val::Null,
-                    },
-                    3 => match (current_val.clone(), val) {
-                        // Div
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a / b),
-                        _ => Val::Null,
-                    },
-                    4 => match (current_val.clone(), val) {
-                        // Mod
-                        (Val::Int(a), Val::Int(b)) => {
-                            if b == 0 {
-                                return Err(VmError::RuntimeError("Modulo by zero".into()));
-                            }
-                            Val::Int(a % b)
-                        }
-                        _ => Val::Null,
-                    },
-                    7 => match (current_val.clone(), val) {
-                        // Concat
-                        (Val::String(a), Val::String(b)) => {
-                            let mut s = String::from_utf8_lossy(&a).to_string();
-                            s.push_str(&String::from_utf8_lossy(&b));
-                            Val::String(s.into_bytes().into())
-                        }
-                        _ => Val::Null,
-                    },
-                    _ => Val::Null, // TODO: Implement other ops
-                };
+                // Use AssignOpType to perform the operation
+                use crate::vm::assign_op::AssignOpType;
+                let op_type = AssignOpType::from_u8(op)
+                    .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
+                
+                let res = op_type.apply(current_val.clone(), val)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -8187,48 +8067,12 @@ impl VM {
 
                 // 2. Perform Op
                 let val = self.arena.get(val_handle).value.clone();
-                let res = match op {
-                    0 => match (current_val, val) {
-                        // Add
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a + b),
-                        _ => Val::Null,
-                    },
-                    1 => match (current_val, val) {
-                        // Sub
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a - b),
-                        _ => Val::Null,
-                    },
-                    2 => match (current_val, val) {
-                        // Mul
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a * b),
-                        _ => Val::Null,
-                    },
-                    3 => match (current_val, val) {
-                        // Div
-                        (Val::Int(a), Val::Int(b)) => Val::Int(a / b),
-                        _ => Val::Null,
-                    },
-                    4 => match (current_val, val) {
-                        // Mod
-                        (Val::Int(a), Val::Int(b)) => {
-                            if b == 0 {
-                                return Err(VmError::RuntimeError("Modulo by zero".into()));
-                            }
-                            Val::Int(a % b)
-                        }
-                        _ => Val::Null,
-                    },
-                    7 => match (current_val, val) {
-                        // Concat
-                        (Val::String(a), Val::String(b)) => {
-                            let mut s = String::from_utf8_lossy(&a).to_string();
-                            s.push_str(&String::from_utf8_lossy(&b));
-                            Val::String(s.into_bytes().into())
-                        }
-                        _ => Val::Null,
-                    },
-                    _ => Val::Null,
-                };
+                
+                use crate::vm::assign_op::AssignOpType;
+                let op_type = AssignOpType::from_u8(op)
+                    .ok_or_else(|| VmError::RuntimeError(format!("Invalid assign op: {}", op)))?;
+                
+                let res = op_type.apply(current_val, val)?;
 
                 // 3. Set new value
                 let res_handle = self.arena.alloc(res.clone());
@@ -9924,7 +9768,15 @@ impl VM {
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
 
-        let result = Val::Int(a_val.to_int() << b_val.to_int());
+        let shift_amount = b_val.to_int();
+        let value = a_val.to_int();
+        
+        let result = if shift_amount < 0 || shift_amount >= 64 {
+            Val::Int(0)
+        } else {
+            Val::Int(value.wrapping_shl(shift_amount as u32))
+        };
+        
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
@@ -9936,7 +9788,15 @@ impl VM {
         let a_val = &self.arena.get(a_handle).value;
         let b_val = &self.arena.get(b_handle).value;
 
-        let result = Val::Int(a_val.to_int() >> b_val.to_int());
+        let shift_amount = b_val.to_int();
+        let value = a_val.to_int();
+        
+        let result = if shift_amount < 0 || shift_amount >= 64 {
+            Val::Int(if value < 0 { -1 } else { 0 })
+        } else {
+            Val::Int(value.wrapping_shr(shift_amount as u32))
+        };
+        
         let res_handle = self.arena.alloc(result);
         self.operand_stack.push(res_handle);
         Ok(())
