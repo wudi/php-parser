@@ -1133,80 +1133,95 @@ impl VM {
             }
         }
     }
+}
+
+/// Member kind for visibility checking
+/// Reference: $PHP_SRC_PATH/Zend/zend_compile.c
+#[derive(Debug, Clone, Copy)]
+enum MemberKind {
+    Constant,
+    Method,
+    Property,
+}
+
+impl VM {
+    /// Unified visibility checker for class members
+    /// Reference: $PHP_SRC_PATH/Zend/zend_compile.c - visibility rules
+    fn check_member_visibility(
+        &self,
+        defining_class: Symbol,
+        visibility: Visibility,
+        member_kind: MemberKind,
+        member_name: Option<Symbol>,
+    ) -> Result<(), VmError> {
+        match visibility {
+            Visibility::Public => Ok(()),
+            Visibility::Private => {
+                let caller_scope = self.get_current_class();
+                if caller_scope == Some(defining_class) {
+                    Ok(())
+                } else {
+                    self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                }
+            }
+            Visibility::Protected => {
+                let caller_scope = self.get_current_class();
+                if let Some(scope) = caller_scope {
+                    if scope == defining_class || self.is_subclass_of(scope, defining_class) {
+                        Ok(())
+                    } else {
+                        self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                    }
+                } else {
+                    self.build_visibility_error(defining_class, visibility, member_kind, member_name)
+                }
+            }
+        }
+    }
+
+    fn build_visibility_error(
+        &self,
+        defining_class: Symbol,
+        visibility: Visibility,
+        member_kind: MemberKind,
+        member_name: Option<Symbol>,
+    ) -> Result<(), VmError> {
+        let class_str = self
+            .context
+            .interner
+            .lookup(defining_class)
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let member_str = member_name
+            .and_then(|s| self.context.interner.lookup(s))
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let vis_str = match visibility {
+            Visibility::Private => "private",
+            Visibility::Protected => "protected",
+            Visibility::Public => unreachable!(),
+        };
+
+        let (kind_str, separator) = match member_kind {
+            MemberKind::Constant => ("constant", "::"),
+            MemberKind::Method => ("method", "::"),
+            MemberKind::Property => ("property", "::$"),
+        };
+
+        Err(VmError::RuntimeError(format!(
+            "Cannot access {} {} {}{}{}",
+            vis_str, kind_str, class_str, separator, member_str
+        )))
+    }
 
     fn check_const_visibility(
         &self,
         defining_class: Symbol,
         visibility: Visibility,
     ) -> Result<(), VmError> {
-        match visibility {
-            Visibility::Public => Ok(()),
-            Visibility::Private => {
-                let frame = self
-                    .frames
-                    .last()
-                    .ok_or(VmError::RuntimeError("No active frame".into()))?;
-                let scope = frame.class_scope.ok_or_else(|| {
-                    let class_str = String::from_utf8_lossy(
-                        self.context
-                            .interner
-                            .lookup(defining_class)
-                            .unwrap_or(b"???"),
-                    );
-                    VmError::RuntimeError(format!(
-                        "Cannot access private constant from {}::",
-                        class_str
-                    ))
-                })?;
-                if scope == defining_class {
-                    Ok(())
-                } else {
-                    let class_str = String::from_utf8_lossy(
-                        self.context
-                            .interner
-                            .lookup(defining_class)
-                            .unwrap_or(b"???"),
-                    );
-                    Err(VmError::RuntimeError(format!(
-                        "Cannot access private constant from {}::",
-                        class_str
-                    )))
-                }
-            }
-            Visibility::Protected => {
-                let frame = self
-                    .frames
-                    .last()
-                    .ok_or(VmError::RuntimeError("No active frame".into()))?;
-                let scope = frame.class_scope.ok_or_else(|| {
-                    let class_str = String::from_utf8_lossy(
-                        self.context
-                            .interner
-                            .lookup(defining_class)
-                            .unwrap_or(b"???"),
-                    );
-                    VmError::RuntimeError(format!(
-                        "Cannot access protected constant from {}::",
-                        class_str
-                    ))
-                })?;
-                // Protected members accessible only from defining class or subclasses (one-directional)
-                if scope == defining_class || self.is_subclass_of(scope, defining_class) {
-                    Ok(())
-                } else {
-                    let class_str = String::from_utf8_lossy(
-                        self.context
-                            .interner
-                            .lookup(defining_class)
-                            .unwrap_or(b"???"),
-                    );
-                    Err(VmError::RuntimeError(format!(
-                        "Cannot access protected constant from {}::",
-                        class_str
-                    )))
-                }
-            }
-        }
+        self.check_member_visibility(defining_class, visibility, MemberKind::Constant, None)
     }
 
     fn check_method_visibility(
@@ -1215,34 +1230,7 @@ impl VM {
         visibility: Visibility,
         method_name: Option<Symbol>,
     ) -> Result<(), VmError> {
-        let caller_scope = self.get_current_class();
-        if self.method_visible_to(defining_class, visibility, caller_scope) {
-            return Ok(());
-        }
-
-        // Build descriptive error message
-        let class_str = self
-            .context
-            .interner
-            .lookup(defining_class)
-            .map(|b| String::from_utf8_lossy(b).to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        let method_str = method_name
-            .and_then(|s| self.context.interner.lookup(s))
-            .map(|b| String::from_utf8_lossy(b).to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let vis_str = match visibility {
-            Visibility::Public => unreachable!("public accesses should always succeed"),
-            Visibility::Private => "private",
-            Visibility::Protected => "protected",
-        };
-
-        Err(VmError::RuntimeError(format!(
-            "Cannot access {} method {}::{}",
-            vis_str, class_str, method_str
-        )))
+        self.check_member_visibility(defining_class, visibility, MemberKind::Method, method_name)
     }
 
     fn method_visible_to(
@@ -1314,72 +1302,32 @@ impl VM {
         prop_name: Symbol,
         current_scope: Option<Symbol>,
     ) -> Result<(), VmError> {
-        let mut current = Some(class_name);
-        let mut defined_vis = None;
-        let mut defined_class = None;
+        // Find property in inheritance chain
+        let found = self.walk_inheritance_chain(class_name, |def, cls| {
+            def.properties.get(&prop_name).map(|(_, vis)| (*vis, cls))
+        });
 
-        while let Some(name) = current {
-            if let Some(def) = self.context.classes.get(&name) {
-                if let Some((_, vis)) = def.properties.get(&prop_name) {
-                    defined_vis = Some(*vis);
-                    defined_class = Some(name);
-                    break;
-                }
-                current = def.parent;
-            } else {
-                break;
-            }
-        }
-
-        if let Some(vis) = defined_vis {
-            let defined = defined_class
-                .ok_or_else(|| VmError::RuntimeError("Missing defined class".into()))?;
+        if let Some((vis, defined_class)) = found {
+            // Temporarily set current scope for check (since prop visibility can be called with explicit scope)
+            // We need to pass the scope through rather than using get_current_class()
             match vis {
                 Visibility::Public => Ok(()),
                 Visibility::Private => {
-                    if current_scope == Some(defined) {
+                    if current_scope == Some(defined_class) {
                         Ok(())
                     } else {
-                        let class_str = String::from_utf8_lossy(
-                            self.context.interner.lookup(defined).unwrap_or(b"???"),
-                        );
-                        let prop_str = String::from_utf8_lossy(
-                            self.context.interner.lookup(prop_name).unwrap_or(b"???"),
-                        );
-                        Err(VmError::RuntimeError(format!(
-                            "Cannot access private property {}::${}",
-                            class_str, prop_str
-                        )))
+                        self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
                     }
                 }
                 Visibility::Protected => {
                     if let Some(scope) = current_scope {
-                        // Protected members accessible only from defining class or subclasses (one-directional)
-                        if scope == defined || self.is_subclass_of(scope, defined) {
+                        if scope == defined_class || self.is_subclass_of(scope, defined_class) {
                             Ok(())
                         } else {
-                            let class_str = String::from_utf8_lossy(
-                                self.context.interner.lookup(defined).unwrap_or(b"???"),
-                            );
-                            let prop_str = String::from_utf8_lossy(
-                                self.context.interner.lookup(prop_name).unwrap_or(b"???"),
-                            );
-                            Err(VmError::RuntimeError(format!(
-                                "Cannot access protected property {}::${}",
-                                class_str, prop_str
-                            )))
+                            self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
                         }
                     } else {
-                        let class_str = String::from_utf8_lossy(
-                            self.context.interner.lookup(defined).unwrap_or(b"???"),
-                        );
-                        let prop_str = String::from_utf8_lossy(
-                            self.context.interner.lookup(prop_name).unwrap_or(b"???"),
-                        );
-                        Err(VmError::RuntimeError(format!(
-                            "Cannot access protected property {}::${}",
-                            class_str, prop_str
-                        )))
+                        self.build_visibility_error(defined_class, vis, MemberKind::Property, Some(prop_name))
                     }
                 }
             }
