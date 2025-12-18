@@ -3,3 +3,4 @@ pub mod frame;
 pub mod opcode;
 pub mod stack;
 pub mod assign_op;
+pub mod inc_dec;

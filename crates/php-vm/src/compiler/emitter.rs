@@ -1507,6 +1507,24 @@ impl<'src> Emitter<'src> {
                                 self.chunk.code.push(OpCode::Const(const_idx as u16));
                                 self.chunk.code.push(OpCode::PreIncObj);
                             }
+                            Expr::ClassConstFetch { class, constant, .. } => {
+                                // ++Class::$property
+                                if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
+                                    let class_name = self.get_text(*class_span);
+                                    let prop_name = self.get_text(*prop_span);
+                                    if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
+                                        let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
+                                        let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
+                                        self.chunk.code.push(OpCode::Const(class_idx as u16));
+                                        self.chunk.code.push(OpCode::Const(prop_idx as u16));
+                                        self.chunk.code.push(OpCode::PreIncStaticProp);
+                                    } else {
+                                        self.emit_expr(expr);
+                                    }
+                                } else {
+                                    self.emit_expr(expr);
+                                }
+                            }
                             _ => {
                                 self.emit_expr(expr);
                             }
@@ -1531,6 +1549,24 @@ impl<'src> Emitter<'src> {
                                 let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
                                 self.chunk.code.push(OpCode::Const(const_idx as u16));
                                 self.chunk.code.push(OpCode::PreDecObj);
+                            }
+                            Expr::ClassConstFetch { class, constant, .. } => {
+                                // --Class::$property
+                                if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
+                                    let class_name = self.get_text(*class_span);
+                                    let prop_name = self.get_text(*prop_span);
+                                    if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
+                                        let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
+                                        let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
+                                        self.chunk.code.push(OpCode::Const(class_idx as u16));
+                                        self.chunk.code.push(OpCode::Const(prop_idx as u16));
+                                        self.chunk.code.push(OpCode::PreDecStaticProp);
+                                    } else {
+                                        self.emit_expr(expr);
+                                    }
+                                } else {
+                                    self.emit_expr(expr);
+                                }
                             }
                             _ => {
                                 self.emit_expr(expr);
@@ -1568,6 +1604,24 @@ impl<'src> Emitter<'src> {
                         self.chunk.code.push(OpCode::Const(const_idx as u16));
                         self.chunk.code.push(OpCode::PostIncObj);
                     }
+                    Expr::ClassConstFetch { class, constant, .. } => {
+                        // Class::$property++
+                        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
+                            let class_name = self.get_text(*class_span);
+                            let prop_name = self.get_text(*prop_span);
+                            if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
+                                let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
+                                let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
+                                self.chunk.code.push(OpCode::Const(class_idx as u16));
+                                self.chunk.code.push(OpCode::Const(prop_idx as u16));
+                                self.chunk.code.push(OpCode::PostIncStaticProp);
+                            } else {
+                                self.emit_expr(var);
+                            }
+                        } else {
+                            self.emit_expr(var);
+                        }
+                    }
                     _ => {
                         // Unsupported post-increment target
                         self.emit_expr(var);
@@ -1593,6 +1647,24 @@ impl<'src> Emitter<'src> {
                         let const_idx = self.add_constant(Val::String(Rc::new(prop_name.to_vec())));
                         self.chunk.code.push(OpCode::Const(const_idx as u16));
                         self.chunk.code.push(OpCode::PostDecObj);
+                    }
+                    Expr::ClassConstFetch { class, constant, .. } => {
+                        // Class::$property--
+                        if let (Expr::Variable { name: class_span, .. }, Expr::Variable { name: prop_span, .. }) = (&**class, &**constant) {
+                            let class_name = self.get_text(*class_span);
+                            let prop_name = self.get_text(*prop_span);
+                            if !class_name.starts_with(b"$") && prop_name.starts_with(b"$") {
+                                let class_idx = self.add_constant(Val::String(Rc::new(class_name.to_vec())));
+                                let prop_idx = self.add_constant(Val::String(Rc::new(prop_name[1..].to_vec())));
+                                self.chunk.code.push(OpCode::Const(class_idx as u16));
+                                self.chunk.code.push(OpCode::Const(prop_idx as u16));
+                                self.chunk.code.push(OpCode::PostDecStaticProp);
+                            } else {
+                                self.emit_expr(var);
+                            }
+                        } else {
+                            self.emit_expr(var);
+                        }
                     }
                     _ => {
                         // Unsupported post-decrement target

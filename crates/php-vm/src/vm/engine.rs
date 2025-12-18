@@ -7779,10 +7779,9 @@ impl VM {
                     self.find_static_prop(resolved_class, prop_name)?;
                 self.check_const_visibility(defining_class, visibility)?;
 
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i + 1),
-                    _ => Val::Null, // TODO: Support other types
-                };
+                // Use increment_value for proper PHP type handling
+                use crate::vm::inc_dec::increment_value;
+                let new_val = increment_value(current_val)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -7818,10 +7817,9 @@ impl VM {
                     self.find_static_prop(resolved_class, prop_name)?;
                 self.check_const_visibility(defining_class, visibility)?;
 
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i - 1),
-                    _ => Val::Null, // TODO: Support other types
-                };
+                // Use decrement_value for proper PHP type handling
+                use crate::vm::inc_dec::decrement_value;
+                let new_val = decrement_value(current_val)?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
@@ -7857,17 +7855,17 @@ impl VM {
                     self.find_static_prop(resolved_class, prop_name)?;
                 self.check_const_visibility(defining_class, visibility)?;
 
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i + 1),
-                    _ => Val::Null, // TODO: Support other types
-                };
+                // Use increment_value for proper PHP type handling
+                use crate::vm::inc_dec::increment_value;
+                let new_val = increment_value(current_val.clone())?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
-                        entry.0 = new_val.clone();
+                        entry.0 = new_val;
                     }
                 }
 
+                // Post-increment returns the OLD value
                 let res_handle = self.arena.alloc(current_val);
                 self.operand_stack.push(res_handle);
             }
@@ -7896,17 +7894,17 @@ impl VM {
                     self.find_static_prop(resolved_class, prop_name)?;
                 self.check_const_visibility(defining_class, visibility)?;
 
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i - 1),
-                    _ => Val::Null, // TODO: Support other types
-                };
+                // Use decrement_value for proper PHP type handling
+                use crate::vm::inc_dec::decrement_value;
+                let new_val = decrement_value(current_val.clone())?;
 
                 if let Some(class_def) = self.context.classes.get_mut(&defining_class) {
                     if let Some(entry) = class_def.static_properties.get_mut(&prop_name) {
-                        entry.0 = new_val.clone();
+                        entry.0 = new_val;
                     }
                 }
 
+                // Post-decrement returns the OLD value
                 let res_handle = self.arena.alloc(current_val);
                 self.operand_stack.push(res_handle);
             }
