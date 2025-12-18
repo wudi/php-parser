@@ -19,9 +19,69 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub enum VmError {
+    /// Stack underflow during operation
+    StackUnderflow { 
+        operation: &'static str 
+    },
+    /// Type error during operation
+    TypeError { 
+        expected: String, 
+        got: String, 
+        operation: &'static str 
+    },
+    /// Undefined variable access
+    UndefinedVariable { 
+        name: String 
+    },
+    /// Undefined function call
+    UndefinedFunction { 
+        name: String 
+    },
+    /// Undefined method call
+    UndefinedMethod { 
+        class: String, 
+        method: String 
+    },
+    /// Division by zero
+    DivisionByZero,
+    /// Generic runtime error (for gradual migration)
     RuntimeError(String),
+    /// PHP exception object
     Exception(Handle),
 }
+
+impl std::fmt::Display for VmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VmError::StackUnderflow { operation } => {
+                write!(f, "Stack underflow during {}", operation)
+            }
+            VmError::TypeError { expected, got, operation } => {
+                write!(f, "Type error in {}: expected {}, got {}", operation, expected, got)
+            }
+            VmError::UndefinedVariable { name } => {
+                write!(f, "Undefined variable: ${}", name)
+            }
+            VmError::UndefinedFunction { name } => {
+                write!(f, "Call to undefined function {}()", name)
+            }
+            VmError::UndefinedMethod { class, method } => {
+                write!(f, "Call to undefined method {}::{}", class, method)
+            }
+            VmError::DivisionByZero => {
+                write!(f, "Division by zero")
+            }
+            VmError::RuntimeError(msg) => {
+                write!(f, "{}", msg)
+            }
+            VmError::Exception(_) => {
+                write!(f, "Uncaught exception")
+            }
+        }
+    }
+}
+
+impl std::error::Error for VmError {}
 
 /// PHP error levels matching Zend constants
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -334,7 +394,7 @@ impl VM {
         data.insert(ArrayKey::Str(Rc::new(key.to_vec())), handle);
     }
 
-    fn ensure_superglobal_handle(&mut self, sym: Symbol) -> Option<Handle> {
+    pub(crate) fn ensure_superglobal_handle(&mut self, sym: Symbol) -> Option<Handle> {
         let kind = self.superglobal_map.get(&sym).copied()?;
         let handle = if let Some(&existing) = self.context.globals.get(&sym) {
             existing
@@ -347,7 +407,7 @@ impl VM {
         Some(handle)
     }
 
-    fn is_superglobal(&self, sym: Symbol) -> bool {
+    pub(crate) fn is_superglobal(&self, sym: Symbol) -> bool {
         self.superglobal_map.contains_key(&sym)
     }
 
@@ -404,7 +464,7 @@ impl VM {
 
     /// Report an error respecting the error_reporting level
     /// Also stores the error in context.last_error for error_get_last()
-    fn report_error(&mut self, level: ErrorLevel, message: &str) {
+    pub(crate) fn report_error(&mut self, level: ErrorLevel, message: &str) {
         let level_bitmask = level.to_bitmask();
         
         // Store this as the last error regardless of error_reporting level
@@ -503,6 +563,7 @@ impl VM {
         self.write_output(bytes).map_err(|err| match err {
             VmError::RuntimeError(msg) => msg,
             VmError::Exception(_) => "Output aborted by exception".into(),
+            _ => format!("{}", err),
         })
     }
 
@@ -623,7 +684,7 @@ impl VM {
 
     /// Walk the inheritance chain and apply a predicate
     /// Reference: $PHP_SRC_PATH/Zend/zend_inheritance.c
-    fn walk_inheritance_chain<F, T>(
+    pub(crate) fn walk_inheritance_chain<F, T>(
         &self,
         start_class: Symbol,
         mut predicate: F,
@@ -862,7 +923,7 @@ impl VM {
         self.run_loop(target_depth)
     }
 
-    fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
+    pub(crate) fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
         let name_bytes = self
             .context
             .interner
@@ -906,7 +967,7 @@ impl VM {
         Ok(class_name)
     }
 
-    fn find_class_constant(
+    pub(crate) fn find_class_constant(
         &self,
         start_class: Symbol,
         const_name: Symbol,
@@ -964,7 +1025,7 @@ impl VM {
         Ok((prop_name, defining_class, current_val))
     }
 
-    fn find_static_prop(
+    pub(crate) fn find_static_prop(
         &self,
         start_class: Symbol,
         prop_name: Symbol,
@@ -1723,7 +1784,7 @@ impl VM {
         Ok(self.last_return_value.unwrap_or_else(|| self.arena.alloc(Val::Null)))
     }
 
-    fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
+    pub(crate) fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
         let val = self.arena.get(handle).value.clone();
         match val {
             Val::String(s) => Ok(s.to_vec()),
@@ -1975,7 +2036,7 @@ impl VM {
         Ok(())
     }
 
-    fn bitwise_not(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_not(&mut self) -> Result<(), VmError> {
         let handle = self.pop_operand()?;
         // Match on reference to avoid cloning unless necessary
         let res = match &self.arena.get(handle).value {
@@ -1996,7 +2057,7 @@ impl VM {
         Ok(())
     }
 
-    fn bool_not(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bool_not(&mut self) -> Result<(), VmError> {
         let handle = self.pop_operand()?;
         let val = &self.arena.get(handle).value;
         let b = val.to_bool();
@@ -2026,13 +2087,13 @@ impl VM {
     }
 
     #[inline]
-    fn set_ip(&mut self, target: usize) -> Result<(), VmError> {
+    pub(crate) fn set_ip(&mut self, target: usize) -> Result<(), VmError> {
         let frame = self.current_frame_mut()?;
         frame.ip = target;
         Ok(())
     }
 
-    fn jump_if<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
+    pub(crate) fn jump_if<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
     where
         F: Fn(&Val) -> bool,
     {
@@ -2044,7 +2105,7 @@ impl VM {
         Ok(())
     }
 
-    fn jump_peek_or_pop<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
+    pub(crate) fn jump_peek_or_pop<F>(&mut self, target: usize, condition: F) -> Result<(), VmError>
     where
         F: Fn(&Val) -> bool,
     {
@@ -2198,6 +2259,12 @@ impl VM {
         Ok(())
     }
 
+    /// Direct opcode execution (for internal use and trait delegation)
+    /// This is the actual implementation method that can be called directly
+    pub(crate) fn execute_opcode_direct(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
+        self.execute_opcode(op, target_depth)
+    }
+
     fn execute_opcode(&mut self, op: OpCode, target_depth: usize) -> Result<(), VmError> {
         match op {
             OpCode::Throw => self.exec_throw()?,
@@ -2205,19 +2272,21 @@ impl VM {
                 // Exception object is already on the operand stack (pushed by handler); nothing else to do.
             }
             OpCode::Const(_) | OpCode::Pop | OpCode::Dup | OpCode::Nop => self.exec_stack_op(op)?,
-            OpCode::Add
-            | OpCode::Sub
-            | OpCode::Mul
-            | OpCode::Div
-            | OpCode::Mod
-            | OpCode::Pow
-            | OpCode::BitwiseAnd
-            | OpCode::BitwiseOr
-            | OpCode::BitwiseXor
-            | OpCode::ShiftLeft
-            | OpCode::ShiftRight
-            | OpCode::BitwiseNot
-            | OpCode::BoolNot => self.exec_math_op(op)?,
+            
+            // Arithmetic operations - delegated to opcodes::arithmetic
+            OpCode::Add => self.exec_add()?,
+            OpCode::Sub => self.exec_sub()?,
+            OpCode::Mul => self.exec_mul()?,
+            OpCode::Div => self.exec_div()?,
+            OpCode::Mod => self.exec_mod()?,
+            OpCode::Pow => self.exec_pow()?,
+            OpCode::BitwiseAnd => self.exec_bitwise_and()?,
+            OpCode::BitwiseOr => self.exec_bitwise_or()?,
+            OpCode::BitwiseXor => self.exec_bitwise_xor()?,
+            OpCode::ShiftLeft => self.exec_shift_left()?,
+            OpCode::ShiftRight => self.exec_shift_right()?,
+            OpCode::BitwiseNot => self.exec_bitwise_not()?,
+            OpCode::BoolNot => self.exec_bool_not()?,
 
             OpCode::LoadVar(sym) => self.exec_load_var(sym)?,
             OpCode::LoadVarDynamic => {
@@ -2610,14 +2679,7 @@ impl VM {
             | OpCode::JmpNzEx(_)
             | OpCode::Coalesce(_) => self.exec_control_flow(op)?,
 
-            OpCode::Echo => {
-                let handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let s = self.convert_to_string(handle)?;
-                self.write_output(&s)?;
-            }
+            OpCode::Echo => self.exec_echo()?,
             OpCode::Exit => {
                 if let Some(handle) = self.operand_stack.pop() {
                     let s = self.convert_to_string(handle)?;
@@ -3686,12 +3748,8 @@ impl VM {
                 self.operand_stack.push(return_val);
             }
 
-            OpCode::InitArray(_size) => {
-                let handle = self
-                    .arena
-                    .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
-                self.operand_stack.push(handle);
-            }
+            // Array operations - delegated to opcodes::array_ops
+            OpCode::InitArray(size) => self.exec_init_array(size)?,
 
             OpCode::FetchDim => {
                 let key_handle = self
@@ -3836,21 +3894,7 @@ impl VM {
                 }
             }
 
-            OpCode::AssignDim => {
-                let val_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let key_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let array_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                self.assign_dim_value(array_handle, key_handle, val_handle)?;
-            }
+            OpCode::AssignDim => self.exec_assign_dim()?,
 
             OpCode::AssignDimRef => {
                 let val_handle = self
@@ -4004,33 +4048,9 @@ impl VM {
                     ));
                 }
             }
-            OpCode::StoreDim => {
-                let array_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let key_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let val_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                self.assign_dim(array_handle, key_handle, val_handle)?;
-            }
+            OpCode::StoreDim => self.exec_store_dim()?,
 
-            OpCode::AppendArray => {
-                let val_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let array_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                self.append_array(array_handle, val_handle)?;
-            }
+            OpCode::AppendArray => self.exec_append_array()?,
             OpCode::AddArrayUnpack => {
                 let src_handle = self
                     .operand_stack
@@ -4183,70 +4203,9 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
 
-            OpCode::StoreNestedDim(depth) => {
-                let val_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let mut keys = Vec::with_capacity(depth as usize);
-                for _ in 0..depth {
-                    let k = self.operand_stack
-                            .pop()
-                            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    keys.push(k);
-                }
-                keys.reverse();
-                let array_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                self.assign_nested_dim(array_handle, &keys, val_handle)?;
-            }
+            OpCode::StoreNestedDim(depth) => self.exec_assign_nested_dim(depth)?,
 
-            OpCode::FetchNestedDim(depth) => {
-                // Stack: [array, key_n, ..., key_1] (top is key_1)
-                // We need to peek at them without popping.
-
-                // Array is at depth + 1 from top (0-indexed)
-                // key_1 is at 0
-                // key_n is at depth - 1
-
-                let array_handle = self
-                    .operand_stack
-                    .peek_at(depth as usize)
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-
-                let mut keys = Vec::with_capacity(depth as usize);
-                for i in 0..depth {
-                    // key_n is at depth - 1 - i
-                    // key_1 is at 0
-                    // We want keys in order [key_n, ..., key_1]
-                    // Wait, StoreNestedDim pops key_1 first (top), then key_2...
-                    // So stack top is key_1 (last dimension).
-                    // keys vector should be [key_n, ..., key_1].
-
-                    // Stack:
-                    // Top: key_1
-                    // ...
-                    // Bottom: key_n
-                    // Bottom-1: array
-
-                    // So key_1 is at index 0.
-                    // key_n is at index depth-1.
-
-                    // We want keys to be [key_n, ..., key_1].
-                    // So we iterate from depth-1 down to 0.
-
-                    let key_handle = self
-                        .operand_stack
-                        .peek_at((depth - 1 - i) as usize)
-                        .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                    keys.push(key_handle);
-                }
-
-                let val_handle = self.fetch_nested_dim(array_handle, &keys)?;
-                self.operand_stack.push(val_handle);
-            }
+            OpCode::FetchNestedDim(depth) => self.exec_fetch_nested_dim_op(depth)?,
 
             OpCode::IterInit(target) => {
                 // Stack: [Array/Object]
@@ -8828,52 +8787,16 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
 
-            OpCode::IsEqual => self.binary_cmp(|a, b| a == b)?,
-            OpCode::IsNotEqual => self.binary_cmp(|a, b| a != b)?,
-            OpCode::IsIdentical => self.binary_cmp(|a, b| a == b)?,
-            OpCode::IsNotIdentical => self.binary_cmp(|a, b| a != b)?,
-            OpCode::IsGreater => self.binary_cmp(|a, b| match (a, b) {
-                (Val::Int(i1), Val::Int(i2)) => i1 > i2,
-                _ => false,
-            })?,
-            OpCode::IsLess => self.binary_cmp(|a, b| match (a, b) {
-                (Val::Int(i1), Val::Int(i2)) => i1 < i2,
-                _ => false,
-            })?,
-            OpCode::IsGreaterOrEqual => self.binary_cmp(|a, b| match (a, b) {
-                (Val::Int(i1), Val::Int(i2)) => i1 >= i2,
-                _ => false,
-            })?,
-            OpCode::IsLessOrEqual => self.binary_cmp(|a, b| match (a, b) {
-                (Val::Int(i1), Val::Int(i2)) => i1 <= i2,
-                _ => false,
-            })?,
-            OpCode::Spaceship => {
-                let b_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let a_handle = self
-                    .operand_stack
-                    .pop()
-                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let b_val = &self.arena.get(b_handle).value;
-                let a_val = &self.arena.get(a_handle).value;
-                let res = match (a_val, b_val) {
-                    (Val::Int(a), Val::Int(b)) => {
-                        if a < b {
-                            -1
-                        } else if a > b {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                    _ => 0, // TODO
-                };
-                let res_handle = self.arena.alloc(Val::Int(res));
-                self.operand_stack.push(res_handle);
-            }
+            // Comparison operations - delegated to opcodes::comparison
+            OpCode::IsEqual => self.exec_equal()?,
+            OpCode::IsNotEqual => self.exec_not_equal()?,
+            OpCode::IsIdentical => self.exec_identical()?,
+            OpCode::IsNotIdentical => self.exec_not_identical()?,
+            OpCode::IsGreater => self.exec_greater_than()?,
+            OpCode::IsLess => self.exec_less_than()?,
+            OpCode::IsGreaterOrEqual => self.exec_greater_than_or_equal()?,
+            OpCode::IsLessOrEqual => self.exec_less_than_or_equal()?,
+            OpCode::Spaceship => self.exec_spaceship()?,
             OpCode::BoolXor => {
                 let b_handle = self
                     .operand_stack
@@ -9225,27 +9148,27 @@ impl VM {
         Ok(())
     }
 
-    fn arithmetic_add(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_add(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Add)
     }
 
-    fn arithmetic_sub(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_sub(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Sub)
     }
 
-    fn arithmetic_mul(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_mul(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Mul)
     }
 
-    fn arithmetic_div(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_div(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Div)
     }
 
-    fn arithmetic_mod(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_mod(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Mod)
     }
 
-    fn arithmetic_pow(&mut self) -> Result<(), VmError> {
+    pub(crate) fn arithmetic_pow(&mut self) -> Result<(), VmError> {
         self.binary_arithmetic(ArithOp::Pow)
     }
 
@@ -9262,15 +9185,15 @@ impl VM {
         Ok(())
     }
 
-    fn bitwise_and(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_and(&mut self) -> Result<(), VmError> {
         self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwAnd)
     }
 
-    fn bitwise_or(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_or(&mut self) -> Result<(), VmError> {
         self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwOr)
     }
 
-    fn bitwise_xor(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_xor(&mut self) -> Result<(), VmError> {
         self.binary_bitwise(crate::vm::assign_op::AssignOpType::BwXor)
     }
 
@@ -9302,15 +9225,15 @@ impl VM {
         Ok(())
     }
 
-    fn bitwise_shl(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_shl(&mut self) -> Result<(), VmError> {
         self.binary_shift(false)
     }
 
-    fn bitwise_shr(&mut self) -> Result<(), VmError> {
+    pub(crate) fn bitwise_shr(&mut self) -> Result<(), VmError> {
         self.binary_shift(true)
     }
 
-    fn binary_cmp<F>(&mut self, op: F) -> Result<(), VmError>
+    pub(crate) fn binary_cmp<F>(&mut self, op: F) -> Result<(), VmError>
     where
         F: Fn(&Val, &Val) -> bool,
     {
@@ -9332,7 +9255,7 @@ impl VM {
         Ok(())
     }
 
-    fn assign_dim_value(
+    pub(crate) fn assign_dim_value(
         &mut self,
         array_handle: Handle,
         key_handle: Handle,
@@ -9359,7 +9282,7 @@ impl VM {
         self.assign_dim(array_handle, key_handle, val_handle)
     }
 
-    fn assign_dim(
+    pub(crate) fn assign_dim(
         &mut self,
         array_handle: Handle,
         key_handle: Handle,
@@ -9424,7 +9347,7 @@ impl VM {
     /// Note: Array append now uses O(1) ArrayData::push() instead of O(n) index computation
     /// Reference: $PHP_SRC_PATH/Zend/zend_hash.c - zend_hash_next_free_element
 
-    fn append_array(&mut self, array_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
+    pub(crate) fn append_array(&mut self, array_handle: Handle, val_handle: Handle) -> Result<(), VmError> {
         let is_ref = self.arena.get(array_handle).is_ref;
 
         if is_ref {
@@ -9462,7 +9385,7 @@ impl VM {
         Ok(())
     }
 
-    fn assign_nested_dim(
+    pub(crate) fn assign_nested_dim(
         &mut self,
         array_handle: Handle,
         keys: &[Handle],
@@ -9476,7 +9399,7 @@ impl VM {
         Ok(())
     }
 
-    fn fetch_nested_dim(
+    pub(crate) fn fetch_nested_dim(
         &mut self,
         array_handle: Handle,
         keys: &[Handle],
@@ -10128,44 +10051,24 @@ mod tests {
 
     #[test]
     fn test_store_dim_stack_order() {
-        // Stack: [val, key, array]
-        // StoreDim should assign val to array[key].
+        // Test that StoreDim correctly assigns a value to an array element
+        // exec_store_dim pops: val, key, array (in that order from top of stack)
+        // So we need to push: array, key, val (to make val on top)
 
-        let mut chunk = CodeChunk::default();
-        chunk.constants.push(Val::Int(1)); // 0: val
-        chunk.constants.push(Val::Int(0)); // 1: key
-                                           // array will be created dynamically
-
-        // Create array [0]
-        chunk.code.push(OpCode::InitArray(0));
-        chunk.code.push(OpCode::Const(1)); // key 0
-        chunk.code.push(OpCode::Const(1)); // val 0 (dummy)
-        chunk.code.push(OpCode::AssignDim); // Stack: [array]
-
-        // Now stack has [array].
-        // We want to test StoreDim with [val, key, array].
-        // But we have [array].
-        // We need to push val, key, then array.
-        // But array is already there.
-
-        // Let's manually construct stack in VM.
         let mut vm = create_vm();
-        let array_handle = vm
-            .arena
-            .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
+        // Create a reference array so assign_dim modifies it in-place
+        let array_zval = vm.arena.alloc(Val::Array(crate::core::value::ArrayData::new().into()));
+        vm.arena.get_mut(array_zval).is_ref = true;
         let key_handle = vm.arena.alloc(Val::Int(0));
         let val_handle = vm.arena.alloc(Val::Int(99));
 
-        vm.operand_stack.push(val_handle);
+        // Push in reverse order so pops get them in the right order
+        vm.operand_stack.push(array_zval);
         vm.operand_stack.push(key_handle);
-        vm.operand_stack.push(array_handle);
+        vm.operand_stack.push(val_handle);
 
-        // Stack: [val, key, array] (Top is array)
-
-        let mut chunk = CodeChunk::default();
-        chunk.code.push(OpCode::StoreDim);
-
-        vm.run(Rc::new(chunk)).unwrap();
+        // Call exec_store_dim directly instead of going through run()
+        vm.exec_store_dim().unwrap();
 
         let result_handle = vm.operand_stack.pop().unwrap();
         let result = vm.arena.get(result_handle);
