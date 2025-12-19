@@ -1,7 +1,7 @@
 use crate::builtins::spl;
 use crate::builtins::{
-    array, class, datetime, exception, exec, filesystem, function, http, math, output_control,
-    pcre, string, variable,
+    array, class, datetime, exception, exec, filesystem, function, http, json, math,
+    output_control, pcre, string, variable,
 };
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
@@ -598,6 +598,28 @@ impl EngineContext {
             b"output_add_rewrite_var".to_vec(),
             output_control::php_output_add_rewrite_var as NativeHandler,
         );
+
+        // JSON functions
+        functions.insert(
+            b"json_encode".to_vec(),
+            json::php_json_encode as NativeHandler,
+        );
+        functions.insert(
+            b"json_decode".to_vec(),
+            json::php_json_decode as NativeHandler,
+        );
+        functions.insert(
+            b"json_last_error".to_vec(),
+            json::php_json_last_error as NativeHandler,
+        );
+        functions.insert(
+            b"json_last_error_msg".to_vec(),
+            json::php_json_last_error_msg as NativeHandler,
+        );
+        functions.insert(
+            b"json_validate".to_vec(),
+            json::php_json_validate as NativeHandler,
+        );
         functions.insert(
             b"output_reset_rewrite_vars".to_vec(),
             output_control::php_output_reset_rewrite_vars as NativeHandler,
@@ -626,6 +648,7 @@ pub struct RequestContext {
     pub http_status: Option<i64>,
     pub max_execution_time: i64, // in seconds, 0 = unlimited
     pub native_methods: HashMap<(Symbol, Symbol), NativeMethodEntry>, // (class_name, method_name) -> handler
+    pub json_last_error: json::JsonError, // JSON extension error state
 }
 
 impl RequestContext {
@@ -645,6 +668,7 @@ impl RequestContext {
             http_status: None,
             max_execution_time: 30, // Default 30 seconds
             native_methods: HashMap::new(),
+            json_last_error: json::JsonError::None, // Initialize JSON error state
         };
         ctx.register_builtin_classes();
         ctx.register_builtin_constants();
@@ -1761,6 +1785,43 @@ impl RequestContext {
         self.insert_builtin_constant(b"E_DEPRECATED", Val::Int(8192));
         self.insert_builtin_constant(b"E_USER_DEPRECATED", Val::Int(16384));
         self.insert_builtin_constant(b"E_ALL", Val::Int(32767));
+
+        // JSON error constants
+        // Reference: $PHP_SRC_PATH/ext/json/php_json.h
+        self.insert_builtin_constant(b"JSON_ERROR_NONE", Val::Int(0));
+        self.insert_builtin_constant(b"JSON_ERROR_DEPTH", Val::Int(1));
+        self.insert_builtin_constant(b"JSON_ERROR_STATE_MISMATCH", Val::Int(2));
+        self.insert_builtin_constant(b"JSON_ERROR_CTRL_CHAR", Val::Int(3));
+        self.insert_builtin_constant(b"JSON_ERROR_SYNTAX", Val::Int(4));
+        self.insert_builtin_constant(b"JSON_ERROR_UTF8", Val::Int(5));
+        self.insert_builtin_constant(b"JSON_ERROR_RECURSION", Val::Int(6));
+        self.insert_builtin_constant(b"JSON_ERROR_INF_OR_NAN", Val::Int(7));
+        self.insert_builtin_constant(b"JSON_ERROR_UNSUPPORTED_TYPE", Val::Int(8));
+        self.insert_builtin_constant(b"JSON_ERROR_INVALID_PROPERTY_NAME", Val::Int(9));
+        self.insert_builtin_constant(b"JSON_ERROR_UTF16", Val::Int(10));
+
+        // JSON encoding option flags
+        self.insert_builtin_constant(b"JSON_HEX_TAG", Val::Int(1));
+        self.insert_builtin_constant(b"JSON_HEX_AMP", Val::Int(2));
+        self.insert_builtin_constant(b"JSON_HEX_APOS", Val::Int(4));
+        self.insert_builtin_constant(b"JSON_HEX_QUOT", Val::Int(8));
+        self.insert_builtin_constant(b"JSON_FORCE_OBJECT", Val::Int(16));
+        self.insert_builtin_constant(b"JSON_NUMERIC_CHECK", Val::Int(32));
+        self.insert_builtin_constant(b"JSON_UNESCAPED_SLASHES", Val::Int(64));
+        self.insert_builtin_constant(b"JSON_PRETTY_PRINT", Val::Int(128));
+        self.insert_builtin_constant(b"JSON_UNESCAPED_UNICODE", Val::Int(256));
+        self.insert_builtin_constant(b"JSON_PARTIAL_OUTPUT_ON_ERROR", Val::Int(512));
+        self.insert_builtin_constant(b"JSON_PRESERVE_ZERO_FRACTION", Val::Int(1024));
+        self.insert_builtin_constant(b"JSON_UNESCAPED_LINE_TERMINATORS", Val::Int(2048));
+
+        // JSON decoding option flags
+        self.insert_builtin_constant(b"JSON_OBJECT_AS_ARRAY", Val::Int(1));
+        self.insert_builtin_constant(b"JSON_BIGINT_AS_STRING", Val::Int(2));
+        self.insert_builtin_constant(b"JSON_INVALID_UTF8_IGNORE", Val::Int(1048576));
+        self.insert_builtin_constant(b"JSON_INVALID_UTF8_SUBSTITUTE", Val::Int(2097152));
+
+        // JSON_THROW_ON_ERROR (shared for both encode and decode)
+        self.insert_builtin_constant(b"JSON_THROW_ON_ERROR", Val::Int(4194304));
     }
 
     fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {

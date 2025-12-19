@@ -6,6 +6,7 @@ pub mod exec;
 pub mod filesystem;
 pub mod function;
 pub mod http;
+pub mod json;
 pub mod math;
 pub mod output_control;
 pub mod pcre;
