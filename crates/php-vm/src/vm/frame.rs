@@ -21,6 +21,7 @@ pub struct CallFrame {
     pub discard_return: bool,
     pub args: ArgList,
     pub stack_base: Option<usize>,
+    pub pending_finally: Option<usize>,
 }
 
 impl CallFrame {
@@ -38,6 +39,7 @@ impl CallFrame {
             discard_return: false,
             args: ArgList::new(),
             stack_base: None,
+            pending_finally: None,
         }
     }
 }

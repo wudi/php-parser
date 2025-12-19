@@ -1071,9 +1071,10 @@ impl<'src> Emitter<'src> {
                 self.chunk.code.push(OpCode::Jmp(0)); // Will patch to finally or end
 
                 let mut catch_jumps = Vec::new();
+                let mut catch_ranges = Vec::new(); // Track catch block ranges for finally encoding
 
                 for catch in *catches {
-                    let catch_target = self.chunk.code.len() as u32;
+                    let catch_start = self.chunk.code.len() as u32;
 
                     for ty in catch.types {
                         let type_name = self.get_text(ty.span);
@@ -1082,9 +1083,10 @@ impl<'src> Emitter<'src> {
                         self.chunk.catch_table.push(CatchEntry {
                             start: try_start,
                             end: try_end,
-                            target: catch_target,
+                            target: catch_start,
                             catch_type: Some(type_sym),
-                            finally_target: None,
+                            finally_target: None, // Will be set below if finally exists
+                            finally_end: None,
                         });
                     }
 
@@ -1102,6 +1104,9 @@ impl<'src> Emitter<'src> {
                         self.emit_stmt(stmt);
                     }
 
+                    let catch_end = self.chunk.code.len() as u32;
+                    catch_ranges.push((catch_start, catch_end));
+
                     // Jump from catch to finally (or end if no finally)
                     catch_jumps.push(self.chunk.code.len());
                     self.chunk.code.push(OpCode::Jmp(0)); // Will patch to finally or end
@@ -1109,18 +1114,52 @@ impl<'src> Emitter<'src> {
 
                 // Emit finally block if present
                 if let Some(finally_body) = finally {
-                    let finally_start = self.chunk.code.len();
+                    let finally_start = self.chunk.code.len() as u32;
 
                     // Patch jump from try to finally
-                    self.patch_jump(jump_from_try, finally_start);
+                    self.patch_jump(jump_from_try, finally_start as usize);
 
                     // Patch all catch block jumps to finally
                     for idx in &catch_jumps {
-                        self.patch_jump(*idx, finally_start);
+                        self.patch_jump(*idx, finally_start as usize);
                     }
 
+                    // Emit the finally block statements
                     for stmt in *finally_body {
                         self.emit_stmt(stmt);
+                    }
+                    let finally_end = self.chunk.code.len() as u32;
+
+                    // Update all existing catch entries to include finally_target and finally_end
+                    // This enables unwinding through finally when exception is caught
+                    for entry in self.chunk.catch_table.iter_mut() {
+                        if entry.start == try_start && entry.end == try_end {
+                            entry.finally_target = Some(finally_start);
+                            entry.finally_end = Some(finally_end);
+                        }
+                    }
+                    
+                    // Add a finally-only entry for the try block
+                    // This ensures finally executes even on uncaught exceptions
+                    self.chunk.catch_table.push(CatchEntry {
+                        start: try_start,
+                        end: try_end,
+                        target: finally_start,
+                        catch_type: None, // No specific catch type - this is for finally
+                        finally_target: None,
+                        finally_end: Some(finally_end),
+                    });
+
+                    // Also add entries for catch blocks to ensure finally runs during their unwinding
+                    for (catch_start, catch_end) in catch_ranges {
+                        self.chunk.catch_table.push(CatchEntry {
+                            start: catch_start,
+                            end: catch_end,
+                            target: finally_start,
+                            catch_type: None, // No specific catch type - this is for finally
+                            finally_target: None,
+                            finally_end: Some(finally_end),
+                        });
                     }
 
                     // Finally falls through to end

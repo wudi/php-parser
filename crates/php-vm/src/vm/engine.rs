@@ -1383,30 +1383,33 @@ impl VM {
 
             // Check for matching catch or finally blocks
             let mut found_catch = false;
-            let mut finally_target = None;
+            let mut finally_info = None;
 
             for entry in &chunk.catch_table {
                 if ip >= entry.start && ip < entry.end {
-                    // Check for finally block first
-                    if entry.catch_type.is_none() && entry.finally_target.is_none() {
+                    // Check for finally-only entry (no catch type)
+                    if entry.catch_type.is_none() {
                         // This is a finally-only entry
-                        finally_target = Some(entry.target);
+                        finally_info = Some((entry.target, entry.finally_end));
                         continue;
                     }
 
                     // Check for matching catch block
                     if let Some(type_sym) = entry.catch_type {
                         if self.is_instance_of(ex_handle, type_sym) {
+                            // Execute any finally blocks collected so far before entering catch
+                            self.execute_finally_blocks(&finally_blocks);
+                            finally_blocks.clear();
+
                             // Found matching catch block
                             self.frames.truncate(frame_idx + 1);
                             let frame = &mut self.frames[frame_idx];
                             frame.ip = entry.target as usize;
                             self.operand_stack.push(ex_handle);
 
-                            // If this catch has a finally, we'll execute it after the catch
-                            if let Some(_finally_tgt) = entry.finally_target {
-                                // Mark that we need to execute finally after catch completes
-                                // Store it for later execution
+                            // Mark finally for execution after catch completes
+                            if let Some(finally_tgt) = entry.finally_target {
+                                frame.pending_finally = Some(finally_tgt as usize);
                             }
 
                             found_catch = true;
@@ -1414,9 +1417,9 @@ impl VM {
                         }
                     }
 
-                    // Track finally target if present
-                    if entry.finally_target.is_some() {
-                        finally_target = entry.finally_target;
+                    // Track finally target if present in catch entry
+                    if let (Some(target), Some(end)) = (entry.finally_target, entry.finally_end) {
+                        finally_info = Some((target, Some(end)));
                     }
                 }
             }
@@ -1426,18 +1429,68 @@ impl VM {
             }
 
             // If we found a finally block, collect it for execution during unwinding
-            if let Some(target) = finally_target {
-                finally_blocks.push((frame_idx, target));
+            if let Some((target, end)) = finally_info {
+                finally_blocks.push((frame_idx, chunk.clone(), target, end));
             }
         }
 
-        // No catch found, but execute finally blocks during unwinding
+        // No catch found - execute finally blocks during unwinding and then clear frames
         // In PHP, finally blocks execute even when exception is not caught
-        // For now, we'll just track them but not execute (simplified implementation)
-        // Full implementation would require executing finally blocks and re-throwing
-
+        self.execute_finally_blocks(&finally_blocks);
         self.frames.clear();
         false
+    }
+
+    /// Execute finally blocks during exception unwinding
+    /// Executes from outermost to innermost (reverse order of collection)
+    fn execute_finally_blocks(&mut self, finally_blocks: &[(usize, Rc<CodeChunk>, u32, Option<u32>)]) {
+        // Execute in reverse order (from outer to inner in the unwind)
+        for (frame_idx, chunk, target, end) in finally_blocks.iter().rev() {
+            // Truncate frames to the finally's level
+            self.frames.truncate(*frame_idx + 1);
+            
+            // Set up the frame to execute the finally block
+            {
+                let frame = &mut self.frames[*frame_idx];
+                frame.chunk = chunk.clone();
+                frame.ip = *target as usize;
+            }
+            
+            // Execute only the finally block, not code after it
+            if let Some(finally_end) = end {
+                // Execute statements until IP reaches finally_end
+                loop {
+                    let should_continue = {
+                        if *frame_idx >= self.frames.len() {
+                            false
+                        } else {
+                            let frame = &self.frames[*frame_idx];
+                            frame.ip < *finally_end as usize && frame.ip < frame.chunk.code.len()
+                        }
+                    };
+                    
+                    if !should_continue {
+                        break;
+                    }
+                    
+                    let op = {
+                        let frame = &self.frames[*frame_idx];
+                        frame.chunk.code[frame.ip]
+                    };
+                    
+                    self.frames[*frame_idx].ip += 1;
+                    
+                    // Execute the opcode, ignoring errors from finally itself
+                    let _ = self.execute_opcode(op, *frame_idx);
+                }
+            } else {
+                // Fallback: execute until frame is popped (old behavior)
+                let _ = self.run_loop(*frame_idx + 1);
+                if self.frames.len() > *frame_idx {
+                    self.frames.truncate(*frame_idx);
+                }
+            }
+        }
     }
 
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
