@@ -5792,6 +5792,7 @@ impl VM {
 
                                 self.push_frame(frame);
                                 let depth = self.frames.len();
+                                let target_depth = depth - 1; // Target is caller's depth
 
                                 // Execute included file (inline run_loop to capture locals before pop)
                                 let mut include_error = None;
@@ -5817,7 +5818,7 @@ impl VM {
                                         op
                                     };
 
-                                    if let Err(e) = self.execute_opcode(op, depth) {
+                                    if let Err(e) = self.execute_opcode(op, target_depth) {
                                         include_error = Some(e);
                                         break;
                                     }
@@ -8781,27 +8782,67 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
 
-            OpCode::OpData
-            | OpCode::GeneratorCreate
-            | OpCode::DeclareLambdaFunction
+            // Zend-semantic opcodes that require specific implementation.
+            // These are currently not emitted by the compiler, but if they appear,
+            // we should fail loudly rather than silently no-op.
+            OpCode::OpData => {
+                return Err(VmError::RuntimeError(
+                    "OpData opcode not implemented (compiler should not emit this)".into(),
+                ));
+            }
+            OpCode::Separate => {
+                return Err(VmError::RuntimeError(
+                    "Separate opcode not implemented - requires proper COW/reference separation semantics".into(),
+                ));
+            }
+            OpCode::BindLexical => {
+                return Err(VmError::RuntimeError(
+                    "BindLexical opcode not implemented - requires closure capture semantics".into(),
+                ));
+            }
+            OpCode::CheckUndefArgs => {
+                return Err(VmError::RuntimeError(
+                    "CheckUndefArgs opcode not implemented - requires variadic argument handling".into(),
+                ));
+            }
+            OpCode::JmpNull => {
+                return Err(VmError::RuntimeError(
+                    "JmpNull opcode not implemented - requires nullsafe operator support".into(),
+                ));
+            }
+            OpCode::GeneratorCreate | OpCode::GeneratorReturn => {
+                return Err(VmError::RuntimeError(format!(
+                    "{:?} opcode not implemented - requires generator unwinding semantics",
+                    op
+                )));
+            }
+            
+            // Class/function declaration opcodes that may need implementation
+            OpCode::DeclareLambdaFunction
             | OpCode::DeclareClassDelayed
             | OpCode::DeclareAnonClass
-            | OpCode::UserOpcode
-            | OpCode::UnsetCv
+            | OpCode::DeclareAttributedConst => {
+                return Err(VmError::RuntimeError(format!(
+                    "{:?} opcode not implemented - declaration semantics need modeling",
+                    op
+                )));
+            }
+
+            // VM-internal opcodes that shouldn't appear in user code
+            OpCode::UnsetCv
             | OpCode::IssetIsemptyCv
-            | OpCode::Separate
             | OpCode::FetchClassName
-            | OpCode::GeneratorReturn
             | OpCode::CopyTmp
-            | OpCode::BindLexical
             | OpCode::IssetIsemptyThis
-            | OpCode::JmpNull
-            | OpCode::CheckUndefArgs
             | OpCode::BindInitStaticOrJmp
             | OpCode::InitParentPropertyHookCall
-            | OpCode::DeclareAttributedConst => {
-                // Zend-only or not yet modeled opcodes; act as harmless no-ops for now.
+            | OpCode::UserOpcode => {
+                return Err(VmError::RuntimeError(format!(
+                    "{:?} is a Zend-internal opcode that should not be emitted by this compiler",
+                    op
+                )));
             }
+
             OpCode::CallTrampoline
             | OpCode::DiscardException
             | OpCode::FastCall

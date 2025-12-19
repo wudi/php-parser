@@ -130,11 +130,17 @@ impl<'src> Emitter<'src> {
         for stmt in stmts {
             self.emit_stmt(stmt);
         }
-        // Implicit return null
-        let null_idx = self.add_constant(Val::Null);
-        self.chunk.code.push(OpCode::Const(null_idx as u16));
-        // Return type checking is now done in the Return handler
-        self.chunk.code.push(OpCode::Return);
+        
+        // Implicit return:
+        // - Functions/methods: return null if no explicit return
+        // - Top-level scripts: NO implicit return (PHP returns 1 for include, or the last statement result)
+        if self.current_function.is_some() {
+            // Inside a function - add implicit return null
+            let null_idx = self.add_constant(Val::Null);
+            self.chunk.code.push(OpCode::Const(null_idx as u16));
+            self.chunk.code.push(OpCode::Return);
+        }
+        // Note: Top-level scripts don't get implicit return null
 
         let chunk_name = if let Some(func_sym) = self.current_function {
             func_sym
