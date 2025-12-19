@@ -304,3 +304,28 @@ pub fn php_end(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Ok(vm.arena.alloc(Val::Bool(false)))
     }
 }
+
+pub fn php_array_key_exists(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("array_key_exists() expects exactly 2 parameters".into());
+    }
+
+    let key_val = vm.arena.get(args[0]).value.clone();
+    let arr_val = vm.arena.get(args[1]);
+
+    if let Val::Array(arr_rc) = &arr_val.value {
+        let key = match key_val {
+            Val::Int(i) => ArrayKey::Int(i),
+            Val::String(s) => ArrayKey::Str(s.into()),
+            Val::Float(f) => ArrayKey::Int(f as i64),
+            Val::Bool(b) => ArrayKey::Int(if b { 1 } else { 0 }),
+            Val::Null => ArrayKey::Str(vec![].into()),
+            _ => return Err("array_key_exists(): Argument #1 ($key) must be a valid array key".into()),
+        };
+
+        let exists = arr_rc.map.contains_key(&key);
+        Ok(vm.arena.alloc(Val::Bool(exists)))
+    } else {
+        Err("array_key_exists(): Argument #2 ($array) must be of type array".into())
+    }
+}

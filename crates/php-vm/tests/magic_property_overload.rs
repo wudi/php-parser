@@ -79,7 +79,6 @@ fn test_set_basic() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution for __isset - architectural limitation"]
 fn test_isset_basic() {
     let src = b"<?php
         class Test {
@@ -316,7 +315,6 @@ fn test_get_set_with_concat_assign() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution for __isset - architectural limitation"]
 fn test_empty_with_isset_magic() {
     let src = b"<?php
         class Test {
@@ -494,7 +492,6 @@ fn test_inaccessible_property_triggers_set() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution and array_key_exists builtin"]
 fn test_isset_with_null_property() {
     let src = b"<?php
         class Test {
@@ -510,8 +507,10 @@ fn test_isset_with_null_property() {
         }
         
         $t = new Test();
-        // __isset returns true, but __get returns null, so isset should be false
-        return !isset($t->null_val) && isset($t->has_val);
+        // __isset returns true for both properties (both keys exist in array)
+        // In PHP, isset() only calls __isset, not __get, so both return true
+        // even though null_val's value is null
+        return isset($t->null_val) && isset($t->has_val);
     ";
 
     let res = run_php(src);

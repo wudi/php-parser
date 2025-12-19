@@ -122,6 +122,10 @@ impl EngineContext {
         functions.insert(b"reset".to_vec(), array::php_reset as NativeHandler);
         functions.insert(b"end".to_vec(), array::php_end as NativeHandler);
         functions.insert(
+            b"array_key_exists".to_vec(),
+            array::php_array_key_exists as NativeHandler,
+        );
+        functions.insert(
             b"var_dump".to_vec(),
             variable::php_var_dump as NativeHandler,
         );

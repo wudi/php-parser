@@ -7087,7 +7087,6 @@ impl VM {
                             Val::String(s) => s.clone(),
                             _ => vec![].into(),
                         };
-                        let sym = self.context.interner.intern(&prop_name);
 
                         let class_name = {
                             let payload = self.arena.get(*obj_handle);
@@ -7099,25 +7098,54 @@ impl VM {
                         };
 
                         let magic_isset = self.context.interner.intern(b"__isset");
-                        if let Some((method, _, _, defined_class)) =
-                            self.find_method(class_name, magic_isset)
-                        {
-                            let name_handle = self.arena.alloc(Val::String(prop_name));
+                        let name_handle = self.arena.alloc(Val::String(prop_name.clone()));
 
-                            let mut frame = CallFrame::new(method.chunk.clone());
-                            frame.func = Some(method.clone());
-                            frame.this = Some(container_handle);
-                            frame.class_scope = Some(defined_class);
-                            frame.called_scope = Some(class_name);
+                        // Save caller's return value to avoid corruption
+                        let saved_return_value = self.last_return_value.take();
 
-                            if let Some(param) = method.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
+                        // Call __isset synchronously
+                        let isset_result = self.call_magic_method_sync(
+                            container_handle,
+                            class_name,
+                            magic_isset,
+                            vec![name_handle],
+                        )?;
+
+                        // Restore caller's return value
+                        self.last_return_value = saved_return_value;
+
+                        // For isset (type_val==0): return __isset's boolean result directly
+                        // For empty (type_val==1): call __get to get the actual value if __isset returns true
+                        if let Some(result_handle) = isset_result {
+                            let isset_bool = self.arena.get(result_handle).value.to_bool();
+                            if type_val == 0 {
+                                // isset(): just use __isset's result
+                                // Create a dummy non-null value to make isset return isset_bool
+                                if isset_bool {
+                                    Some(self.arena.alloc(Val::Int(1)))  // Any non-null value
+                                } else {
+                                    None
+                                }
+                            } else {
+                                // empty(): need to call __get if __isset returned true
+                                if isset_bool {
+                                    let magic_get = self.context.interner.intern(b"__get");
+                                    
+                                    // Save and restore return value again for __get
+                                    let saved_return_value2 = self.last_return_value.take();
+                                    let get_result = self.call_magic_method_sync(
+                                        container_handle,
+                                        class_name,
+                                        magic_get,
+                                        vec![name_handle],
+                                    )?;
+                                    self.last_return_value = saved_return_value2;
+                                    
+                                    get_result
+                                } else {
+                                    None
+                                }
                             }
-
-                            self.push_frame(frame);
-
-                            // __isset returns a boolean value
-                            self.last_return_value
                         } else {
                             None
                         }
@@ -8285,38 +8313,41 @@ impl VM {
                 } else {
                     // Property not found or not accessible. Check for __isset.
                     let isset_magic = self.context.interner.intern(b"__isset");
-                    if let Some((magic_func, _, _, magic_class)) =
-                        self.find_method(class_name, isset_magic)
-                    {
-                        // Found __isset
+                    
+                    // Create method name string (prop name)
+                    let prop_name_str = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .expect("Prop name should be interned")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_str.into()));
 
-                        // Create method name string (prop name)
-                        let prop_name_str = self
-                            .context
-                            .interner
-                            .lookup(prop_name)
-                            .expect("Prop name should be interned")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(prop_name_str.into()));
+                    // Save caller's return value to avoid corruption (similar to __toString)
+                    let saved_return_value = self.last_return_value.take();
 
-                        // Prepare frame for __isset
-                        let mut frame = CallFrame::new(magic_func.chunk.clone());
-                        frame.func = Some(magic_func.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(magic_class);
-                        frame.called_scope = Some(class_name);
+                    // Call __isset synchronously
+                    let isset_result = self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        isset_magic,
+                        vec![name_handle],
+                    )?;
 
-                        // Param 0: name
-                        if let Some(param) = magic_func.params.get(0) {
-                            frame.locals.insert(param.name, name_handle);
-                        }
+                    // Restore caller's return value
+                    self.last_return_value = saved_return_value;
 
-                        self.push_frame(frame);
+                    let result = if let Some(result_handle) = isset_result {
+                        // __isset returned a value - convert to bool
+                        let result_val = &self.arena.get(result_handle).value;
+                        result_val.to_bool()
                     } else {
-                        // No __isset, return false
-                        let res_handle = self.arena.alloc(Val::Bool(false));
-                        self.operand_stack.push(res_handle);
-                    }
+                        // No __isset method, return false
+                        false
+                    };
+
+                    let res_handle = self.arena.alloc(Val::Bool(result));
+                    self.operand_stack.push(res_handle);
                 }
             }
             OpCode::IssetStaticProp(prop_name) => {
