@@ -138,6 +138,14 @@ impl VM {
         sym: Symbol,
         val_handle: Handle,
     ) -> Result<(), VmError> {
+        // PHP 8.1+: Disallow writing to entire $GLOBALS array
+        // Reference: https://www.php.net/manual/en/reserved.variables.globals.php
+        if self.is_globals_symbol(sym) {
+            return Err(VmError::RuntimeError(
+                "Cannot re-assign $GLOBALS".into()
+            ));
+        }
+
         // Bind superglobal if needed
         if self.is_superglobal(sym) {
             if let Some(handle) = self.ensure_superglobal_handle(sym) {
@@ -195,6 +203,13 @@ impl VM {
     /// Unset a variable (remove from local scope)
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_UNSET_VAR
     pub(crate) fn unset_variable(&mut self, sym: Symbol) -> Result<(), VmError> {
+        // PHP 8.1+: Disallow unsetting $GLOBALS
+        if self.is_globals_symbol(sym) {
+            return Err(VmError::RuntimeError(
+                "Cannot unset $GLOBALS".into()
+            ));
+        }
+
         let frame = self
             .frames
             .last_mut()

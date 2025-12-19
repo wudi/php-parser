@@ -230,6 +230,24 @@ impl OutputWriter for StdoutWriter {
     }
 }
 
+/// Capturing output writer for testing
+pub struct CapturingOutputWriter<F: FnMut(&[u8])> {
+    callback: F,
+}
+
+impl<F: FnMut(&[u8])> CapturingOutputWriter<F> {
+    pub fn new(callback: F) -> Self {
+        Self { callback }
+    }
+}
+
+impl<F: FnMut(&[u8])> OutputWriter for CapturingOutputWriter<F> {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
+        (self.callback)(bytes);
+        Ok(())
+    }
+}
+
 pub struct PendingCall {
     pub func_name: Option<Symbol>,
     pub func_handle: Option<Handle>,
@@ -255,6 +273,7 @@ enum SuperglobalKind {
     Request,
     Env,
     Session,
+    Globals,
 }
 
 const SUPERGLOBAL_SPECS: &[(SuperglobalKind, &[u8])] = &[
@@ -266,6 +285,7 @@ const SUPERGLOBAL_SPECS: &[(SuperglobalKind, &[u8])] = &[
     (SuperglobalKind::Request, b"_REQUEST"),
     (SuperglobalKind::Env, b"_ENV"),
     (SuperglobalKind::Session, b"_SESSION"),
+    (SuperglobalKind::Globals, b"GLOBALS"),
 ];
 
 pub struct VM {
@@ -369,8 +389,42 @@ impl VM {
     fn create_superglobal_value(&mut self, kind: SuperglobalKind) -> Handle {
         match kind {
             SuperglobalKind::Server => self.create_server_superglobal(),
+            SuperglobalKind::Globals => self.create_globals_superglobal(),
             _ => self.arena.alloc(Val::Array(Rc::new(ArrayData::new()))),
         }
+    }
+
+    /// Create $GLOBALS superglobal - a read-only copy of the global symbol table (PHP 8.1+)
+    /// In PHP 8.1+, $GLOBALS is a read-only copy. Modifications must be done via $GLOBALS['key'].
+    fn create_globals_superglobal(&mut self) -> Handle {
+        let mut map = IndexMap::new();
+        // $GLOBALS elements must share handles with global variables for reference behavior
+        // When you do $ref = &$GLOBALS['x'], it should reference the actual global $x
+        
+        // Include variables from context.globals (superglobals and 'global' keyword vars)
+        for (sym, handle) in &self.context.globals {
+            // Don't include $GLOBALS itself to avoid circular reference
+            let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"");
+            if key_bytes != b"GLOBALS" {
+                // Use the exact same handle so references work correctly
+                map.insert(ArrayKey::Str(Rc::new(key_bytes.to_vec())), *handle);
+            }
+        }
+        
+        // Include variables from the top-level frame (frame 0) if it exists
+        // These are the actual global scope variables in PHP
+        if let Some(frame) = self.frames.first() {
+            for (sym, handle) in &frame.locals {
+                let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"");
+                if key_bytes != b"GLOBALS" {
+                    // Only add if not already present (context.globals takes precedence)
+                    let key = ArrayKey::Str(Rc::new(key_bytes.to_vec()));
+                    map.entry(key).or_insert(*handle);
+                }
+            }
+        }
+        
+        self.arena.alloc(Val::Array(ArrayData::from(map).into()))
     }
 
     fn create_server_superglobal(&mut self) -> Handle {
@@ -457,6 +511,49 @@ impl VM {
 
     pub(crate) fn ensure_superglobal_handle(&mut self, sym: Symbol) -> Option<Handle> {
         let kind = self.superglobal_map.get(&sym).copied()?;
+        
+        // Special handling for $GLOBALS - always refresh to ensure it's current
+        if kind == SuperglobalKind::Globals {
+            // Update the $GLOBALS array to reflect current global state
+            let globals_sym = self.context.interner.intern(b"GLOBALS");
+            if let Some(&existing_handle) = self.context.globals.get(&globals_sym) {
+                // Update the existing array in place, maintaining handle sharing
+                let mut map = IndexMap::new();
+                
+                // Include variables from context.globals
+                for (sym, handle) in &self.context.globals {
+                    let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"");
+                    if key_bytes != b"GLOBALS" {
+                        // Use the exact same handle - this is critical for reference behavior
+                        map.insert(ArrayKey::Str(Rc::new(key_bytes.to_vec())), *handle);
+                    }
+                }
+                
+                // Include variables from the top-level frame (frame 0) if it exists
+                if let Some(frame) = self.frames.first() {
+                    for (sym, handle) in &frame.locals {
+                        let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"");
+                        if key_bytes != b"GLOBALS" {
+                            // Only add if not already present (context.globals takes precedence)
+                            let key = ArrayKey::Str(Rc::new(key_bytes.to_vec()));
+                            map.entry(key).or_insert(*handle);
+                        }
+                    }
+                }
+                
+                // Update the array value in-place
+                let array_val = Val::Array(ArrayData::from(map).into());
+                self.arena.get_mut(existing_handle).value = array_val;
+                return Some(existing_handle);
+            } else {
+                // Create new $GLOBALS array
+                let handle = self.create_globals_superglobal();
+                self.arena.get_mut(handle).is_ref = true;
+                self.context.globals.insert(sym, handle);
+                return Some(handle);
+            }
+        }
+        
         let handle = if let Some(&existing) = self.context.globals.get(&sym) {
             existing
         } else {
@@ -470,6 +567,67 @@ impl VM {
 
     pub(crate) fn is_superglobal(&self, sym: Symbol) -> bool {
         self.superglobal_map.contains_key(&sym)
+    }
+
+    /// Check if a symbol refers to the $GLOBALS superglobal
+    pub(crate) fn is_globals_symbol(&self, sym: Symbol) -> bool {
+        if let Some(kind) = self.superglobal_map.get(&sym) {
+            *kind == SuperglobalKind::Globals
+        } else {
+            false
+        }
+    }
+
+    /// Sync a modification to $GLOBALS['key'] = value back to the global symbol table
+    /// In PHP 8.1+, modifying $GLOBALS['key'] should update the actual global variable
+    pub(crate) fn sync_globals_write(&mut self, key_bytes: &[u8], val_handle: Handle) {
+        // Intern the key to get its symbol
+        let sym = self.context.interner.intern(key_bytes);
+        
+        // Don't create circular reference by syncing GLOBALS itself
+        if key_bytes != b"GLOBALS" {
+            // Mark handle as ref so future operations on it (via $GLOBALS) work correctly
+            self.arena.get_mut(val_handle).is_ref = true;
+            
+            // Always update the global symbol table with the same handle
+            // This ensures references work correctly
+            self.context.globals.insert(sym, val_handle);
+
+            // Also update the top-level frame's locals so it picks up the change
+            // This handles the case where we modify $GLOBALS from within a function
+            // and then access the variable at the top level
+            if let Some(frame) = self.frames.first_mut() {
+                frame.locals.insert(sym, val_handle);
+            }
+        }
+    }
+
+    fn sync_globals_key(&mut self, key: &ArrayKey, val_handle: Handle) {
+        match key {
+            ArrayKey::Str(bytes) => self.sync_globals_write(bytes, val_handle),
+            ArrayKey::Int(num) => {
+                let key_str = num.to_string();
+                self.sync_globals_write(key_str.as_bytes(), val_handle);
+            }
+        }
+    }
+
+    /// Check if a handle belongs to a global variable
+    /// Used to determine if array operations should be in-place
+    pub(crate) fn is_global_variable_handle(&self, handle: Handle) -> bool {
+        // Check context.globals (superglobals and 'global' keyword vars)
+        if self.context.globals.values().any(|&h| h == handle) {
+            return true;
+        }
+        
+        // Check top-level frame (global scope variables)
+        if let Some(frame) = self.frames.first() {
+            if frame.locals.values().any(|&h| h == handle) {
+                return true;
+            }
+        }
+        
+        false
     }
 
     pub fn new_with_context(context: RequestContext) -> Self {
@@ -2159,6 +2317,14 @@ impl VM {
     }
 
     fn exec_load_var(&mut self, sym: Symbol) -> Result<(), VmError> {
+        // Special handling for $GLOBALS - always refresh to ensure it's current
+        if self.is_globals_symbol(sym) {
+            if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                self.operand_stack.push(handle);
+                return Ok(());
+            }
+        }
+
         let handle = {
             let frame = self.current_frame()?;
             frame.locals.get(&sym).copied()
@@ -2302,36 +2468,68 @@ impl VM {
                     .operand_stack
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let to_bind = if self.is_superglobal(sym) {
-                    self.ensure_superglobal_handle(sym)
-                } else {
-                    None
-                };
-                let frame = self.frames.last_mut().unwrap();
-
-                if let Some(handle) = to_bind {
-                    frame.locals.entry(sym).or_insert(handle);
-                }
-
-                // Check if the target variable is a reference
-                let mut is_target_ref = false;
-                if let Some(&old_handle) = frame.locals.get(&sym) {
-                    if self.arena.get(old_handle).is_ref {
-                        is_target_ref = true;
-                        // Assigning to a reference: update the value in place
-                        let new_val = self.arena.get(val_handle).value.clone();
-                        self.arena.get_mut(old_handle).value = new_val;
+                
+                // PHP 8.1+: Disallow writing to entire $GLOBALS array
+                // Exception: if we're "storing back" the same handle (e.g., after array modification),
+                // that's fine - it's a no-op
+                if self.is_globals_symbol(sym) {
+                    let existing_handle = self.frames.last()
+                        .and_then(|f| f.locals.get(&sym).copied())
+                        .or_else(|| self.context.globals.get(&sym).copied());
+                    
+                    if existing_handle == Some(val_handle) {
+                        // Same handle - no-op, skip the rest
+                    } else {
+                        return Err(VmError::RuntimeError(
+                            "$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax".into()
+                        ));
                     }
-                }
+                } else {
+                    // Normal variable assignment
+                    let to_bind = if self.is_superglobal(sym) {
+                        self.ensure_superglobal_handle(sym)
+                    } else {
+                        None
+                    };
+                    
+                    // Check if we're at top-level (before borrowing frame)
+                    let is_top_level = self.frames.len() == 1;
+                    
+                    let mut ref_handle: Option<Handle> = None;
+                    {
+                        let frame = self.frames.last_mut().unwrap();
 
-                if !is_target_ref {
-                    // Not assigning to a reference.
-                    // We MUST clone the value to ensure value semantics (no implicit sharing).
-                    // Unless we implement COW with refcounts.
-                    let val = self.arena.get(val_handle).value.clone();
-                    let final_handle = self.arena.alloc(val);
+                        if let Some(handle) = to_bind {
+                            frame.locals.entry(sym).or_insert(handle);
+                        }
 
-                    frame.locals.insert(sym, final_handle);
+                        if let Some(&old_handle) = frame.locals.get(&sym) {
+                            if self.arena.get(old_handle).is_ref {
+                                let new_val = self.arena.get(val_handle).value.clone();
+                                self.arena.get_mut(old_handle).value = new_val;
+                                ref_handle = Some(old_handle);
+                            }
+                        }
+                    }
+
+                    let final_handle = if let Some(existing) = ref_handle {
+                        existing
+                    } else {
+                        let val = self.clone_value_for_assignment(sym, val_handle);
+                        let new_handle = self.arena.alloc(val);
+                        self.frames
+                            .last_mut()
+                            .unwrap()
+                            .locals
+                            .insert(sym, new_handle);
+                        new_handle
+                    };
+
+                    // If we're at the top-level (frame depth == 1), also store in globals
+                    // This ensures $GLOBALS can access these variables
+                    if is_top_level {
+                        self.context.globals.insert(sym, final_handle);
+                    }
                 }
             }
             OpCode::StoreVarDynamic => {
@@ -2352,28 +2550,33 @@ impl VM {
                     None
                 };
 
-                let frame = self.frames.last_mut().unwrap();
+                let mut ref_handle: Option<Handle> = None;
+                {
+                    let frame = self.frames.last_mut().unwrap();
 
-                if let Some(handle) = to_bind {
-                    frame.locals.entry(sym).or_insert(handle);
+                    if let Some(handle) = to_bind {
+                        frame.locals.entry(sym).or_insert(handle);
+                    }
+
+                    if let Some(&old_handle) = frame.locals.get(&sym) {
+                        if self.arena.get(old_handle).is_ref {
+                            let new_val = self.arena.get(val_handle).value.clone();
+                            self.arena.get_mut(old_handle).value = new_val;
+                            ref_handle = Some(old_handle);
+                        }
+                    }
                 }
 
-                // Check if the target variable is a reference
-                let result_handle = if let Some(&old_handle) = frame.locals.get(&sym) {
-                    if self.arena.get(old_handle).is_ref {
-                        let new_val = self.arena.get(val_handle).value.clone();
-                        self.arena.get_mut(old_handle).value = new_val;
-                        old_handle
-                    } else {
-                        let val = self.arena.get(val_handle).value.clone();
-                        let final_handle = self.arena.alloc(val);
-                        frame.locals.insert(sym, final_handle);
-                        final_handle
-                    }
+                let result_handle = if let Some(existing) = ref_handle {
+                    existing
                 } else {
-                    let val = self.arena.get(val_handle).value.clone();
+                    let val = self.clone_value_for_assignment(sym, val_handle);
                     let final_handle = self.arena.alloc(val);
-                    frame.locals.insert(sym, final_handle);
+                    self.frames
+                        .last_mut()
+                        .unwrap()
+                        .locals
+                        .insert(sym, final_handle);
                     final_handle
                 };
 
@@ -2525,6 +2728,13 @@ impl VM {
                 }
             }
             OpCode::UnsetVar(sym) => {
+                // PHP 8.1+: Cannot unset $GLOBALS itself
+                if self.is_globals_symbol(sym) {
+                    return Err(VmError::RuntimeError(
+                        "Cannot unset $GLOBALS variable".into()
+                    ));
+                }
+                
                 if !self.is_superglobal(sym) {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
@@ -2537,6 +2747,14 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 let name_bytes = self.convert_to_string(name_handle)?;
                 let sym = self.context.interner.intern(&name_bytes);
+                
+                // PHP 8.1+: Cannot unset $GLOBALS itself  
+                if self.is_globals_symbol(sym) {
+                    return Err(VmError::RuntimeError(
+                        "Cannot unset $GLOBALS variable".into()
+                    ));
+                }
+                
                 if !self.is_superglobal(sym) {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
@@ -2604,15 +2822,12 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                if self.arena.get(handle).is_ref {
-                    self.operand_stack.push(handle);
-                } else {
-                    // Convert to ref. Clone to ensure uniqueness/safety.
-                    let val = self.arena.get(handle).value.clone();
-                    let new_handle = self.arena.alloc(val);
-                    self.arena.get_mut(new_handle).is_ref = true;
-                    self.operand_stack.push(new_handle);
-                }
+                // Mark the handle as a reference in-place
+                // This is critical for $GLOBALS reference behavior: when you do
+                // $ref = &$GLOBALS['x'], both $ref and the global $x must point to
+                // the SAME handle. Cloning would break this sharing.
+                self.arena.get_mut(handle).is_ref = true;
+                self.operand_stack.push(handle);
             }
 
             OpCode::Jmp(_)
@@ -3988,7 +4203,7 @@ impl VM {
 
                 let array_zval = self.arena.get_mut(array_handle);
                 if let Val::Array(map) = &mut array_zval.value {
-                    Rc::make_mut(map).map.insert(key, val_handle);
+                    Rc::make_mut(map).insert(key, val_handle);
                 } else {
                     return Err(VmError::RuntimeError(
                         "AddArrayElement expects array".into(),
@@ -4065,6 +4280,28 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 self.append_array(array_handle, val_handle)?;
+                
+                // Check if we just appended to an element of $GLOBALS and sync it
+                // This handles cases like: $GLOBALS['arr'][] = 4
+                let is_globals_element = {
+                    let globals_sym = self.context.interner.intern(b"GLOBALS");
+                    if let Some(&globals_handle) = self.context.globals.get(&globals_sym) {
+                        // Check if array_handle is an element within the $GLOBALS array
+                        if let Val::Array(globals_data) = &self.arena.get(globals_handle).value {
+                            globals_data.map.values().any(|&h| h == array_handle)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                
+                if is_globals_element {
+                    // The array was already modified in place, and since $GLOBALS elements
+                    // share handles with global variables, the change is already synced
+                    // No additional sync needed
+                }
             }
             OpCode::UnsetDim => {
                 let key_handle = self
@@ -4099,6 +4336,25 @@ impl VM {
                 let array_zval_mut = self.arena.get_mut(array_handle);
                 if let Val::Array(map) = &mut array_zval_mut.value {
                     Rc::make_mut(map).map.shift_remove(&key);
+                    
+                    // Check if this is a write to $GLOBALS and sync it
+                    let is_globals_write = {
+                        let globals_sym = self.context.interner.intern(b"GLOBALS");
+                        self.context.globals.get(&globals_sym).copied() == Some(array_handle)
+                    };
+                    
+                    if is_globals_write {
+                        // Sync the deletion back to the global symbol table
+                        if let ArrayKey::Str(key_bytes) = &key {
+                            let sym = self.context.interner.intern(key_bytes);
+                            if key_bytes.as_ref() != b"GLOBALS" {
+                                self.context.globals.remove(&sym);
+                                if let Some(frame) = self.frames.first_mut() {
+                                    frame.locals.remove(&sym);
+                                }
+                            }
+                        }
+                    }
                 }
             }
             OpCode::InArray => {
@@ -6563,7 +6819,7 @@ impl VM {
                     }
 
                     if let Val::Array(map) = container {
-                        Rc::make_mut(map).map.insert(key, val_handle);
+                        Rc::make_mut(map).insert(key, val_handle);
                         self.operand_stack.push(val_handle);
                     } else {
                         // Should not happen due to check above
@@ -8872,6 +9128,24 @@ impl VM {
         }
         Ok(())
     }
+
+    fn clone_value_for_assignment(&mut self, target_sym: Symbol, val_handle: Handle) -> Val {
+        let mut cloned = self.arena.get(val_handle).value.clone();
+
+        if !self.is_globals_symbol(target_sym) {
+            let globals_sym = self.context.interner.intern(b"GLOBALS");
+            if let Some(&globals_handle) = self.context.globals.get(&globals_sym) {
+                if globals_handle == val_handle {
+                    if let Val::Array(array_rc) = &mut cloned {
+                        let duplicated = (**array_rc).clone();
+                        *array_rc = Rc::new(duplicated);
+                    }
+                }
+            }
+        }
+
+        cloned
+    }
 }
 
 impl VM {
@@ -8951,6 +9225,27 @@ impl VM {
         let key_val = &self.arena.get(key_handle).value;
         let key = self.array_key_from_value(key_val)?;
 
+        // Check if this is a write to $GLOBALS and sync it
+        let globals_sym = self.context.interner.intern(b"GLOBALS");
+        let globals_handle = self.context.globals.get(&globals_sym).copied();
+        let is_globals_write = if let Some(globals_handle) = globals_handle {
+            if globals_handle == array_handle {
+                true
+            } else {
+                match (
+                    &self.arena.get(globals_handle).value,
+                    &self.arena.get(array_handle).value,
+                ) {
+                    (Val::Array(globals_map), Val::Array(current_map)) => {
+                        Rc::ptr_eq(globals_map, current_map)
+                    }
+                    _ => false,
+                }
+            }
+        } else {
+            false
+        };
+
         let is_ref = self.arena.get(array_handle).is_ref;
 
         if is_ref {
@@ -8960,11 +9255,16 @@ impl VM {
                 array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
-            if let Val::Array(map) = &mut array_zval_mut.value {
-                Rc::make_mut(map).map.insert(key, val_handle);
-            } else {
-                return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
-            }
+                if let Val::Array(map) = &mut array_zval_mut.value {
+                    Rc::make_mut(map).insert(key.clone(), val_handle);
+
+                    // Sync to global symbol table if this is $GLOBALS
+                    if is_globals_write {
+                        self.sync_globals_key(&key, val_handle);
+                    }
+                } else {
+                    return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+                }
             self.operand_stack.push(array_handle);
         } else {
             let array_zval = self.arena.get(array_handle);
@@ -8975,7 +9275,12 @@ impl VM {
             }
 
             if let Val::Array(ref mut map) = new_val {
-                Rc::make_mut(map).map.insert(key, val_handle);
+                Rc::make_mut(map).insert(key.clone(), val_handle);
+
+                // Sync to global symbol table if this is $GLOBALS
+                if is_globals_write {
+                    self.sync_globals_key(&key, val_handle);
+                }
             } else {
                 return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
             }
@@ -8995,8 +9300,11 @@ impl VM {
         val_handle: Handle,
     ) -> Result<(), VmError> {
         let is_ref = self.arena.get(array_handle).is_ref;
+        // Check if this handle is a global variable (accessed via $GLOBALS)
+        // In that case, modify in-place to ensure $arr and $GLOBALS['arr'] stay in sync
+        let is_global_handle = self.is_global_variable_handle(array_handle);
 
-        if is_ref {
+        if is_ref || is_global_handle {
             let array_zval_mut = self.arena.get_mut(array_handle);
 
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
@@ -9201,10 +9509,12 @@ impl VM {
         let key_handle = keys[0];
         let remaining_keys = &keys[1..];
 
-        // Check if current handle is a reference - if so, mutate in place
+        // Check if current handle is a reference OR a global variable
+        // Global variables should be modified in-place even if not marked as ref
         let is_ref = self.arena.get(current_handle).is_ref;
+        let is_global = self.is_global_variable_handle(current_handle);
 
-        if is_ref {
+        if is_ref || is_global {
             // For refs, we need to mutate in place
             // First, get the key and auto-vivify if needed
             let (needs_autovivify, key) = {
@@ -9243,6 +9553,27 @@ impl VM {
             };
 
             if remaining_keys.is_empty() {
+                // Check if this is a write to $GLOBALS and sync it
+                let globals_sym = self.context.interner.intern(b"GLOBALS");
+                let globals_handle = self.context.globals.get(&globals_sym).copied();
+                let is_globals_write = if let Some(globals_handle) = globals_handle {
+                    if globals_handle == current_handle {
+                        true
+                    } else {
+                        match (
+                            &self.arena.get(globals_handle).value,
+                            &self.arena.get(current_handle).value,
+                        ) {
+                            (Val::Array(globals_map), Val::Array(current_map)) => {
+                                Rc::ptr_eq(globals_map, current_map)
+                            }
+                            _ => false,
+                        }
+                    }
+                } else {
+                    false
+                };
+
                 // We are at the last key - check for existing ref
                 let existing_ref: Option<Handle> = {
                     let current_zval = self.arena.get(current_handle);
@@ -9267,8 +9598,13 @@ impl VM {
                     // Insert new value
                     let current_zval = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval.value {
-                        Rc::make_mut(map).map.insert(key, val_handle);
+                        Rc::make_mut(map).insert(key.clone(), val_handle);
                     }
+                }
+
+                // Sync to global symbol table if this is $GLOBALS
+                if is_globals_write {
+                    self.sync_globals_key(&key, val_handle);
                 }
             } else {
                 // Go deeper - get or create next level
@@ -9290,7 +9626,7 @@ impl VM {
                         .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
                     let current_zval_mut = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval_mut.value {
-                        Rc::make_mut(map).map.insert(key.clone(), empty_handle);
+                        Rc::make_mut(map).insert(key.clone(), empty_handle);
                     }
                     empty_handle
                 };
@@ -9302,7 +9638,7 @@ impl VM {
                 if new_next_handle != next_handle {
                     let current_zval = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval.value {
-                        Rc::make_mut(map).map.insert(key, new_next_handle);
+                        Rc::make_mut(map).insert(key, new_next_handle);
                     }
                 }
             }
