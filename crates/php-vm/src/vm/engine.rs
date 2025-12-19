@@ -1383,14 +1383,13 @@ impl VM {
 
             // Check for matching catch or finally blocks
             let mut found_catch = false;
-            let mut finally_info = None;
 
             for entry in &chunk.catch_table {
                 if ip >= entry.start && ip < entry.end {
                     // Check for finally-only entry (no catch type)
                     if entry.catch_type.is_none() {
-                        // This is a finally-only entry
-                        finally_info = Some((entry.target, entry.finally_end));
+                        // This is a finally-only entry - collect it
+                        finally_blocks.push((frame_idx, chunk.clone(), entry.target, entry.finally_end));
                         continue;
                     }
 
@@ -1416,36 +1415,27 @@ impl VM {
                             break;
                         }
                     }
-
-                    // Track finally target if present in catch entry
-                    if let (Some(target), Some(end)) = (entry.finally_target, entry.finally_end) {
-                        finally_info = Some((target, Some(end)));
-                    }
                 }
             }
 
             if found_catch {
                 return true;
             }
-
-            // If we found a finally block, collect it for execution during unwinding
-            if let Some((target, end)) = finally_info {
-                finally_blocks.push((frame_idx, chunk.clone(), target, end));
-            }
         }
 
-        // No catch found - execute finally blocks during unwinding and then clear frames
-        // In PHP, finally blocks execute even when exception is not caught
+        // No catch found - execute finally blocks during unwinding
+        // In PHP, finally blocks execute from innermost to outermost
+        // We've already collected them in the correct order during iteration
         self.execute_finally_blocks(&finally_blocks);
         self.frames.clear();
         false
     }
 
-    /// Execute finally blocks during exception unwinding
-    /// Executes from outermost to innermost (reverse order of collection)
+    /// Execute finally blocks
+    /// Blocks should be provided in the order they should execute (innermost to outermost)
     fn execute_finally_blocks(&mut self, finally_blocks: &[(usize, Rc<CodeChunk>, u32, Option<u32>)]) {
-        // Execute in reverse order (from outer to inner in the unwind)
-        for (frame_idx, chunk, target, end) in finally_blocks.iter().rev() {
+        // Execute in the order provided (innermost to outermost)
+        for (frame_idx, chunk, target, end) in finally_blocks.iter() {
             // Truncate frames to the finally's level
             self.frames.truncate(*frame_idx + 1);
             
@@ -1491,6 +1481,137 @@ impl VM {
                 }
             }
         }
+    }
+
+    /// Collect finally blocks that need to execute before a return
+    /// Returns a list of (frame_idx, chunk, target, end) tuples
+    fn collect_finally_blocks_for_return(&self) -> Vec<(usize, Rc<CodeChunk>, u32, Option<u32>)> {
+        let mut finally_blocks = Vec::new();
+        
+        if self.frames.is_empty() {
+            return finally_blocks;
+        }
+        
+        let current_frame_idx = self.frames.len() - 1;
+        let frame = &self.frames[current_frame_idx];
+        let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 } as u32;
+        
+        // Collect all finally blocks that contain the current IP
+        // We need to collect from innermost to outermost (will reverse later for execution)
+        let mut entries_to_execute: Vec<_> = frame.chunk.catch_table.iter()
+            .filter(|entry| {
+                ip >= entry.start && ip < entry.end && entry.catch_type.is_none()
+            })
+            .collect();
+        
+        // Sort by range size (smaller = more nested = inner)
+        // Execute from inner to outer
+        entries_to_execute.sort_by_key(|entry| entry.end - entry.start);
+        
+        for entry in entries_to_execute {
+            if let Some(end) = entry.finally_end {
+                finally_blocks.push((current_frame_idx, frame.chunk.clone(), entry.target, Some(end)));
+            }
+        }
+        
+        finally_blocks
+    }
+
+    /// Complete the return after finally blocks have executed
+    fn complete_return(&mut self, ret_val: Handle, force_by_ref: bool, target_depth: usize) -> Result<(), VmError> {
+        // Verify return type BEFORE popping the frame
+        let return_type_check = {
+            let frame = self.current_frame()?;
+            frame.func.as_ref().and_then(|f| {
+                f.return_type.as_ref().map(|rt| {
+                    let func_name = self
+                        .context
+                        .interner
+                        .lookup(f.chunk.name)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    (rt.clone(), func_name)
+                })
+            })
+        };
+
+        if let Some((ret_type, func_name)) = return_type_check {
+            if !self.check_return_type(ret_val, &ret_type)? {
+                let val_type = self.get_type_name(ret_val);
+                let expected_type = self.return_type_to_string(&ret_type);
+
+                return Err(VmError::RuntimeError(format!(
+                    "{}(): Return value must be of type {}, {} returned",
+                    func_name, expected_type, val_type
+                )));
+            }
+        }
+
+        let frame_base = {
+            let frame = self.current_frame()?;
+            frame.stack_base.unwrap_or(0)
+        };
+
+        while self.operand_stack.len() > frame_base {
+            self.operand_stack.pop();
+        }
+
+        let popped_frame = self.pop_frame()?;
+
+        if let Some(gen_handle) = popped_frame.generator {
+            let gen_val = self.arena.get(gen_handle);
+            if let Val::Object(payload_handle) = &gen_val.value {
+                let payload = self.arena.get(*payload_handle);
+                if let Val::ObjPayload(obj_data) = &payload.value {
+                    if let Some(internal) = &obj_data.internal {
+                        if let Ok(gen_data) = internal.clone().downcast::<RefCell<GeneratorData>>()
+                        {
+                            let mut data = gen_data.borrow_mut();
+                            data.state = GeneratorState::Finished;
+                        }
+                    }
+                }
+            }
+        }
+
+        let returns_ref = force_by_ref || popped_frame.chunk.returns_ref;
+
+        // Handle return by reference
+        let final_ret_val = if returns_ref {
+            if !self.arena.get(ret_val).is_ref {
+                self.arena.get_mut(ret_val).is_ref = true;
+            }
+            ret_val
+        } else {
+            // Function returns by value: if ret_val is a ref, dereference (copy) it.
+            if self.arena.get(ret_val).is_ref {
+                let val = self.arena.get(ret_val).value.clone();
+                self.arena.alloc(val)
+            } else {
+                ret_val
+            }
+        };
+
+        if self.frames.len() == target_depth {
+            self.last_return_value = Some(final_ret_val);
+            return Ok(());
+        }
+
+        if popped_frame.discard_return {
+            // Return value is discarded
+        } else if popped_frame.is_constructor {
+            if let Some(this_handle) = popped_frame.this {
+                self.operand_stack.push(this_handle);
+            } else {
+                return Err(VmError::RuntimeError(
+                    "Constructor frame missing 'this'".into(),
+                ));
+            }
+        } else {
+            self.operand_stack.push(final_ret_val);
+        }
+
+        Ok(())
     }
 
     pub fn run(&mut self, chunk: Rc<CodeChunk>) -> Result<(), VmError> {
@@ -1622,95 +1743,33 @@ impl VM {
             self.arena.alloc(Val::Null)
         };
 
-        // Verify return type BEFORE popping the frame
-        // Extract type info first to avoid borrow checker issues
-        let return_type_check = {
-            let frame = self.current_frame()?;
-            frame.func.as_ref().and_then(|f| {
-                f.return_type.as_ref().map(|rt| {
-                    let func_name = self
-                        .context
-                        .interner
-                        .lookup(f.chunk.name)
-                        .map(|b| String::from_utf8_lossy(b).to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    (rt.clone(), func_name)
-                })
-            })
-        };
-
-        if let Some((ret_type, func_name)) = return_type_check {
-            if !self.check_return_type(ret_val, &ret_type)? {
-                let val_type = self.get_type_name(ret_val);
-                let expected_type = self.return_type_to_string(&ret_type);
-
-                return Err(VmError::RuntimeError(format!(
-                    "{}(): Return value must be of type {}, {} returned",
-                    func_name, expected_type, val_type
-                )));
+        // Check if we need to execute finally blocks before returning
+        let finally_blocks = self.collect_finally_blocks_for_return();
+        
+        // Execute finally blocks if any
+        if !finally_blocks.is_empty() {
+            // Save return value and frame info before executing finally
+            let saved_ret_val = ret_val;
+            let saved_frame_count = self.frames.len();
+            
+            // Execute finally blocks
+            self.execute_finally_blocks(&finally_blocks);
+            
+            // Check if finally blocks caused a return (frame was popped)
+            if self.frames.len() < saved_frame_count {
+                // Finally block executed a return and popped the frame
+                // The return value is already set in last_return_value
+                // Just return Ok - the frame has already been handled
+                return Ok(());
             }
+            
+            // Finally didn't return, use the original return value
+            // Continue with normal return handling
+            return self.complete_return(saved_ret_val, force_by_ref, target_depth);
         }
 
-        while self.operand_stack.len() > frame_base {
-            self.operand_stack.pop();
-        }
-
-        let popped_frame = self.pop_frame()?;
-
-        if let Some(gen_handle) = popped_frame.generator {
-            let gen_val = self.arena.get(gen_handle);
-            if let Val::Object(payload_handle) = &gen_val.value {
-                let payload = self.arena.get(*payload_handle);
-                if let Val::ObjPayload(obj_data) = &payload.value {
-                    if let Some(internal) = &obj_data.internal {
-                        if let Ok(gen_data) = internal.clone().downcast::<RefCell<GeneratorData>>()
-                        {
-                            let mut data = gen_data.borrow_mut();
-                            data.state = GeneratorState::Finished;
-                        }
-                    }
-                }
-            }
-        }
-
-        let returns_ref = force_by_ref || popped_frame.chunk.returns_ref;
-
-        // Handle return by reference
-        let final_ret_val = if returns_ref {
-            if !self.arena.get(ret_val).is_ref {
-                self.arena.get_mut(ret_val).is_ref = true;
-            }
-            ret_val
-        } else {
-            // Function returns by value: if ret_val is a ref, dereference (copy) it.
-            if self.arena.get(ret_val).is_ref {
-                let val = self.arena.get(ret_val).value.clone();
-                self.arena.alloc(val)
-            } else {
-                ret_val
-            }
-        };
-
-        if self.frames.len() == target_depth {
-            self.last_return_value = Some(final_ret_val);
-            return Ok(());
-        }
-
-        if popped_frame.discard_return {
-            // Return value is discarded
-        } else if popped_frame.is_constructor {
-            if let Some(this_handle) = popped_frame.this {
-                self.operand_stack.push(this_handle);
-            } else {
-                return Err(VmError::RuntimeError(
-                    "Constructor frame missing 'this'".into(),
-                ));
-            }
-        } else {
-            self.operand_stack.push(final_ret_val);
-        }
-
-        Ok(())
+        // No finally blocks - proceed with normal return
+        self.complete_return(ret_val, force_by_ref, target_depth)
     }
 
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
