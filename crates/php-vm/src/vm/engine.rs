@@ -284,6 +284,10 @@ pub struct VM {
     trace_includes: bool,
     superglobal_map: HashMap<Symbol, SuperglobalKind>,
     pub execution_start_time: SystemTime,
+    /// Track if we're currently executing finally blocks to prevent recursion
+    executing_finally: bool,
+    /// Stores a return value from within a finally block to override the original return
+    finally_return_value: Option<Handle>,
 }
 
 impl VM {
@@ -308,6 +312,8 @@ impl VM {
             trace_includes,
             superglobal_map: HashMap::new(),
             execution_start_time: SystemTime::now(),
+            executing_finally: false,
+            finally_return_value: None,
         };
         vm.initialize_superglobals();
         vm
@@ -487,6 +493,8 @@ impl VM {
             trace_includes,
             superglobal_map: HashMap::new(),
             execution_start_time: SystemTime::now(),
+            executing_finally: false,
+            finally_return_value: None,
         };
         vm.initialize_superglobals();
         vm
@@ -1532,11 +1540,16 @@ impl VM {
             // Truncate frames to the finally's level
             self.frames.truncate(*frame_idx + 1);
             
+            // Save the original frame state
+            let saved_stack_base = self.frames[*frame_idx].stack_base;
+            
             // Set up the frame to execute the finally block
             {
                 let frame = &mut self.frames[*frame_idx];
                 frame.chunk = chunk.clone();
                 frame.ip = *target as usize;
+                // Set stack_base to current operand stack length so return can work correctly
+                frame.stack_base = Some(self.operand_stack.len());
             }
             
             // Execute only the finally block, not code after it
@@ -1565,6 +1578,11 @@ impl VM {
                     
                     // Execute the opcode, ignoring errors from finally itself
                     let _ = self.execute_opcode(op, *frame_idx);
+                    
+                    // If the frame was popped (return happened), break out
+                    if *frame_idx >= self.frames.len() {
+                        break;
+                    }
                 }
             } else {
                 // Fallback: execute until frame is popped (old behavior)
@@ -1572,6 +1590,11 @@ impl VM {
                 if self.frames.len() > *frame_idx {
                     self.frames.truncate(*frame_idx);
                 }
+            }
+            
+            // Restore stack_base if frame still exists
+            if *frame_idx < self.frames.len() {
+                self.frames[*frame_idx].stack_base = saved_stack_base;
             }
         }
     }
@@ -1869,29 +1892,45 @@ impl VM {
             self.arena.alloc(Val::Null)
         };
 
+        // If we're already executing finally blocks, store the return value and return
+        // This allows the finally block to override the original return value
+        if self.executing_finally {
+            // Store the return value from the finally block
+            self.finally_return_value = Some(ret_val);
+            // Don't pop the frame or complete the return yet
+            // Just return Ok to let the finally execution continue
+            return Ok(());
+        }
+
         // Check if we need to execute finally blocks before returning
         let finally_blocks = self.collect_finally_blocks_for_return();
         
         // Execute finally blocks if any
         if !finally_blocks.is_empty() {
-            // Save return value and frame info before executing finally
+            // Save return value before executing finally
             let saved_ret_val = ret_val;
-            let saved_frame_count = self.frames.len();
+            
+            // Mark that we're executing finally blocks
+            self.executing_finally = true;
+            self.finally_return_value = None;
             
             // Execute finally blocks
             self.execute_finally_blocks(&finally_blocks);
             
-            // Check if finally blocks caused a return (frame was popped)
-            if self.frames.len() < saved_frame_count {
-                // Finally block executed a return and popped the frame
-                // The return value is already set in last_return_value
-                // Just return Ok - the frame has already been handled
-                return Ok(());
-            }
+            // Clear the flag
+            self.executing_finally = false;
             
-            // Finally didn't return, use the original return value
-            // Continue with normal return handling
-            return self.complete_return(saved_ret_val, force_by_ref, target_depth);
+            // Check if finally block set a return value (override)
+            let final_ret_val = if let Some(finally_val) = self.finally_return_value.take() {
+                // Finally block returned - use its value instead
+                finally_val
+            } else {
+                // Finally didn't return - use original value
+                saved_ret_val
+            };
+            
+            // Continue with normal return handling using the final value
+            return self.complete_return(final_ret_val, force_by_ref, target_depth);
         }
 
         // No finally blocks - proceed with normal return

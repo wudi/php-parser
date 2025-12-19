@@ -128,7 +128,6 @@ echo outer();
 }
 
 #[test]
-#[ignore = "Return override in finally needs additional handling"]
 fn test_return_in_finally_overrides() {
     // Return in finally overrides return in try
     let code = r#"<?php
