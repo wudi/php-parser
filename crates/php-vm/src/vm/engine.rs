@@ -4939,17 +4939,20 @@ impl VM {
                 self.operand_stack.push(handle);
             }
             OpCode::New(class_name, arg_count) => {
+                // Resolve special class names (self, parent, static)
+                let resolved_class = self.resolve_class_name(class_name)?;
+                
                 // Try autoloading if class doesn't exist
-                if !self.context.classes.contains_key(&class_name) {
-                    self.trigger_autoload(class_name)?;
+                if !self.context.classes.contains_key(&resolved_class) {
+                    self.trigger_autoload(resolved_class)?;
                 }
 
-                if self.context.classes.contains_key(&class_name) {
+                if self.context.classes.contains_key(&resolved_class) {
                     let properties =
-                        self.collect_properties(class_name, PropertyCollectionMode::All);
+                        self.collect_properties(resolved_class, PropertyCollectionMode::All);
 
                     let obj_data = ObjectData {
-                        class: class_name,
+                        class: resolved_class,
                         properties,
                         internal: None,
                         dynamic_properties: std::collections::HashSet::new(),
@@ -4961,7 +4964,7 @@ impl VM {
 
                     // Check for constructor
                     let constructor_name = self.context.interner.intern(b"__construct");
-                    let mut method_lookup = self.find_method(class_name, constructor_name);
+                    let mut method_lookup = self.find_method(resolved_class, constructor_name);
 
                     if method_lookup.is_none() {
                         if let Some(scope) = self.get_current_class() {
@@ -5016,7 +5019,7 @@ impl VM {
                     } else {
                         // Check for native constructor
                         let native_constructor =
-                            self.find_native_method(class_name, constructor_name);
+                            self.find_native_method(resolved_class, constructor_name);
                         if let Some(native_entry) = native_constructor {
                             // Call native constructor
                             let args = self.collect_call_args(arg_count)?;
@@ -5042,7 +5045,7 @@ impl VM {
                             // For built-in exception/error classes, accept args silently (they have implicit constructors)
                             let is_builtin_exception = {
                                 let class_name_bytes =
-                                    self.context.interner.lookup(class_name).unwrap_or(b"");
+                                    self.context.interner.lookup(resolved_class).unwrap_or(b"");
                                 matches!(
                                     class_name_bytes,
                                     b"Exception"
@@ -5062,7 +5065,7 @@ impl VM {
                                 let class_name_bytes = self
                                     .context
                                     .interner
-                                    .lookup(class_name)
+                                    .lookup(resolved_class)
                                     .unwrap_or(b"<unknown>");
                                 let class_name_str = String::from_utf8_lossy(class_name_bytes);
                                 return Err(VmError::RuntimeError(format!("Class {} does not have a constructor, so you cannot pass any constructor arguments", class_name_str).into()));

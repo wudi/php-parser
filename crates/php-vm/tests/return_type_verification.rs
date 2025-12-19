@@ -729,10 +729,8 @@ fn test_union_with_class_types() {
 }
 
 // === Static Return Type Tests ===
-// TODO: These tests require full static method call support
 
 #[test]
-#[ignore = "Requires full static method call support"]
 fn test_static_return_type_in_base_class() {
     let code = r#"
         <?php
@@ -748,7 +746,6 @@ fn test_static_return_type_in_base_class() {
 }
 
 #[test]
-#[ignore = "Requires full static method call support"]
 fn test_static_return_type_in_derived_class() {
     let code = r#"
         <?php
@@ -765,7 +762,6 @@ fn test_static_return_type_in_derived_class() {
 }
 
 #[test]
-#[ignore = "Requires full static method call support"]
 fn test_static_return_type_invalid() {
     let code = r#"
         <?php
