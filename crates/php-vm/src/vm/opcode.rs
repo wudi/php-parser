@@ -92,6 +92,7 @@ pub enum OpCode {
     AppendArray,
     StoreAppend, // AppendArray but with [val, array] stack order (popped as array, val)
     UnsetDim,
+    UnsetNestedDim(u8), // Unset nested array element. Arg is depth (number of keys). Stack: [key_n, ..., key_1, array] -> [modified_array]
     InArray,
     ArrayKeyExists,
 

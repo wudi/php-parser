@@ -4410,6 +4410,8 @@ impl VM {
 
             OpCode::FetchNestedDim(depth) => self.exec_fetch_nested_dim_op(depth)?,
 
+            OpCode::UnsetNestedDim(depth) => self.exec_unset_nested_dim(depth)?,
+
             OpCode::IterInit(target) => {
                 // Stack: [Array/Object]
                 let iterable_handle = self
@@ -9353,6 +9355,18 @@ impl VM {
         Ok(())
     }
 
+    pub(crate) fn unset_nested_dim(
+        &mut self,
+        array_handle: Handle,
+        keys: &[Handle],
+    ) -> Result<Handle, VmError> {
+        // Similar to assign_nested_dim, but removes the element instead of setting it
+        // We need to traverse down, creating copies if necessary (COW),
+        // then unset the bottom element, then reconstruct the path up.
+
+        self.unset_nested_recursive(array_handle, keys)
+    }
+
     pub(crate) fn fetch_nested_dim(
         &mut self,
         array_handle: Handle,
@@ -9697,6 +9711,105 @@ impl VM {
         } else {
             return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
         }
+
+        let new_handle = self.arena.alloc(new_val);
+        Ok(new_handle)
+    }
+
+    fn unset_nested_recursive(
+        &mut self,
+        current_handle: Handle,
+        keys: &[Handle],
+    ) -> Result<Handle, VmError> {
+        if keys.is_empty() {
+            // No keys - nothing to unset
+            return Ok(current_handle);
+        }
+
+        let key_handle = keys[0];
+        let remaining_keys = &keys[1..];
+
+        // Check if current handle is a reference OR a global variable
+        let is_ref = self.arena.get(current_handle).is_ref;
+        let is_global = self.is_global_variable_handle(current_handle);
+
+        if is_ref || is_global {
+            // For refs, we need to mutate in place
+            let key = {
+                let key_val = &self.arena.get(key_handle).value;
+                self.array_key_from_value(key_val)?
+            };
+
+            if remaining_keys.is_empty() {
+                // We are at the last key - remove it
+                let current_zval = self.arena.get_mut(current_handle);
+                if let Val::Array(ref mut map) = current_zval.value {
+                    Rc::make_mut(map).map.shift_remove(&key);
+                    
+                    // Check if this is a write to $GLOBALS and sync it
+                    let globals_sym = self.context.interner.intern(b"GLOBALS");
+                    if self.context.globals.get(&globals_sym).copied() == Some(current_handle) {
+                        // Sync the deletion back to the global symbol table
+                        if let ArrayKey::Str(key_bytes) = &key {
+                            let sym = self.context.interner.intern(key_bytes);
+                            if key_bytes.as_ref() != b"GLOBALS" {
+                                self.context.globals.remove(&sym);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Go deeper - get the next level
+                let next_handle_opt: Option<Handle> = {
+                    let current_zval = self.arena.get(current_handle);
+                    if let Val::Array(map) = &current_zval.value {
+                        map.map.get(&key).copied()
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(next_handle) = next_handle_opt {
+                    let new_next_handle =
+                        self.unset_nested_recursive(next_handle, remaining_keys)?;
+
+                    // Only update if changed (if next_handle is a ref, it's mutated in place)
+                    if new_next_handle != next_handle {
+                        let current_zval = self.arena.get_mut(current_handle);
+                        if let Val::Array(ref mut map) = current_zval.value {
+                            Rc::make_mut(map).insert(key, new_next_handle);
+                        }
+                    }
+                }
+                // If the key doesn't exist, there's nothing to unset - silently succeed
+            }
+
+            return Ok(current_handle);
+        }
+
+        // Not a reference - COW: Clone current array
+        let current_zval = self.arena.get(current_handle);
+        let mut new_val = current_zval.value.clone();
+
+        if let Val::Array(ref mut map) = new_val {
+            let map_mut = Rc::make_mut(map);
+            let key_val = &self.arena.get(key_handle).value;
+            let key = self.array_key_from_value(key_val)?;
+
+            if remaining_keys.is_empty() {
+                // We are at the last key - remove it
+                map_mut.map.shift_remove(&key);
+            } else {
+                // We need to go deeper
+                if let Some(next_handle) = map_mut.map.get(&key) {
+                    let new_next_handle =
+                        self.unset_nested_recursive(*next_handle, remaining_keys)?;
+                    map_mut.insert(key, new_next_handle);
+                }
+                // If the key doesn't exist, there's nothing to unset - silently succeed
+            }
+        }
+        // If not an array, there's nothing to unset - silently succeed
 
         let new_handle = self.arena.alloc(new_val);
         Ok(new_handle)

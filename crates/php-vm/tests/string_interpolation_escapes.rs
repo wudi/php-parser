@@ -143,7 +143,6 @@ echo isset($t->data['baz']) ? "exists" : "not exists";
 }
 
 #[test]
-#[ignore] // TODO: Nested array unset needs special handling
 fn test_unset_nested_property_array() {
     let code = br#"<?php
 class Test {

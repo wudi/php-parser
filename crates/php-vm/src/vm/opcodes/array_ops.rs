@@ -141,6 +141,20 @@ impl VM {
         self.operand_stack.push(result);
         Ok(())
     }
+
+    /// Execute UnsetNestedDim operation: unset($array[$k1][$k2]..[$kN])
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - nested array unset
+    #[inline]
+    pub(crate) fn exec_unset_nested_dim(&mut self, key_count: u8) -> Result<(), VmError> {
+        // Stack: [array, key_n, ..., key_1] (top is key_1)
+        // Similar to FetchNestedDim but modifies the array
+        let keys = self.pop_n_operands(key_count as usize)?;
+        let array_handle = self.pop_operand_required()?;
+
+        let new_handle = self.unset_nested_dim(array_handle, &keys)?;
+        self.operand_stack.push(new_handle);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
