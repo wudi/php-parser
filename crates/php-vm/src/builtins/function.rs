@@ -188,9 +188,17 @@ pub fn php_extension_loaded(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
         }
     };
 
-    let normalized: Vec<u8> = ext_name.iter().map(|b| b.to_ascii_lowercase()).collect();
-    const ALWAYS_ON: [&[u8]; 2] = [b"core", b"standard"];
-    let is_loaded = ALWAYS_ON.iter().any(|ext| *ext == normalized.as_slice());
+    // Normalize to lowercase for case-insensitive comparison
+    let ext_name_str = String::from_utf8_lossy(ext_name).to_lowercase();
+    
+    // Check extension registry first
+    let is_loaded = vm.context.engine.registry.extension_loaded(&ext_name_str);
+    
+    // Fallback to hardcoded always-on extensions
+    let is_loaded = is_loaded || {
+        const ALWAYS_ON: [&str; 2] = ["core", "standard"];
+        ALWAYS_ON.contains(&ext_name_str.as_str())
+    };
 
     Ok(vm.arena.alloc(Val::Bool(is_loaded)))
 }

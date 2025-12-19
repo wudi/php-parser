@@ -34,8 +34,8 @@ pub struct ExtensionRegistry {
     extensions: Vec<Box<dyn Extension>>,
     /// Extension name -> index mapping for fast lookup
     extension_map: HashMap<String, usize>,
-    /// Engine-level constants
-    constants: HashMap<Symbol, Val>,
+    /// Engine-level constants (name -> value)
+    constants: HashMap<Vec<u8>, Val>,
 }
 
 impl ExtensionRegistry {
@@ -63,8 +63,10 @@ impl ExtensionRegistry {
     }
 
     /// Register an engine-level constant
-    pub fn register_constant(&mut self, name: Symbol, value: Val) {
-        self.constants.insert(name, value);
+    ///
+    /// Constant names are stored as byte slices and later interned when needed.
+    pub fn register_constant(&mut self, name: &[u8], value: Val) {
+        self.constants.insert(name.to_vec(), value);
     }
 
     /// Get a function handler by name (case-insensitive lookup)
@@ -90,9 +92,9 @@ impl ExtensionRegistry {
         self.classes.get(name)
     }
 
-    /// Get an engine-level constant
-    pub fn get_constant(&self, name: Symbol) -> Option<&Val> {
-        self.constants.get(&name)
+    /// Get an engine-level constant by name (case-sensitive)
+    pub fn get_constant(&self, name: &[u8]) -> Option<&Val> {
+        self.constants.get(name)
     }
 
     /// Check if an extension is loaded
@@ -200,7 +202,7 @@ impl ExtensionRegistry {
     }
 
     /// Get all registered constants
-    pub fn constants(&self) -> &HashMap<Symbol, Val> {
+    pub fn constants(&self) -> &HashMap<Vec<u8>, Val> {
         &self.constants
     }
 }

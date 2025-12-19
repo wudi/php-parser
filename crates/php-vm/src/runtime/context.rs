@@ -598,35 +598,21 @@ impl EngineContext {
             b"output_add_rewrite_var".to_vec(),
             output_control::php_output_add_rewrite_var as NativeHandler,
         );
-
-        // JSON functions
-        functions.insert(
-            b"json_encode".to_vec(),
-            json::php_json_encode as NativeHandler,
-        );
-        functions.insert(
-            b"json_decode".to_vec(),
-            json::php_json_decode as NativeHandler,
-        );
-        functions.insert(
-            b"json_last_error".to_vec(),
-            json::php_json_last_error as NativeHandler,
-        );
-        functions.insert(
-            b"json_last_error_msg".to_vec(),
-            json::php_json_last_error_msg as NativeHandler,
-        );
-        functions.insert(
-            b"json_validate".to_vec(),
-            json::php_json_validate as NativeHandler,
-        );
         functions.insert(
             b"output_reset_rewrite_vars".to_vec(),
             output_control::php_output_reset_rewrite_vars as NativeHandler,
         );
 
+        let mut registry = ExtensionRegistry::new();
+        
+        // Register JSON extension
+        use crate::runtime::json_extension::JsonExtension;
+        registry
+            .register_extension(Box::new(JsonExtension))
+            .expect("Failed to register JSON extension");
+
         Self {
-            registry: ExtensionRegistry::new(),
+            registry,
             functions,
             constants: HashMap::new(),
         }
@@ -1786,42 +1772,11 @@ impl RequestContext {
         self.insert_builtin_constant(b"E_USER_DEPRECATED", Val::Int(16384));
         self.insert_builtin_constant(b"E_ALL", Val::Int(32767));
 
-        // JSON error constants
-        // Reference: $PHP_SRC_PATH/ext/json/php_json.h
-        self.insert_builtin_constant(b"JSON_ERROR_NONE", Val::Int(0));
-        self.insert_builtin_constant(b"JSON_ERROR_DEPTH", Val::Int(1));
-        self.insert_builtin_constant(b"JSON_ERROR_STATE_MISMATCH", Val::Int(2));
-        self.insert_builtin_constant(b"JSON_ERROR_CTRL_CHAR", Val::Int(3));
-        self.insert_builtin_constant(b"JSON_ERROR_SYNTAX", Val::Int(4));
-        self.insert_builtin_constant(b"JSON_ERROR_UTF8", Val::Int(5));
-        self.insert_builtin_constant(b"JSON_ERROR_RECURSION", Val::Int(6));
-        self.insert_builtin_constant(b"JSON_ERROR_INF_OR_NAN", Val::Int(7));
-        self.insert_builtin_constant(b"JSON_ERROR_UNSUPPORTED_TYPE", Val::Int(8));
-        self.insert_builtin_constant(b"JSON_ERROR_INVALID_PROPERTY_NAME", Val::Int(9));
-        self.insert_builtin_constant(b"JSON_ERROR_UTF16", Val::Int(10));
-
-        // JSON encoding option flags
-        self.insert_builtin_constant(b"JSON_HEX_TAG", Val::Int(1));
-        self.insert_builtin_constant(b"JSON_HEX_AMP", Val::Int(2));
-        self.insert_builtin_constant(b"JSON_HEX_APOS", Val::Int(4));
-        self.insert_builtin_constant(b"JSON_HEX_QUOT", Val::Int(8));
-        self.insert_builtin_constant(b"JSON_FORCE_OBJECT", Val::Int(16));
-        self.insert_builtin_constant(b"JSON_NUMERIC_CHECK", Val::Int(32));
-        self.insert_builtin_constant(b"JSON_UNESCAPED_SLASHES", Val::Int(64));
-        self.insert_builtin_constant(b"JSON_PRETTY_PRINT", Val::Int(128));
-        self.insert_builtin_constant(b"JSON_UNESCAPED_UNICODE", Val::Int(256));
-        self.insert_builtin_constant(b"JSON_PARTIAL_OUTPUT_ON_ERROR", Val::Int(512));
-        self.insert_builtin_constant(b"JSON_PRESERVE_ZERO_FRACTION", Val::Int(1024));
-        self.insert_builtin_constant(b"JSON_UNESCAPED_LINE_TERMINATORS", Val::Int(2048));
-
-        // JSON decoding option flags
-        self.insert_builtin_constant(b"JSON_OBJECT_AS_ARRAY", Val::Int(1));
-        self.insert_builtin_constant(b"JSON_BIGINT_AS_STRING", Val::Int(2));
-        self.insert_builtin_constant(b"JSON_INVALID_UTF8_IGNORE", Val::Int(1048576));
-        self.insert_builtin_constant(b"JSON_INVALID_UTF8_SUBSTITUTE", Val::Int(2097152));
-
-        // JSON_THROW_ON_ERROR (shared for both encode and decode)
-        self.insert_builtin_constant(b"JSON_THROW_ON_ERROR", Val::Int(4194304));
+        // Copy extension-registered constants from registry
+        for (name_bytes, value) in self.engine.registry.constants() {
+            let sym = self.interner.intern(name_bytes);
+            self.constants.insert(sym, value.clone());
+        }
     }
 
     fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
