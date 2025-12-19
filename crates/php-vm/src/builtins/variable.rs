@@ -80,6 +80,10 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
         Val::Null => {
             println!("{}NULL", indent);
         }
+        Val::ConstArray(arr) => {
+            // ConstArray shouldn't appear at runtime, but handle it just in case
+            println!("{}array({}) {{ /* const array */ }}", indent, arr.len());
+        }
         Val::Array(arr) => {
             println!("{}array({}) {{", indent, arr.map.len());
             for (key, val_handle) in arr.map.iter() {

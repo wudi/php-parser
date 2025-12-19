@@ -130,14 +130,16 @@ fn test_unset_basic() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_with_increment() {
     let src = b"<?php
         class Test {
-            private $data = ['count' => 5];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? 0;
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 5;
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -146,8 +148,8 @@ fn test_get_with_increment() {
         }
         
         $t = new Test();
-        $t->count++;  // Should read via __get, then write via __set
-        return $t->count;
+        $t->count++;  // Should read via __get (returns 5), then write via __set (6)
+        return $t->count;  // Should read via __get again (returns 6)
     ";
 
     let res = run_php(src);
@@ -159,14 +161,16 @@ fn test_get_with_increment() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_with_decrement() {
     let src = b"<?php
         class Test {
-            private $data = ['count' => 10];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? 0;
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 10;
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -175,8 +179,8 @@ fn test_get_with_decrement() {
         }
         
         $t = new Test();
-        $t->count--;  // Should read via __get, then write via __set
-        return $t->count;
+        $t->count--;  // Should read via __get (returns 10), then write via __set (9)
+        return $t->count;  // Should read via __get again (returns 9)
     ";
 
     let res = run_php(src);
@@ -188,14 +192,16 @@ fn test_get_with_decrement() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_with_pre_increment() {
     let src = b"<?php
         class Test {
-            private $data = ['count' => 5];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? 0;
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 5;
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -204,7 +210,7 @@ fn test_get_with_pre_increment() {
         }
         
         $t = new Test();
-        $result = ++$t->count;  // Should read via __get, then write via __set
+        $result = ++$t->count;  // Should return new value (6)
         return $result;
     ";
 
@@ -217,14 +223,16 @@ fn test_get_with_pre_increment() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_with_post_increment() {
     let src = b"<?php
         class Test {
-            private $data = ['count' => 5];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? 0;
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 5;
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -233,7 +241,7 @@ fn test_get_with_post_increment() {
         }
         
         $t = new Test();
-        $result = $t->count++;  // Should return old value, then increment
+        $result = $t->count++;  // Should return old value (5), then increment to 6
         return $result;
     ";
 
@@ -246,14 +254,16 @@ fn test_get_with_post_increment() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_set_with_assign_op() {
     let src = b"<?php
         class Test {
-            private $data = ['value' => 10];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? 0;
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 10;
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -262,8 +272,8 @@ fn test_get_set_with_assign_op() {
         }
         
         $t = new Test();
-        $t->value += 5;  // Should read via __get, add, then write via __set
-        return $t->value;
+        $t->value += 5;  // Should read via __get (returns 10), add 5, then write via __set (15)
+        return $t->value;  // Should read via __get again (returns 15)
     ";
 
     let res = run_php(src);
@@ -275,14 +285,16 @@ fn test_get_set_with_assign_op() {
 }
 
 #[test]
-#[ignore = "Requires synchronous magic method execution - architectural limitation"]
 fn test_get_set_with_concat_assign() {
     let src = b"<?php
         class Test {
-            private $data = ['str' => 'Hello'];
+            private $data = [];
             
             public function __get($name) {
-                return $this->data[$name] ?? '';
+                if (!isset($this->data[$name])) {
+                    $this->data[$name] = 'Hello';
+                }
+                return $this->data[$name];
             }
             
             public function __set($name, $value) {
@@ -291,8 +303,8 @@ fn test_get_set_with_concat_assign() {
         }
         
         $t = new Test();
-        $t->str .= ' World';  // Should read via __get, concat, then write via __set
-        return $t->str;
+        $t->str .= ' World';  // Should read via __get (returns 'Hello'), concat, then write via __set
+        return $t->str;  // Should read via __get again (returns 'Hello World')
     ";
 
     let res = run_php(src);

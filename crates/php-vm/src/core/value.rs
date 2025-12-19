@@ -104,10 +104,18 @@ pub enum Val {
     Float(f64),
     String(Rc<Vec<u8>>),  // PHP strings are byte arrays (COW)
     Array(Rc<ArrayData>), // Array with cached metadata (COW)
+    ConstArray(Rc<IndexMap<ConstArrayKey, Val>>), // Compile-time constant array (template for property defaults)
     Object(Handle),
     ObjPayload(ObjectData),
     Resource(Rc<dyn Any>), // Changed to Rc to support Clone
     AppendPlaceholder,     // Internal use for $a[]
+}
+
+/// Key type for compile-time constant arrays
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConstArrayKey {
+    Int(i64),
+    Str(Rc<Vec<u8>>),
 }
 
 impl PartialEq for Val {
@@ -119,6 +127,7 @@ impl PartialEq for Val {
             (Val::Float(a), Val::Float(b)) => a == b,
             (Val::String(a), Val::String(b)) => a == b,
             (Val::Array(a), Val::Array(b)) => a == b,
+            (Val::ConstArray(a), Val::ConstArray(b)) => a == b,
             (Val::Object(a), Val::Object(b)) => a == b,
             (Val::ObjPayload(a), Val::ObjPayload(b)) => a == b,
             (Val::Resource(a), Val::Resource(b)) => Rc::ptr_eq(a, b),
@@ -136,7 +145,7 @@ impl Val {
             Val::Int(_) => "int",
             Val::Float(_) => "float",
             Val::String(_) => "string",
-            Val::Array(_) => "array",
+            Val::Array(_) | Val::ConstArray(_) => "array",
             Val::Object(_) | Val::ObjPayload(_) => "object",
             Val::Resource(_) => "resource",
             Val::AppendPlaceholder => "append_placeholder",
@@ -162,6 +171,7 @@ impl Val {
                 }
             }
             Val::Array(arr) => !arr.map.is_empty(),
+            Val::ConstArray(arr) => !arr.is_empty(),
             Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => true,
             Val::AppendPlaceholder => false,
         }
@@ -187,6 +197,13 @@ impl Val {
             }
             Val::Array(arr) => {
                 if arr.map.is_empty() {
+                    0
+                } else {
+                    1
+                }
+            }
+            Val::ConstArray(arr) => {
+                if arr.is_empty() {
                     0
                 } else {
                     1
@@ -228,6 +245,13 @@ impl Val {
             }
             Val::Array(arr) => {
                 if arr.map.is_empty() {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+            Val::ConstArray(arr) => {
+                if arr.is_empty() {
                     0.0
                 } else {
                     1.0

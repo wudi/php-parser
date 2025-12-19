@@ -888,6 +888,54 @@ impl VM {
         .is_some()
     }
 
+    /// Deep clone a Val, allocating arrays and their contents into the arena
+    /// This is needed for property defaults that contain arrays, since each
+    /// object instance needs its own copy of the array
+    fn deep_clone_val(&mut self, val: &Val) -> Handle {
+        match val {
+            Val::ConstArray(const_arr) => {
+                use crate::core::value::{ArrayData, ArrayKey};
+                let mut new_array = ArrayData::new();
+                
+                // Clone the const array data to avoid borrow conflicts
+                let entries: Vec<_> = const_arr.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                
+                // Deep clone each element, converting ConstArrayKey to ArrayKey
+                for (key, val) in entries {
+                    let runtime_key = match key {
+                        crate::core::value::ConstArrayKey::Int(i) => ArrayKey::Int(i),
+                        crate::core::value::ConstArrayKey::Str(s) => ArrayKey::Str(s),
+                    };
+                    let runtime_val_handle = self.deep_clone_val(&val);
+                    new_array.insert(runtime_key, runtime_val_handle);
+                }
+                
+                self.arena.alloc(Val::Array(Rc::new(new_array)))
+            }
+            Val::Array(arr) => {
+                // Runtime array - needs deep cloning of all elements
+                use crate::core::value::ArrayData;
+                let mut new_array = ArrayData::new();
+                
+                // Clone entries to avoid borrow conflicts
+                let entries: Vec<_> = arr.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                
+                for (key, val_handle) in entries {
+                    let val = &self.arena.get(val_handle).value;
+                    let val_clone = val.clone();  // Clone to avoid borrow conflict
+                    let new_val_handle = self.deep_clone_val(&val_clone);
+                    new_array.insert(key, new_val_handle);
+                }
+                
+                self.arena.alloc(Val::Array(Rc::new(new_array)))
+            }
+            other => {
+                // For non-array values, shallow clone is fine (strings are Rc)
+                self.arena.alloc(other.clone())
+            }
+        }
+    }
+
     pub fn collect_properties(
         &mut self,
         class_name: Symbol,
@@ -897,6 +945,7 @@ impl VM {
         let mut chain = Vec::new();
         let mut current_class = Some(class_name);
 
+        // Collect class definitions
         while let Some(name) = current_class {
             if let Some(def) = self.context.classes.get(&name) {
                 chain.push(def);
@@ -906,8 +955,10 @@ impl VM {
             }
         }
 
+        // Clone property data to avoid borrow conflicts
+        let mut prop_data: Vec<(Symbol, Val, Visibility)> = Vec::new();
         for def in chain.iter().rev() {
-            for (name, (default_val, _visibility)) in &def.properties {
+            for (name, (default_val, visibility)) in &def.properties {
                 if let PropertyCollectionMode::VisibleTo(scope) = mode {
                     if self
                         .check_prop_visibility(class_name, *name, scope)
@@ -916,10 +967,14 @@ impl VM {
                         continue;
                     }
                 }
-
-                let handle = self.arena.alloc(default_val.clone());
-                properties.insert(*name, handle);
+                prop_data.push((*name, default_val.clone(), *visibility));
             }
+        }
+
+        // Now deep clone property defaults
+        for (name, default_val, _visibility) in prop_data {
+            let handle = self.deep_clone_val(&default_val);
+            properties.insert(name, handle);
         }
 
         properties
@@ -993,6 +1048,44 @@ impl VM {
         // Execute until this frame completes
         let target_depth = self.frames.len() - 1;
         self.run_loop(target_depth)
+    }
+
+    /// Call a magic method synchronously and return the result value
+    /// This is used for property access magic methods (__get, __set, __isset, __unset)
+    /// where we need the result immediately to continue execution
+    /// Reference: $PHP_SRC_PATH/Zend/zend_object_handlers.c - zend_std_read_property
+    fn call_magic_method_sync(
+        &mut self,
+        obj_handle: Handle,
+        class_name: Symbol,
+        magic_method: Symbol,
+        args: Vec<Handle>,
+    ) -> Result<Option<Handle>, VmError> {
+        if let Some((method, _, _, defined_class)) = self.find_method(class_name, magic_method) {
+            let mut frame = CallFrame::new(method.chunk.clone());
+            frame.func = Some(method.clone());
+            frame.this = Some(obj_handle);
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(class_name);
+
+            // Set parameters
+            for (i, arg_handle) in args.iter().enumerate() {
+                if let Some(param) = method.params.get(i) {
+                    frame.locals.insert(param.name, *arg_handle);
+                }
+            }
+
+            self.push_frame(frame);
+
+            // Execute synchronously until frame completes
+            let target_depth = self.frames.len() - 1;
+            self.run_loop(target_depth)?;
+
+            // Return the last return value
+            Ok(self.last_return_value)
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) fn resolve_class_name(&self, class_name: Symbol) -> Result<Symbol, VmError> {
@@ -4747,7 +4840,7 @@ impl VM {
                 let (val, visibility, defining_class) =
                     self.find_static_prop(resolved_class, prop_name)?;
                 self.check_const_visibility(defining_class, visibility)?;
-                let handle = self.arena.alloc(val);
+                let handle = self.deep_clone_val(&val);
                 self.operand_stack.push(handle);
             }
             OpCode::AssignStaticProp(class_name, prop_name) => {
@@ -7434,7 +7527,6 @@ impl VM {
                     ));
                 };
 
-                // Get class_name first
                 let class_name = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
@@ -7444,29 +7536,9 @@ impl VM {
                     }
                 };
 
-                let current_val = {
-                    let payload_zval = self.arena.get(payload_handle);
-                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                        if let Some(val_handle) = obj_data.properties.get(&prop_name) {
-                            self.arena.get(*val_handle).value.clone()
-                        } else {
-                            Val::Null
-                        }
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
-                    }
-                };
-
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i + 1),
-                    _ => Val::Null,
-                };
-
-                let res_handle = self.arena.alloc(new_val.clone());
-
-                // Check if we should use __set
+                // 1. Read current value (with __get support)
                 let current_scope = self.get_current_class();
-                let (has_prop, visibility_ok) = {
+                let (has_prop, visibility_ok, prop_handle_opt) = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
                         let has = obj_data.properties.contains_key(&prop_name);
@@ -7474,14 +7546,48 @@ impl VM {
                             && self
                                 .check_prop_visibility(class_name, prop_name, current_scope)
                                 .is_ok();
-                        (has, vis_ok)
+                        (has, vis_ok, obj_data.properties.get(&prop_name).copied())
                     } else {
-                        (false, false)
+                        (false, false, None)
                     }
                 };
 
+                let current_val = if has_prop && visibility_ok {
+                    if let Some(h) = prop_handle_opt {
+                        self.arena.get(h).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                } else {
+                    // Try __get
+                    let magic_get = self.context.interner.intern(b"__get");
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if let Some(ret_handle) = self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_get,
+                        vec![name_handle],
+                    )? {
+                        self.arena.get(ret_handle).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                };
+
+                // 2. Increment value
+                use crate::vm::inc_dec::increment_value;
+                let new_val = increment_value(current_val, &mut *self.error_handler)?;
+                let res_handle = self.arena.alloc(new_val.clone());
+
+                // 3. Write back (with __set support)
                 if has_prop && visibility_ok {
-                    // Direct assignment
                     let payload_zval = self.arena.get_mut(payload_handle);
                     if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                         obj_data.properties.insert(prop_name, res_handle);
@@ -7489,33 +7595,20 @@ impl VM {
                 } else {
                     // Try __set
                     let magic_set = self.context.interner.intern(b"__set");
-                    if let Some((method, _, _, defined_class)) =
-                        self.find_method(class_name, magic_set)
-                    {
-                        let prop_name_bytes = self
-                            .context
-                            .interner
-                            .lookup(prop_name)
-                            .unwrap_or(b"")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                        let mut frame = CallFrame::new(method.chunk.clone());
-                        frame.func = Some(method.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(defined_class);
-                        frame.called_scope = Some(class_name);
-                        frame.discard_return = true;
-
-                        if let Some(param) = method.params.get(0) {
-                            frame.locals.insert(param.name, name_handle);
-                        }
-                        if let Some(param) = method.params.get(1) {
-                            frame.locals.insert(param.name, res_handle);
-                        }
-
-                        self.push_frame(frame);
-                    } else {
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_set,
+                        vec![name_handle, res_handle],
+                    )?.is_none() {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -7523,6 +7616,7 @@ impl VM {
                         }
                     }
                 }
+
                 self.operand_stack.push(res_handle);
             }
             OpCode::PreDecObj => {
@@ -7548,113 +7642,18 @@ impl VM {
                     ));
                 };
 
-                // Get current val with __get support
-                let (class_name, current_val) = {
-                    let (cn, prop_handle_opt, has_prop) = {
-                        let payload_zval = self.arena.get(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                            (
-                                obj_data.class,
-                                obj_data.properties.get(&prop_name).copied(),
-                                obj_data.properties.contains_key(&prop_name),
-                            )
-                        } else {
-                            return Err(VmError::RuntimeError("Invalid object payload".into()));
-                        }
-                    };
-
-                    let current_scope = self.get_current_class();
-                    let visibility_ok = has_prop
-                        && self
-                            .check_prop_visibility(cn, prop_name, current_scope)
-                            .is_ok();
-
-                    let val = if let Some(val_handle) = prop_handle_opt {
-                        if visibility_ok {
-                            self.arena.get(val_handle).value.clone()
-                        } else {
-                            // Try __get
-                            let magic_get = self.context.interner.intern(b"__get");
-                            if let Some((method, _, _, defined_class)) =
-                                self.find_method(cn, magic_get)
-                            {
-                                let prop_name_bytes = self
-                                    .context
-                                    .interner
-                                    .lookup(prop_name)
-                                    .unwrap_or(b"")
-                                    .to_vec();
-                                let name_handle =
-                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                                let mut frame = CallFrame::new(method.chunk.clone());
-                                frame.func = Some(method.clone());
-                                frame.this = Some(obj_handle);
-                                frame.class_scope = Some(defined_class);
-                                frame.called_scope = Some(cn);
-
-                                if let Some(param) = method.params.get(0) {
-                                    frame.locals.insert(param.name, name_handle);
-                                }
-
-                                self.push_frame(frame);
-
-                                if let Some(ret_val) = self.last_return_value {
-                                    self.arena.get(ret_val).value.clone()
-                                } else {
-                                    Val::Null
-                                }
-                            } else {
-                                Val::Null
-                            }
-                        }
+                let class_name = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        obj_data.class
                     } else {
-                        // Try __get
-                        let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
-                        {
-                            let prop_name_bytes = self
-                                .context
-                                .interner
-                                .lookup(prop_name)
-                                .unwrap_or(b"")
-                                .to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                            let mut frame = CallFrame::new(method.chunk.clone());
-                            frame.func = Some(method.clone());
-                            frame.this = Some(obj_handle);
-                            frame.class_scope = Some(defined_class);
-                            frame.called_scope = Some(cn);
-
-                            if let Some(param) = method.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
-                            }
-
-                            self.push_frame(frame);
-
-                            if let Some(ret_val) = self.last_return_value {
-                                self.arena.get(ret_val).value.clone()
-                            } else {
-                                Val::Null
-                            }
-                        } else {
-                            Val::Null
-                        }
-                    };
-                    (cn, val)
+                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    }
                 };
 
-                let new_val = match current_val {
-                    Val::Int(i) => Val::Int(i - 1),
-                    _ => Val::Null,
-                };
-
-                let res_handle = self.arena.alloc(new_val.clone());
-
-                // Check if we should use __set
+                // 1. Read current value (with __get support)
                 let current_scope = self.get_current_class();
-                let (has_prop, visibility_ok) = {
+                let (has_prop, visibility_ok, prop_handle_opt) = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
                         let has = obj_data.properties.contains_key(&prop_name);
@@ -7662,14 +7661,48 @@ impl VM {
                             && self
                                 .check_prop_visibility(class_name, prop_name, current_scope)
                                 .is_ok();
-                        (has, vis_ok)
+                        (has, vis_ok, obj_data.properties.get(&prop_name).copied())
                     } else {
-                        (false, false)
+                        (false, false, None)
                     }
                 };
 
+                let current_val = if has_prop && visibility_ok {
+                    if let Some(h) = prop_handle_opt {
+                        self.arena.get(h).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                } else {
+                    // Try __get
+                    let magic_get = self.context.interner.intern(b"__get");
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if let Some(ret_handle) = self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_get,
+                        vec![name_handle],
+                    )? {
+                        self.arena.get(ret_handle).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                };
+
+                // 2. Decrement value
+                use crate::vm::inc_dec::decrement_value;
+                let new_val = decrement_value(current_val, &mut *self.error_handler)?;
+                let res_handle = self.arena.alloc(new_val.clone());
+
+                // 3. Write back (with __set support)
                 if has_prop && visibility_ok {
-                    // Direct assignment
                     let payload_zval = self.arena.get_mut(payload_handle);
                     if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                         obj_data.properties.insert(prop_name, res_handle);
@@ -7677,33 +7710,20 @@ impl VM {
                 } else {
                     // Try __set
                     let magic_set = self.context.interner.intern(b"__set");
-                    if let Some((method, _, _, defined_class)) =
-                        self.find_method(class_name, magic_set)
-                    {
-                        let prop_name_bytes = self
-                            .context
-                            .interner
-                            .lookup(prop_name)
-                            .unwrap_or(b"")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                        let mut frame = CallFrame::new(method.chunk.clone());
-                        frame.func = Some(method.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(defined_class);
-                        frame.called_scope = Some(class_name);
-                        frame.discard_return = true;
-
-                        if let Some(param) = method.params.get(0) {
-                            frame.locals.insert(param.name, name_handle);
-                        }
-                        if let Some(param) = method.params.get(1) {
-                            frame.locals.insert(param.name, res_handle);
-                        }
-
-                        self.push_frame(frame);
-                    } else {
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_set,
+                        vec![name_handle, res_handle],
+                    )?.is_none() {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -7711,6 +7731,7 @@ impl VM {
                         }
                     }
                 }
+
                 self.operand_stack.push(res_handle);
             }
             OpCode::PostIncObj => {
@@ -7736,114 +7757,18 @@ impl VM {
                     ));
                 };
 
-                // Get current val with __get support
-                let (class_name, current_val) = {
-                    let (cn, prop_handle_opt, has_prop) = {
-                        let payload_zval = self.arena.get(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                            (
-                                obj_data.class,
-                                obj_data.properties.get(&prop_name).copied(),
-                                obj_data.properties.contains_key(&prop_name),
-                            )
-                        } else {
-                            return Err(VmError::RuntimeError("Invalid object payload".into()));
-                        }
-                    };
-
-                    let current_scope = self.get_current_class();
-                    let visibility_ok = has_prop
-                        && self
-                            .check_prop_visibility(cn, prop_name, current_scope)
-                            .is_ok();
-
-                    let val = if let Some(val_handle) = prop_handle_opt {
-                        if visibility_ok {
-                            self.arena.get(val_handle).value.clone()
-                        } else {
-                            // Try __get
-                            let magic_get = self.context.interner.intern(b"__get");
-                            if let Some((method, _, _, defined_class)) =
-                                self.find_method(cn, magic_get)
-                            {
-                                let prop_name_bytes = self
-                                    .context
-                                    .interner
-                                    .lookup(prop_name)
-                                    .unwrap_or(b"")
-                                    .to_vec();
-                                let name_handle =
-                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                                let mut frame = CallFrame::new(method.chunk.clone());
-                                frame.func = Some(method.clone());
-                                frame.this = Some(obj_handle);
-                                frame.class_scope = Some(defined_class);
-                                frame.called_scope = Some(cn);
-
-                                if let Some(param) = method.params.get(0) {
-                                    frame.locals.insert(param.name, name_handle);
-                                }
-
-                                self.push_frame(frame);
-
-                                if let Some(ret_val) = self.last_return_value {
-                                    self.arena.get(ret_val).value.clone()
-                                } else {
-                                    Val::Null
-                                }
-                            } else {
-                                Val::Null
-                            }
-                        }
+                let class_name = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        obj_data.class
                     } else {
-                        // Try __get
-                        let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
-                        {
-                            let prop_name_bytes = self
-                                .context
-                                .interner
-                                .lookup(prop_name)
-                                .unwrap_or(b"")
-                                .to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                            let mut frame = CallFrame::new(method.chunk.clone());
-                            frame.func = Some(method.clone());
-                            frame.this = Some(obj_handle);
-                            frame.class_scope = Some(defined_class);
-                            frame.called_scope = Some(cn);
-
-                            if let Some(param) = method.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
-                            }
-
-                            self.push_frame(frame);
-
-                            if let Some(ret_val) = self.last_return_value {
-                                self.arena.get(ret_val).value.clone()
-                            } else {
-                                Val::Null
-                            }
-                        } else {
-                            Val::Null
-                        }
-                    };
-                    (cn, val)
+                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    }
                 };
 
-                let new_val = match current_val.clone() {
-                    Val::Int(i) => Val::Int(i + 1),
-                    _ => Val::Null,
-                };
-
-                let res_handle = self.arena.alloc(current_val); // Return old value
-                let new_val_handle = self.arena.alloc(new_val.clone());
-
-                // Check if we should use __set
+                // 1. Read current value (with __get support)
                 let current_scope = self.get_current_class();
-                let (has_prop, visibility_ok) = {
+                let (has_prop, visibility_ok, prop_handle_opt) = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
                         let has = obj_data.properties.contains_key(&prop_name);
@@ -7851,14 +7776,50 @@ impl VM {
                             && self
                                 .check_prop_visibility(class_name, prop_name, current_scope)
                                 .is_ok();
-                        (has, vis_ok)
+                        (has, vis_ok, obj_data.properties.get(&prop_name).copied())
                     } else {
-                        (false, false)
+                        (false, false, None)
                     }
                 };
 
+                let current_val = if has_prop && visibility_ok {
+                    if let Some(h) = prop_handle_opt {
+                        self.arena.get(h).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                } else {
+                    // Try __get
+                    let magic_get = self.context.interner.intern(b"__get");
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if let Some(ret_handle) = self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_get,
+                        vec![name_handle],
+                    )? {
+                        self.arena.get(ret_handle).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                };
+
+                // 2. Increment value
+                use crate::vm::inc_dec::increment_value;
+                let new_val = increment_value(current_val.clone(), &mut *self.error_handler)?;
+
+                let res_handle = self.arena.alloc(current_val); // Return old value
+                let new_val_handle = self.arena.alloc(new_val);
+
+                // 3. Write back (with __set support)
                 if has_prop && visibility_ok {
-                    // Direct assignment
                     let payload_zval = self.arena.get_mut(payload_handle);
                     if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                         obj_data.properties.insert(prop_name, new_val_handle);
@@ -7866,33 +7827,20 @@ impl VM {
                 } else {
                     // Try __set
                     let magic_set = self.context.interner.intern(b"__set");
-                    if let Some((method, _, _, defined_class)) =
-                        self.find_method(class_name, magic_set)
-                    {
-                        let prop_name_bytes = self
-                            .context
-                            .interner
-                            .lookup(prop_name)
-                            .unwrap_or(b"")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                        let mut frame = CallFrame::new(method.chunk.clone());
-                        frame.func = Some(method.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(defined_class);
-                        frame.called_scope = Some(class_name);
-                        frame.discard_return = true;
-
-                        if let Some(param) = method.params.get(0) {
-                            frame.locals.insert(param.name, name_handle);
-                        }
-                        if let Some(param) = method.params.get(1) {
-                            frame.locals.insert(param.name, new_val_handle);
-                        }
-
-                        self.push_frame(frame);
-                    } else {
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_set,
+                        vec![name_handle, new_val_handle],
+                    )?.is_none() {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -7900,6 +7848,7 @@ impl VM {
                         }
                     }
                 }
+
                 self.operand_stack.push(res_handle);
             }
             OpCode::PostDecObj => {
@@ -7925,114 +7874,18 @@ impl VM {
                     ));
                 };
 
-                // Get current val with __get support
-                let (class_name, current_val) = {
-                    let (cn, prop_handle_opt, has_prop) = {
-                        let payload_zval = self.arena.get(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &payload_zval.value {
-                            (
-                                obj_data.class,
-                                obj_data.properties.get(&prop_name).copied(),
-                                obj_data.properties.contains_key(&prop_name),
-                            )
-                        } else {
-                            return Err(VmError::RuntimeError("Invalid object payload".into()));
-                        }
-                    };
-
-                    let current_scope = self.get_current_class();
-                    let visibility_ok = has_prop
-                        && self
-                            .check_prop_visibility(cn, prop_name, current_scope)
-                            .is_ok();
-
-                    let val = if let Some(val_handle) = prop_handle_opt {
-                        if visibility_ok {
-                            self.arena.get(val_handle).value.clone()
-                        } else {
-                            // Try __get
-                            let magic_get = self.context.interner.intern(b"__get");
-                            if let Some((method, _, _, defined_class)) =
-                                self.find_method(cn, magic_get)
-                            {
-                                let prop_name_bytes = self
-                                    .context
-                                    .interner
-                                    .lookup(prop_name)
-                                    .unwrap_or(b"")
-                                    .to_vec();
-                                let name_handle =
-                                    self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                                let mut frame = CallFrame::new(method.chunk.clone());
-                                frame.func = Some(method.clone());
-                                frame.this = Some(obj_handle);
-                                frame.class_scope = Some(defined_class);
-                                frame.called_scope = Some(cn);
-
-                                if let Some(param) = method.params.get(0) {
-                                    frame.locals.insert(param.name, name_handle);
-                                }
-
-                                self.push_frame(frame);
-
-                                if let Some(ret_val) = self.last_return_value {
-                                    self.arena.get(ret_val).value.clone()
-                                } else {
-                                    Val::Null
-                                }
-                            } else {
-                                Val::Null
-                            }
-                        }
+                let class_name = {
+                    let payload_zval = self.arena.get(payload_handle);
+                    if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                        obj_data.class
                     } else {
-                        // Try __get
-                        let magic_get = self.context.interner.intern(b"__get");
-                        if let Some((method, _, _, defined_class)) = self.find_method(cn, magic_get)
-                        {
-                            let prop_name_bytes = self
-                                .context
-                                .interner
-                                .lookup(prop_name)
-                                .unwrap_or(b"")
-                                .to_vec();
-                            let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                            let mut frame = CallFrame::new(method.chunk.clone());
-                            frame.func = Some(method.clone());
-                            frame.this = Some(obj_handle);
-                            frame.class_scope = Some(defined_class);
-                            frame.called_scope = Some(cn);
-
-                            if let Some(param) = method.params.get(0) {
-                                frame.locals.insert(param.name, name_handle);
-                            }
-
-                            self.push_frame(frame);
-
-                            if let Some(ret_val) = self.last_return_value {
-                                self.arena.get(ret_val).value.clone()
-                            } else {
-                                Val::Null
-                            }
-                        } else {
-                            Val::Null
-                        }
-                    };
-                    (cn, val)
+                        return Err(VmError::RuntimeError("Invalid object payload".into()));
+                    }
                 };
 
-                let new_val = match current_val.clone() {
-                    Val::Int(i) => Val::Int(i - 1),
-                    _ => Val::Null,
-                };
-
-                let res_handle = self.arena.alloc(current_val); // Return old value
-                let new_val_handle = self.arena.alloc(new_val.clone());
-
-                // Check if we should use __set
+                // 1. Read current value (with __get support)
                 let current_scope = self.get_current_class();
-                let (has_prop, visibility_ok) = {
+                let (has_prop, visibility_ok, prop_handle_opt) = {
                     let payload_zval = self.arena.get(payload_handle);
                     if let Val::ObjPayload(obj_data) = &payload_zval.value {
                         let has = obj_data.properties.contains_key(&prop_name);
@@ -8040,14 +7893,50 @@ impl VM {
                             && self
                                 .check_prop_visibility(class_name, prop_name, current_scope)
                                 .is_ok();
-                        (has, vis_ok)
+                        (has, vis_ok, obj_data.properties.get(&prop_name).copied())
                     } else {
-                        (false, false)
+                        (false, false, None)
                     }
                 };
 
+                let current_val = if has_prop && visibility_ok {
+                    if let Some(h) = prop_handle_opt {
+                        self.arena.get(h).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                } else {
+                    // Try __get
+                    let magic_get = self.context.interner.intern(b"__get");
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if let Some(ret_handle) = self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_get,
+                        vec![name_handle],
+                    )? {
+                        self.arena.get(ret_handle).value.clone()
+                    } else {
+                        Val::Null
+                    }
+                };
+
+                // 2. Decrement value
+                use crate::vm::inc_dec::decrement_value;
+                let new_val = decrement_value(current_val.clone(), &mut *self.error_handler)?;
+
+                let res_handle = self.arena.alloc(current_val); // Return old value
+                let new_val_handle = self.arena.alloc(new_val);
+
+                // 3. Write back (with __set support)
                 if has_prop && visibility_ok {
-                    // Direct assignment
                     let payload_zval = self.arena.get_mut(payload_handle);
                     if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
                         obj_data.properties.insert(prop_name, new_val_handle);
@@ -8055,33 +7944,20 @@ impl VM {
                 } else {
                     // Try __set
                     let magic_set = self.context.interner.intern(b"__set");
-                    if let Some((method, _, _, defined_class)) =
-                        self.find_method(class_name, magic_set)
-                    {
-                        let prop_name_bytes = self
-                            .context
-                            .interner
-                            .lookup(prop_name)
-                            .unwrap_or(b"")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-
-                        let mut frame = CallFrame::new(method.chunk.clone());
-                        frame.func = Some(method.clone());
-                        frame.this = Some(obj_handle);
-                        frame.class_scope = Some(defined_class);
-                        frame.called_scope = Some(class_name);
-                        frame.discard_return = true;
-
-                        if let Some(param) = method.params.get(0) {
-                            frame.locals.insert(param.name, name_handle);
-                        }
-                        if let Some(param) = method.params.get(1) {
-                            frame.locals.insert(param.name, new_val_handle);
-                        }
-
-                        self.push_frame(frame);
-                    } else {
+                    let prop_name_bytes = self
+                        .context
+                        .interner
+                        .lookup(prop_name)
+                        .unwrap_or(b"")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
+                    
+                    if self.call_magic_method_sync(
+                        obj_handle,
+                        class_name,
+                        magic_set,
+                        vec![name_handle, new_val_handle],
+                    )?.is_none() {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -8089,6 +7965,7 @@ impl VM {
                         }
                     }
                 }
+
                 self.operand_stack.push(res_handle);
             }
             OpCode::RopeInit | OpCode::RopeAdd | OpCode::RopeEnd => {

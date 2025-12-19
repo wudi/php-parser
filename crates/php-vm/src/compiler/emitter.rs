@@ -283,10 +283,7 @@ impl<'src> Emitter<'src> {
                         let prop_sym = self.interner.intern(prop_name);
 
                         let default_idx = if let Some(default_expr) = entry.default {
-                            let val = match self.get_literal_value(default_expr) {
-                                Some(v) => v,
-                                None => Val::Null,
-                            };
+                            let val = self.eval_constant_expr(default_expr);
                             self.add_constant(val)
                         } else {
                             self.add_constant(Val::Null)
@@ -3144,6 +3141,61 @@ impl<'src> Emitter<'src> {
             }
             Expr::Boolean { value, .. } => Val::Bool(*value),
             Expr::Null { .. } => Val::Null,
+            Expr::Array { items, .. } => {
+                if items.is_empty() {
+                    Val::Array(Rc::new(crate::core::value::ArrayData::new()))
+                } else {
+                    // Build a compile-time constant array template
+                    use crate::core::value::ConstArrayKey;
+                    use indexmap::IndexMap;
+                    
+                    let mut const_array = IndexMap::new();
+                    let mut next_index = 0i64;
+                    
+                    for item in *items {
+                        if item.unpack {
+                            // Array unpacking not supported in constant expressions
+                            continue;
+                        }
+                        
+                        let val = self.eval_constant_expr(item.value);
+                        
+                        if let Some(key_expr) = item.key {
+                            let key_val = self.eval_constant_expr(key_expr);
+                            let key = match key_val {
+                                Val::Int(i) => {
+                                    if i >= next_index {
+                                        next_index = i + 1;
+                                    }
+                                    ConstArrayKey::Int(i)
+                                }
+                                Val::String(s) => ConstArrayKey::Str(s),
+                                Val::Float(f) => {
+                                    let i = f as i64;
+                                    if i >= next_index {
+                                        next_index = i + 1;
+                                    }
+                                    ConstArrayKey::Int(i)
+                                }
+                                Val::Bool(b) => {
+                                    let i = if b { 1 } else { 0 };
+                                    if i >= next_index {
+                                        next_index = i + 1;
+                                    }
+                                    ConstArrayKey::Int(i)
+                                }
+                                _ => ConstArrayKey::Int(next_index),
+                            };
+                            const_array.insert(key, val);
+                        } else {
+                            const_array.insert(ConstArrayKey::Int(next_index), val);
+                            next_index += 1;
+                        }
+                    }
+                    
+                    Val::ConstArray(Rc::new(const_array))
+                }
+            }
             _ => Val::Null,
         }
     }

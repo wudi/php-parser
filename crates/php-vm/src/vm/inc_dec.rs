@@ -37,7 +37,7 @@ pub fn increment_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result
         }
 
         // Other types: no effect
-        Val::Array(_) | Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => Ok(val),
+        Val::Array(_) | Val::ConstArray(_) | Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => Ok(val),
 
         Val::AppendPlaceholder => Err(VmError::RuntimeError(
             "Cannot increment append placeholder".into(),
@@ -86,7 +86,7 @@ pub fn decrement_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result
         }
 
         // Other types: no effect
-        Val::Array(_) | Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => Ok(val),
+        Val::Array(_) | Val::ConstArray(_) | Val::Object(_) | Val::ObjPayload(_) | Val::Resource(_) => Ok(val),
 
         Val::AppendPlaceholder => Err(VmError::RuntimeError(
             "Cannot decrement append placeholder".into(),
