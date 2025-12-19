@@ -1914,7 +1914,10 @@ impl<'src> Emitter<'src> {
             }
             Expr::Eval { expr, .. } => {
                 self.emit_expr(expr);
-                self.chunk.code.push(OpCode::Include);
+                // Emit ZEND_EVAL (type=1) for eval()
+                let idx = self.add_constant(Val::Int(1));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+                self.chunk.code.push(OpCode::IncludeOrEval);
             }
             Expr::Yield {
                 key, value, from, ..

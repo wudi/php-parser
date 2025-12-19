@@ -5516,9 +5516,13 @@ impl VM {
 
                 if include_type == 1 {
                     // Eval
-                    let source = path_str.as_bytes();
+                    // PHP's eval() assumes code is in PHP mode (no <?php tag required)
+                    // Wrap the code in PHP tags for the parser
+                    let mut wrapped_source = b"<?php ".to_vec();
+                    wrapped_source.extend_from_slice(path_str.as_bytes());
+                    
                     let arena = bumpalo::Bump::new();
-                    let lexer = php_parser::lexer::Lexer::new(source);
+                    let lexer = php_parser::lexer::Lexer::new(&wrapped_source);
                     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
                     let program = parser.parse_program();
 
@@ -5531,7 +5535,7 @@ impl VM {
                     }
 
                     let emitter =
-                        crate::compiler::emitter::Emitter::new(source, &mut self.context.interner);
+                        crate::compiler::emitter::Emitter::new(&wrapped_source, &mut self.context.interner);
                     let (chunk, _) = emitter.compile(program.statements);
 
                     let caller_frame_idx = self.frames.len() - 1;
@@ -5545,10 +5549,17 @@ impl VM {
 
                     self.push_frame(frame);
                     let depth = self.frames.len();
+                    let stack_before_eval = self.operand_stack.len();
 
                     // Execute eval'd code (inline run_loop to capture locals before pop)
                     let mut eval_error = None;
+                    let mut last_eval_locals = None;
                     loop {
+                        // Capture locals on each iteration in case Return pops the frame
+                        if self.frames.len() >= depth {
+                            last_eval_locals = Some(self.frames[depth - 1].locals.clone());
+                        }
+                        
                         if self.frames.len() < depth {
                             break;
                         }
@@ -5576,12 +5587,8 @@ impl VM {
                         }
                     }
 
-                    // Capture eval frame's final locals before popping
-                    let final_locals = if self.frames.len() >= depth {
-                        Some(self.frames[depth - 1].locals.clone())
-                    } else {
-                        None
-                    };
+                    // Use the last captured locals
+                    let final_locals = last_eval_locals;
 
                     // Pop eval frame if still on stack
                     if self.frames.len() >= depth {
@@ -5599,12 +5606,12 @@ impl VM {
                         return Err(err);
                     }
 
-                    // Eval returns its explicit return value or null
-                    let return_val = self
-                        .last_return_value
-                        .unwrap_or_else(|| self.arena.alloc(Val::Null));
-                    self.last_return_value = None;
-                    self.operand_stack.push(return_val);
+                    // If eval code had an explicit return, handle_return pushed the value onto the stack.
+                    // If not, we need to push NULL (PHP's eval() returns NULL when no explicit return).
+                    if self.operand_stack.len() == stack_before_eval {
+                        let null_val = self.arena.alloc(Val::Null);
+                        self.operand_stack.push(null_val);
+                    }
                 } else {
                     // File include/require (types 2, 3, 4, 5)
                     let is_once = include_type == 3 || include_type == 5; // include_once/require_once
