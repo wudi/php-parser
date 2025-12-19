@@ -178,7 +178,6 @@ echo "end";
 }
 
 #[test]
-#[ignore = "Multi-level break requires additional compiler support for loop depth tracking"]
 fn test_finally_executes_on_break_nested() {
     // Finally executes on break from nested loops
     let code = r#"<?php
@@ -238,7 +237,6 @@ echo "end";
 }
 
 #[test]
-#[ignore = "Multi-level continue requires additional compiler support for loop depth tracking"]
 fn test_finally_executes_on_continue_nested() {
     // Finally executes on continue from nested loops
     let code = r#"<?php

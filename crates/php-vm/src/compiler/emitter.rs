@@ -563,8 +563,26 @@ impl<'src> Emitter<'src> {
                     }
                 }
             }
-            Stmt::Break { .. } => {
-                if let Some(loop_info) = self.loop_stack.last_mut() {
+            Stmt::Break { level, .. } => {
+                // Determine the break level (default 1)
+                let break_level = if let Some(level_expr) = level {
+                    // Try to evaluate as a constant integer
+                    self.get_literal_value(level_expr)
+                        .and_then(|v| match v {
+                            Val::Int(i) if i > 0 => Some(i as usize),
+                            _ => None,
+                        })
+                        .unwrap_or(1)
+                } else {
+                    1
+                };
+
+                // Find the target loop (counting from innermost)
+                let loop_depth = self.loop_stack.len();
+                if break_level > 0 && break_level <= loop_depth {
+                    // Calculate which loop to target (from the end of the stack)
+                    let target_loop_idx = loop_depth - break_level;
+                    
                     let idx = self.chunk.code.len();
                     // Check if we're inside try-finally blocks
                     if !self.try_finally_stack.is_empty() {
@@ -574,11 +592,31 @@ impl<'src> Emitter<'src> {
                         // Normal jump
                         self.chunk.code.push(OpCode::Jmp(0)); // Patch later
                     }
-                    loop_info.break_jumps.push(idx);
+                    
+                    // Register the jump with the target loop
+                    self.loop_stack[target_loop_idx].break_jumps.push(idx);
                 }
             }
-            Stmt::Continue { .. } => {
-                if let Some(loop_info) = self.loop_stack.last_mut() {
+            Stmt::Continue { level, .. } => {
+                // Determine the continue level (default 1)
+                let continue_level = if let Some(level_expr) = level {
+                    // Try to evaluate as a constant integer
+                    self.get_literal_value(level_expr)
+                        .and_then(|v| match v {
+                            Val::Int(i) if i > 0 => Some(i as usize),
+                            _ => None,
+                        })
+                        .unwrap_or(1)
+                } else {
+                    1
+                };
+
+                // Find the target loop (counting from innermost)
+                let loop_depth = self.loop_stack.len();
+                if continue_level > 0 && continue_level <= loop_depth {
+                    // Calculate which loop to target (from the end of the stack)
+                    let target_loop_idx = loop_depth - continue_level;
+                    
                     let idx = self.chunk.code.len();
                     // Check if we're inside try-finally blocks
                     if !self.try_finally_stack.is_empty() {
@@ -588,7 +626,9 @@ impl<'src> Emitter<'src> {
                         // Normal jump
                         self.chunk.code.push(OpCode::Jmp(0)); // Patch later
                     }
-                    loop_info.continue_jumps.push(idx);
+                    
+                    // Register the jump with the target loop
+                    self.loop_stack[target_loop_idx].continue_jumps.push(idx);
                 }
             }
             Stmt::If {
