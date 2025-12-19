@@ -62,6 +62,7 @@ pub enum OpCode {
     JmpZEx(u32),
     JmpNzEx(u32),
     Coalesce(u32),
+    JmpFinally(u32),  // Jump to target after executing finally blocks at current IP
 
     // Functions
     Call(u8), // Call function with N args

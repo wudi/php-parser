@@ -154,7 +154,6 @@ echo test();
 // ============================================================================
 
 #[test]
-#[ignore = "Break with finally requires compile-time changes"]
 fn test_finally_executes_on_break() {
     // Finally executes when break is used inside try
     let code = r#"<?php
@@ -179,7 +178,7 @@ echo "end";
 }
 
 #[test]
-#[ignore = "Break with finally requires compile-time changes"]
+#[ignore = "Multi-level break requires additional compiler support for loop depth tracking"]
 fn test_finally_executes_on_break_nested() {
     // Finally executes on break from nested loops
     let code = r#"<?php
@@ -211,7 +210,6 @@ echo "end";
 // ============================================================================
 
 #[test]
-#[ignore = "Continue with finally requires compile-time changes"]
 fn test_finally_executes_on_continue() {
     // Finally executes when continue is used inside try
     let code = r#"<?php
@@ -240,7 +238,7 @@ echo "end";
 }
 
 #[test]
-#[ignore = "Continue with finally requires compile-time changes"]
+#[ignore = "Multi-level continue requires additional compiler support for loop depth tracking"]
 fn test_finally_executes_on_continue_nested() {
     // Finally executes on continue from nested loops
     let code = r#"<?php

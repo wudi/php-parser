@@ -78,11 +78,22 @@ struct LoopInfo {
     continue_jumps: Vec<usize>,
 }
 
+#[derive(Clone)]
+struct TryFinallyInfo {
+    /// Index in catch_table for the finally-only entry
+    catch_table_idx: usize,
+    /// Start of the finally block code
+    finally_start: u32,
+    /// End of the finally block code (exclusive)
+    finally_end: u32,
+}
+
 pub struct Emitter<'src> {
     chunk: CodeChunk,
     source: &'src [u8],
     interner: &'src mut Interner,
     loop_stack: Vec<LoopInfo>,
+    try_finally_stack: Vec<TryFinallyInfo>,
     is_generator: bool,
     // Context for magic constants
     file_path: Option<String>,
@@ -99,6 +110,7 @@ impl<'src> Emitter<'src> {
             source,
             interner,
             loop_stack: Vec::new(),
+            try_finally_stack: Vec::new(),
             is_generator: false,
             file_path: None,
             current_class: None,
@@ -554,14 +566,28 @@ impl<'src> Emitter<'src> {
             Stmt::Break { .. } => {
                 if let Some(loop_info) = self.loop_stack.last_mut() {
                     let idx = self.chunk.code.len();
-                    self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                    // Check if we're inside try-finally blocks
+                    if !self.try_finally_stack.is_empty() {
+                        // Use JmpFinally which will execute finally blocks at runtime
+                        self.chunk.code.push(OpCode::JmpFinally(0)); // Patch later
+                    } else {
+                        // Normal jump
+                        self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                    }
                     loop_info.break_jumps.push(idx);
                 }
             }
             Stmt::Continue { .. } => {
                 if let Some(loop_info) = self.loop_stack.last_mut() {
                     let idx = self.chunk.code.len();
-                    self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                    // Check if we're inside try-finally blocks
+                    if !self.try_finally_stack.is_empty() {
+                        // Use JmpFinally which will execute finally blocks at runtime
+                        self.chunk.code.push(OpCode::JmpFinally(0)); // Patch later
+                    } else {
+                        // Normal jump
+                        self.chunk.code.push(OpCode::Jmp(0)); // Patch later
+                    }
                     loop_info.continue_jumps.push(idx);
                 }
             }
@@ -1067,6 +1093,23 @@ impl<'src> Emitter<'src> {
                 ..
             } => {
                 let try_start = self.chunk.code.len() as u32;
+                
+                // If there's a finally block, we need to track it BEFORE emitting the try body
+                // so that break/continue inside the try body know they're inside a finally context
+                let has_finally = finally.is_some();
+                let try_finally_placeholder_idx = if has_finally {
+                    // Reserve space in try_finally_stack with placeholder values
+                    // We'll update them after we emit the finally block
+                    self.try_finally_stack.push(TryFinallyInfo {
+                        catch_table_idx: 0, // Will be updated
+                        finally_start: 0,   // Will be updated
+                        finally_end: 0,     // Will be updated
+                    });
+                    Some(self.try_finally_stack.len() - 1)
+                } else {
+                    None
+                };
+                
                 for stmt in *body {
                     self.emit_stmt(stmt);
                 }
@@ -1121,6 +1164,14 @@ impl<'src> Emitter<'src> {
                 // Emit finally block if present
                 if let Some(finally_body) = finally {
                     let finally_start = self.chunk.code.len() as u32;
+                    let catch_table_idx = self.chunk.catch_table.len();
+                    
+                    // Update the placeholder in try_finally_stack
+                    if let Some(idx) = try_finally_placeholder_idx {
+                        self.try_finally_stack[idx].catch_table_idx = catch_table_idx;
+                        self.try_finally_stack[idx].finally_start = finally_start;
+                        // finally_end will be set after emitting
+                    }
 
                     // Patch jump from try to finally
                     self.patch_jump(jump_from_try, finally_start as usize);
@@ -1135,6 +1186,11 @@ impl<'src> Emitter<'src> {
                         self.emit_stmt(stmt);
                     }
                     let finally_end = self.chunk.code.len() as u32;
+
+                    // Update the finally_end in try_finally_stack
+                    if let Some(idx) = try_finally_placeholder_idx {
+                        self.try_finally_stack[idx].finally_end = finally_end;
+                    }
 
                     // Update all existing catch entries to include finally_target and finally_end
                     // This enables unwinding through finally when exception is caught
@@ -1168,6 +1224,9 @@ impl<'src> Emitter<'src> {
                         });
                     }
 
+                    // Pop from try_finally_stack after emitting
+                    self.try_finally_stack.pop();
+
                     // Finally falls through to end
                 } else {
                     // No finally - patch jumps directly to end
@@ -1193,6 +1252,7 @@ impl<'src> Emitter<'src> {
             OpCode::Coalesce(_) => OpCode::Coalesce(target as u32),
             OpCode::IterInit(_) => OpCode::IterInit(target as u32),
             OpCode::IterValid(_) => OpCode::IterValid(target as u32),
+            OpCode::JmpFinally(_) => OpCode::JmpFinally(target as u32),
             _ => panic!("Cannot patch non-jump opcode: {:?}", op),
         };
         self.chunk.code[idx] = new_op;

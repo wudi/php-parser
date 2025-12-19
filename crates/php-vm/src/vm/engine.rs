@@ -1517,6 +1517,39 @@ impl VM {
         finally_blocks
     }
 
+    /// Collect finally blocks for break/continue jumps
+    /// Similar to collect_finally_blocks_for_return but used for break/continue
+    fn collect_finally_blocks_for_jump(&self) -> Vec<(usize, Rc<CodeChunk>, u32, Option<u32>)> {
+        let mut finally_blocks = Vec::new();
+        
+        if self.frames.is_empty() {
+            return finally_blocks;
+        }
+        
+        let current_frame_idx = self.frames.len() - 1;
+        let frame = &self.frames[current_frame_idx];
+        let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 } as u32;
+        
+        // Collect all finally blocks that contain the current IP
+        let mut entries_to_execute: Vec<_> = frame.chunk.catch_table.iter()
+            .filter(|entry| {
+                ip >= entry.start && ip < entry.end && entry.catch_type.is_none()
+            })
+            .collect();
+        
+        // Sort by range size (smaller = more nested = inner)
+        // Execute from inner to outer
+        entries_to_execute.sort_by_key(|entry| entry.end - entry.start);
+        
+        for entry in entries_to_execute {
+            if let Some(end) = entry.finally_end {
+                finally_blocks.push((current_frame_idx, frame.chunk.clone(), entry.target, Some(end)));
+            }
+        }
+        
+        finally_blocks
+    }
+
     /// Complete the return after finally blocks have executed
     fn complete_return(&mut self, ret_val: Handle, force_by_ref: bool, target_depth: usize) -> Result<(), VmError> {
         // Verify return type BEFORE popping the frame
@@ -1899,6 +1932,14 @@ impl VM {
             OpCode::JmpNzEx(target) => self.jump_peek_or_pop(target as usize, |v| v.to_bool())?,
             OpCode::Coalesce(target) => {
                 self.jump_peek_or_pop(target as usize, |v| !matches!(v, Val::Null))?
+            }
+            OpCode::JmpFinally(target) => {
+                // Execute finally blocks before jumping (for break/continue)
+                let finally_blocks = self.collect_finally_blocks_for_jump();
+                if !finally_blocks.is_empty() {
+                    self.execute_finally_blocks(&finally_blocks);
+                }
+                self.set_ip(target as usize)?;
             }
             _ => unreachable!("Not a control flow op"),
         }
@@ -2447,7 +2488,8 @@ impl VM {
             | OpCode::JmpIfTrue(_)
             | OpCode::JmpZEx(_)
             | OpCode::JmpNzEx(_)
-            | OpCode::Coalesce(_) => self.exec_control_flow(op)?,
+            | OpCode::Coalesce(_)
+            | OpCode::JmpFinally(_) => self.exec_control_flow(op)?,
 
             OpCode::Echo => self.exec_echo()?,
             OpCode::Exit => {
