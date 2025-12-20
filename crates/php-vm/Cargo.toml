@@ -17,6 +17,14 @@ pcre2 = "0.2.11"
 chrono = "0.4"
 chrono-tz = "0.10"
 
+# Hash extension dependencies
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+digest = "0.10"
+hex = "0.4"
+subtle = "2.5"
+
 [[bin]]
 name = "php"
 path = "src/bin/php.rs"

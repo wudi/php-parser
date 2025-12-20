@@ -1,6 +1,6 @@
 use crate::builtins::spl;
 use crate::builtins::{
-    array, class, datetime, exception, exec, filesystem, function, http, json, math,
+    array, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
     output_control, pcre, string, variable,
 };
 use crate::compiler::chunk::UserFunc;
@@ -603,6 +603,27 @@ impl EngineContext {
             output_control::php_output_reset_rewrite_vars as NativeHandler,
         );
 
+        // Hash extension functions
+        functions.insert(b"hash".to_vec(), hash::php_hash as NativeHandler);
+        functions.insert(
+            b"hash_algos".to_vec(),
+            hash::php_hash_algos as NativeHandler,
+        );
+        functions.insert(
+            b"hash_file".to_vec(),
+            hash::php_hash_file as NativeHandler,
+        );
+        functions.insert(b"hash_init".to_vec(), hash::php_hash_init as NativeHandler);
+        functions.insert(
+            b"hash_update".to_vec(),
+            hash::php_hash_update as NativeHandler,
+        );
+        functions.insert(
+            b"hash_final".to_vec(),
+            hash::php_hash_final as NativeHandler,
+        );
+        functions.insert(b"hash_copy".to_vec(), hash::php_hash_copy as NativeHandler);
+
         let mut registry = ExtensionRegistry::new();
         
         // Register JSON extension
@@ -635,6 +656,9 @@ pub struct RequestContext {
     pub max_execution_time: i64, // in seconds, 0 = unlimited
     pub native_methods: HashMap<(Symbol, Symbol), NativeMethodEntry>, // (class_name, method_name) -> handler
     pub json_last_error: json::JsonError, // JSON extension error state
+    pub hash_registry: Option<Arc<hash::HashRegistry>>, // Hash algorithm registry
+    pub hash_states: Option<HashMap<u64, Box<dyn hash::HashState>>>, // Active hash contexts
+    pub next_resource_id: u64, // Counter for resource IDs
 }
 
 impl RequestContext {
@@ -655,6 +679,9 @@ impl RequestContext {
             max_execution_time: 30, // Default 30 seconds
             native_methods: HashMap::new(),
             json_last_error: json::JsonError::None, // Initialize JSON error state
+            hash_registry: Some(Arc::new(hash::HashRegistry::new())), // Initialize hash registry
+            hash_states: Some(HashMap::new()), // Initialize hash states map
+            next_resource_id: 1, // Start resource IDs from 1
         };
         ctx.register_builtin_classes();
         ctx.register_builtin_constants();

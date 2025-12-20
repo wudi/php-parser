@@ -5,6 +5,7 @@ pub mod exception;
 pub mod exec;
 pub mod filesystem;
 pub mod function;
+pub mod hash;
 pub mod http;
 pub mod json;
 pub mod math;
