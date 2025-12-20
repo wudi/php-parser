@@ -9,6 +9,7 @@ pub mod hash;
 pub mod http;
 pub mod json;
 pub mod math;
+pub mod mysqli;
 pub mod output_control;
 pub mod pcre;
 pub mod spl;

@@ -659,6 +659,8 @@ pub struct RequestContext {
     pub hash_registry: Option<Arc<hash::HashRegistry>>, // Hash algorithm registry
     pub hash_states: Option<HashMap<u64, Box<dyn hash::HashState>>>, // Active hash contexts
     pub next_resource_id: u64, // Counter for resource IDs
+    pub mysqli_connections: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliConnection>>>, // MySQLi connections
+    pub mysqli_results: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliResult>>>, // MySQLi result sets
 }
 
 impl RequestContext {
@@ -682,6 +684,8 @@ impl RequestContext {
             hash_registry: Some(Arc::new(hash::HashRegistry::new())), // Initialize hash registry
             hash_states: Some(HashMap::new()), // Initialize hash states map
             next_resource_id: 1, // Start resource IDs from 1
+            mysqli_connections: HashMap::new(), // Initialize MySQLi connections
+            mysqli_results: HashMap::new(), // Initialize MySQLi results
         };
         ctx.register_builtin_classes();
         ctx.register_builtin_constants();

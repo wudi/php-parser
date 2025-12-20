@@ -25,6 +25,9 @@ digest = "0.10"
 hex = "0.4"
 subtle = "2.5"
 
+# MySQLi extension dependencies
+mysql = "24.0"
+
 [[bin]]
 name = "php"
 path = "src/bin/php.rs"
