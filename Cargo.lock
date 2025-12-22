@@ -2050,6 +2050,7 @@ dependencies = [
  "chrono-tz",
  "clap",
  "digest",
+ "flate2",
  "hex",
  "indexmap",
  "md-5",

@@ -637,6 +637,12 @@ impl EngineContext {
             .register_extension(Box::new(PdoExtension))
             .expect("Failed to register PDO extension");
 
+        // Register Zlib extension
+        use crate::runtime::zlib_extension::ZlibExtension;
+        registry
+            .register_extension(Box::new(ZlibExtension))
+            .expect("Failed to register Zlib extension");
+
         Self {
             registry,
             functions,

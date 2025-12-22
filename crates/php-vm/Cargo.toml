@@ -33,6 +33,9 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 postgres = "0.19"
 oracle = "0.6"
 
+# Zlib extension dependencies
+flate2 = "1.0"
+
 
 [[bin]]
 name = "php"
