@@ -19,3 +19,4 @@ pub mod string;
 pub mod variable;
 pub mod zlib;
 pub mod zip;
+pub mod url;

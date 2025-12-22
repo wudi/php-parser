@@ -1,7 +1,7 @@
 use crate::builtins::spl;
 use crate::builtins::{
     array, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
-    output_control, pcre, string, variable,
+    output_control, pcre, string, url, variable,
 };
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
@@ -173,6 +173,37 @@ impl EngineContext {
             b"header_remove".to_vec(),
             http::php_header_remove as NativeHandler,
         );
+
+        // URL functions
+        functions.insert(b"urlencode".to_vec(), url::php_urlencode as NativeHandler);
+        functions.insert(b"urldecode".to_vec(), url::php_urldecode as NativeHandler);
+        functions.insert(
+            b"rawurlencode".to_vec(),
+            url::php_rawurlencode as NativeHandler,
+        );
+        functions.insert(
+            b"rawurldecode".to_vec(),
+            url::php_rawurldecode as NativeHandler,
+        );
+        functions.insert(
+            b"base64_encode".to_vec(),
+            url::php_base64_encode as NativeHandler,
+        );
+        functions.insert(
+            b"base64_decode".to_vec(),
+            url::php_base64_decode as NativeHandler,
+        );
+        functions.insert(b"parse_url".to_vec(), url::php_parse_url as NativeHandler);
+        functions.insert(
+            b"http_build_query".to_vec(),
+            url::php_http_build_query as NativeHandler,
+        );
+        functions.insert(b"get_headers".to_vec(), url::php_get_headers as NativeHandler);
+        functions.insert(
+            b"get_meta_tags".to_vec(),
+            url::php_get_meta_tags as NativeHandler,
+        );
+
         functions.insert(b"abs".to_vec(), math::php_abs as NativeHandler);
         functions.insert(b"max".to_vec(), math::php_max as NativeHandler);
         functions.insert(b"min".to_vec(), math::php_min as NativeHandler);
@@ -1875,6 +1906,18 @@ impl RequestContext {
             b"PHP_OUTPUT_HANDLER_PROCESSED",
             Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED),
         );
+
+        // URL constants
+        self.insert_builtin_constant(b"PHP_URL_SCHEME", Val::Int(url::PHP_URL_SCHEME));
+        self.insert_builtin_constant(b"PHP_URL_HOST", Val::Int(url::PHP_URL_HOST));
+        self.insert_builtin_constant(b"PHP_URL_PORT", Val::Int(url::PHP_URL_PORT));
+        self.insert_builtin_constant(b"PHP_URL_USER", Val::Int(url::PHP_URL_USER));
+        self.insert_builtin_constant(b"PHP_URL_PASS", Val::Int(url::PHP_URL_PASS));
+        self.insert_builtin_constant(b"PHP_URL_PATH", Val::Int(url::PHP_URL_PATH));
+        self.insert_builtin_constant(b"PHP_URL_QUERY", Val::Int(url::PHP_URL_QUERY));
+        self.insert_builtin_constant(b"PHP_URL_FRAGMENT", Val::Int(url::PHP_URL_FRAGMENT));
+        self.insert_builtin_constant(b"PHP_QUERY_RFC1738", Val::Int(url::PHP_QUERY_RFC1738));
+        self.insert_builtin_constant(b"PHP_QUERY_RFC3986", Val::Int(url::PHP_QUERY_RFC3986));
 
         // Error reporting constants
         self.insert_builtin_constant(b"E_ERROR", Val::Int(1));
