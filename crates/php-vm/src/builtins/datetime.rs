@@ -1,4 +1,4 @@
-use crate::core::value::{ArrayKey, Handle, Val};
+use crate::core::value::{ArrayKey, Handle, Val, ObjectData};
 use crate::vm::engine::VM;
 use chrono::{
     DateTime as ChronoDateTime, Datelike, Local, NaiveDate, NaiveDateTime, NaiveTime, Offset,
@@ -8,6 +8,50 @@ use chrono_tz::Tz;
 use indexmap::IndexMap;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::any::Any;
+use regex::Regex;
+
+// ============================================================================
+// Internal Data Structures
+// ============================================================================
+
+#[derive(Debug)]
+pub struct DateTimeZoneData {
+    pub tz: Tz,
+}
+
+#[derive(Debug)]
+pub struct DateTimeData {
+    pub dt: ChronoDateTime<Tz>,
+}
+
+#[derive(Debug)]
+pub struct DateIntervalData {
+    pub y: i64,
+    pub m: i64,
+    pub d: i64,
+    pub h: i64,
+    pub i: i64,
+    pub s: i64,
+    pub f: f64,
+    pub invert: i64,
+    pub days: Option<i64>,
+}
+
+use std::cell::RefCell;
+
+#[derive(Debug)]
+pub struct DatePeriodData {
+    pub start: ChronoDateTime<Tz>,
+    pub end: Option<ChronoDateTime<Tz>>,
+    pub interval: Rc<DateIntervalData>,
+    pub recurrences: Option<i64>,
+    pub include_start_date: bool,
+
+    // Iteration state
+    pub current_date: RefCell<Option<ChronoDateTime<Tz>>>,
+    pub current_index: RefCell<i64>,
+}
 
 // ============================================================================
 // Date/Time Constants
@@ -68,6 +112,21 @@ fn parse_timezone(tz_str: &str) -> Result<Tz, String> {
 
 fn make_array_key(key: &str) -> ArrayKey {
     ArrayKey::Str(Rc::new(key.as_bytes().to_vec()))
+}
+
+fn get_internal_data<T: 'static>(vm: &VM, handle: Handle) -> Result<Rc<T>, String> {
+    let val = vm.arena.get(handle);
+    if let Val::Object(payload_handle) = &val.value {
+        let payload = vm.arena.get(*payload_handle);
+        if let Val::ObjPayload(obj_data) = &payload.value {
+            if let Some(internal) = &obj_data.internal {
+                if let Ok(data) = internal.clone().downcast::<T>() {
+                    return Ok(data);
+                }
+            }
+        }
+    }
+    Err(format!("Object does not have the expected internal data: {}", std::any::type_name::<T>()))
 }
 
 fn format_php_date(dt: &ChronoDateTime<Tz>, format: &str) -> String {
@@ -281,6 +340,867 @@ fn format_php_date(dt: &ChronoDateTime<Tz>, format: &str) -> String {
 }
 
 // ============================================================================
+// DateTimeZone Class
+// ============================================================================
+
+/// DateTimeZone::__construct(string $timezone)
+pub fn php_datetimezone_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTimeZone::__construct() called outside object context")?;
+
+    if args.is_empty() {
+        return Err("DateTimeZone::__construct() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let tz_str = String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string();
+    let tz = parse_timezone(&tz_str)?;
+
+    if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeZoneData { tz }));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+/// DateTimeZone::getName(): string
+pub fn php_datetimezone_get_name(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTimeZone::getName() called outside object context")?;
+    let data = get_internal_data::<DateTimeZoneData>(vm, this_handle)?;
+
+    Ok(vm
+        .arena
+        .alloc(Val::String(data.tz.name().as_bytes().to_vec().into())))
+}
+
+/// DateTimeZone::getOffset(DateTimeInterface $datetime): int
+pub fn php_datetimezone_get_offset(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTimeZone::getOffset() called outside object context")?;
+    let data = get_internal_data::<DateTimeZoneData>(vm, this_handle)?;
+
+    if args.is_empty() {
+        return Err("DateTimeZone::getOffset() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let dt_data = get_internal_data::<DateTimeData>(vm, args[0])?;
+    let offset = data
+        .tz
+        .offset_from_utc_datetime(&dt_data.dt.naive_utc())
+        .fix()
+        .local_minus_utc();
+
+    Ok(vm.arena.alloc(Val::Int(offset as i64)))
+}
+
+/// DateTimeZone::getLocation(): array|false
+pub fn php_datetimezone_get_location(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    // Simplified - return false for now as chrono-tz doesn't easily provide this
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+/// DateTimeZone::listIdentifiers(int $timezoneGroup = DateTimeZone::ALL, ?string $countryCode = null): array
+pub fn php_datetimezone_list_identifiers(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let mut map = IndexMap::new();
+    for (i, tz) in chrono_tz::TZ_VARIANTS.iter().enumerate() {
+        map.insert(
+            ArrayKey::Int(i as i64),
+            vm.arena
+                .alloc(Val::String(tz.name().as_bytes().to_vec().into())),
+        );
+    }
+
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: chrono_tz::TZ_VARIANTS.len() as i64,
+        }))))
+}
+
+// ============================================================================
+// DateTime Class
+// ============================================================================
+
+/// DateTime::__construct(string $datetime = "now", ?DateTimeZone $timezone = null)
+pub fn php_datetime_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::__construct() called outside object context")?;
+
+    let datetime_str = if !args.is_empty() {
+        String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string()
+    } else {
+        "now".to_string()
+    };
+
+    let tz = if args.len() > 1 {
+        let tz_data = get_internal_data::<DateTimeZoneData>(vm, args[1])?;
+        tz_data.tz
+    } else {
+        Tz::UTC
+    };
+
+    let dt = if datetime_str == "now" {
+        Utc::now().with_timezone(&tz)
+    } else if let Ok(dt) = ChronoDateTime::parse_from_rfc3339(&datetime_str) {
+        dt.with_timezone(&tz)
+    } else if let Ok(ndt) = NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%d %H:%M:%S") {
+        tz.from_local_datetime(&ndt).unwrap()
+    } else if let Ok(nd) = NaiveDate::parse_from_str(&datetime_str, "%Y-%m-%d") {
+        tz.from_local_datetime(&nd.and_hms_opt(0, 0, 0).unwrap())
+            .unwrap()
+    } else {
+        return Err(format!("Failed to parse datetime string: {}", datetime_str));
+    };
+
+    if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt }));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+/// DateTime::format(string $format): string
+pub fn php_datetime_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::format() called outside object context")?;
+    let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+
+    if args.is_empty() {
+        return Err("DateTime::format() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let format = String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string();
+    let formatted = format_php_date(&data.dt, &format);
+
+    Ok(vm
+        .arena
+        .alloc(Val::String(formatted.into_bytes().into())))
+}
+
+fn add_interval(dt: &ChronoDateTime<Tz>, interval: &DateIntervalData, subtract: bool) -> ChronoDateTime<Tz> {
+    let mut new_dt = dt.clone();
+    let invert = if subtract { interval.invert == 0 } else { interval.invert == 1 };
+    let sign = if invert { -1 } else { 1 };
+
+    // Add years
+    if interval.y != 0 {
+        let new_year = new_dt.year() + (interval.y * sign) as i32;
+        new_dt = new_dt.with_year(new_year).unwrap_or(new_dt);
+    }
+
+    // Add months
+    if interval.m != 0 {
+        let total_months = new_dt.month0() as i64 + (interval.m * sign);
+        let year_adj = if total_months >= 0 {
+            (total_months / 12) as i32
+        } else {
+            ((total_months - 11) / 12) as i32
+        };
+        let new_month = ((total_months % 12 + 12) % 12) as u32;
+        new_dt = new_dt.with_year(new_dt.year() + year_adj).unwrap_or(new_dt);
+        new_dt = new_dt.with_month0(new_month).unwrap_or(new_dt);
+    }
+
+    // Add days, hours, minutes, seconds
+    let duration = chrono::Duration::days(interval.d)
+        + chrono::Duration::hours(interval.h)
+        + chrono::Duration::minutes(interval.i)
+        + chrono::Duration::seconds(interval.s);
+    
+    if sign == -1 {
+        new_dt = new_dt - duration;
+    } else {
+        new_dt = new_dt + duration;
+    }
+
+    new_dt
+}
+
+pub fn php_datetime_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    if args.is_empty() {
+        return Err("DateTime::add() expects exactly 1 parameter, 0 given".into());
+    }
+    let interval_handle = args[0];
+    
+    let dt_data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+    let interval_data = get_internal_data::<DateIntervalData>(vm, interval_handle)?;
+    
+    let new_dt = add_interval(&dt_data.dt, &interval_data, false);
+    
+    let payload_handle = match &vm.arena.get(this_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Invalid 'this'".into()),
+    };
+    
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+    }
+    
+    Ok(this_handle)
+}
+
+pub fn php_datetime_sub(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    if args.is_empty() {
+        return Err("DateTime::sub() expects exactly 1 parameter, 0 given".into());
+    }
+    let interval_handle = args[0];
+    
+    let dt_data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+    let interval_data = get_internal_data::<DateIntervalData>(vm, interval_handle)?;
+    
+    let new_dt = add_interval(&dt_data.dt, &interval_data, true);
+    
+    let payload_handle = match &vm.arena.get(this_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Invalid 'this'".into()),
+    };
+    
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+    }
+    
+    Ok(this_handle)
+}
+
+pub fn php_datetime_diff(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    if args.is_empty() {
+        return Err("DateTime::diff() expects exactly 1 parameter, 0 given".into());
+    }
+    let other_handle = args[0];
+    
+    let dt1 = get_internal_data::<DateTimeData>(vm, this_handle)?;
+    let dt2 = get_internal_data::<DateTimeData>(vm, other_handle)?;
+    
+    let diff = dt2.dt.clone() - dt1.dt.clone();
+    let total_seconds = diff.num_seconds();
+    let abs_seconds = total_seconds.abs();
+    
+    let days = abs_seconds / 86400;
+    let hours = (abs_seconds % 86400) / 3600;
+    let minutes = (abs_seconds % 3600) / 60;
+    let seconds = abs_seconds % 60;
+    
+    let data = DateIntervalData {
+        y: 0, m: 0, d: days,
+        h: hours, i: minutes, s: seconds,
+        f: 0.0,
+        invert: if total_seconds < 0 { 1 } else { 0 },
+        days: Some(days),
+    };
+    
+    let interval_sym = vm.context.interner.intern(b"DateInterval");
+    let dummy_spec = vm.arena.alloc(Val::String(b"PT0S".to_vec().into()));
+    let interval_handle = vm.instantiate_class(interval_sym, &[dummy_spec])?;
+    
+    let payload_handle = match &vm.arena.get(interval_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Failed to create DateInterval".into()),
+    };
+    
+    // Allocate values first to avoid double borrow
+    let y_val = vm.arena.alloc(Val::Int(0));
+    let m_val = vm.arena.alloc(Val::Int(0));
+    let d_val = vm.arena.alloc(Val::Int(days));
+    let h_val = vm.arena.alloc(Val::Int(hours));
+    let i_val = vm.arena.alloc(Val::Int(minutes));
+    let s_val = vm.arena.alloc(Val::Int(seconds));
+    let f_val = vm.arena.alloc(Val::Float(0.0));
+    let invert_val = vm.arena.alloc(Val::Int(if total_seconds < 0 { 1 } else { 0 }));
+    let days_val = vm.arena.alloc(Val::Int(days));
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(data));
+        
+        // Set properties
+        let y_sym = vm.context.interner.intern(b"y");
+        let m_sym = vm.context.interner.intern(b"m");
+        let d_sym = vm.context.interner.intern(b"d");
+        let h_sym = vm.context.interner.intern(b"h");
+        let i_sym = vm.context.interner.intern(b"i");
+        let s_sym = vm.context.interner.intern(b"s");
+        let f_sym = vm.context.interner.intern(b"f");
+        let invert_sym = vm.context.interner.intern(b"invert");
+        let days_sym = vm.context.interner.intern(b"days");
+        
+        obj_data.properties.insert(y_sym, y_val);
+        obj_data.properties.insert(m_sym, m_val);
+        obj_data.properties.insert(d_sym, d_val);
+        obj_data.properties.insert(h_sym, h_val);
+        obj_data.properties.insert(i_sym, i_val);
+        obj_data.properties.insert(s_sym, s_val);
+        obj_data.properties.insert(f_sym, f_val);
+        obj_data.properties.insert(invert_sym, invert_val);
+        obj_data.properties.insert(days_sym, days_val);
+    }
+    
+    Ok(interval_handle)
+}
+
+fn convert_php_to_chrono_format(php_format: &str) -> String {
+    let mut chrono_format = String::new();
+    let mut chars = php_format.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            'Y' => chrono_format.push_str("%Y"),
+            'y' => chrono_format.push_str("%y"),
+            'm' => chrono_format.push_str("%m"),
+            'd' => chrono_format.push_str("%d"),
+            'H' => chrono_format.push_str("%H"),
+            'i' => chrono_format.push_str("%M"),
+            's' => chrono_format.push_str("%S"),
+            'v' => chrono_format.push_str("%3f"),
+            'u' => chrono_format.push_str("%6f"),
+            _ => chrono_format.push(ch),
+        }
+    }
+    chrono_format
+}
+
+pub fn php_datetime_create_from_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("DateTime::createFromFormat() expects at least 2 parameters".into());
+    }
+
+    let format = String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string();
+    let datetime_str = String::from_utf8_lossy(&get_string_arg(vm, args[1])?).to_string();
+    
+    let chrono_format = convert_php_to_chrono_format(&format);
+    
+    if let Ok(naive) = NaiveDateTime::parse_from_str(&datetime_str, &chrono_format) {
+        let tz: Tz = vm.context.timezone.parse().unwrap_or(Tz::UTC);
+        let dt = tz.from_utc_datetime(&naive);
+        
+        let datetime_sym = vm.context.interner.intern(b"DateTime");
+        let obj_handle = vm.instantiate_class(datetime_sym, &[])?;
+        
+        let payload_handle = match &vm.arena.get(obj_handle).value {
+            Val::Object(h) => *h,
+            _ => return Err("Failed to create DateTime".into()),
+        };
+        
+        if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt }));
+        }
+        
+        Ok(obj_handle)
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+/// DateTime::getTimestamp(): int
+pub fn php_datetime_get_timestamp(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::getTimestamp() called outside object context")?;
+    let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+
+    Ok(vm.arena.alloc(Val::Int(data.dt.timestamp())))
+}
+
+/// DateTime::setTimestamp(int $timestamp): DateTime
+pub fn php_datetime_set_timestamp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::setTimestamp() called outside object context")?;
+    let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+
+    if args.is_empty() {
+        return Err("DateTime::setTimestamp() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let timestamp = get_int_arg(vm, args[0])?;
+    let new_dt = data.dt.timezone().timestamp_opt(timestamp, 0).unwrap();
+
+    if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+        }
+    }
+
+    Ok(this_handle)
+}
+
+/// DateTime::getTimezone(): DateTimeZone|false
+pub fn php_datetime_get_timezone(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::getTimezone() called outside object context")?;
+    let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+
+    // Create a new DateTimeZone object
+    let dtz_sym = vm.context.interner.intern(b"DateTimeZone");
+    let dtz_handle = vm.instantiate_class(dtz_sym, &[])?;
+
+    if let Val::Object(payload_handle) = &vm.arena.get(dtz_handle).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeZoneData {
+                tz: data.dt.timezone(),
+            }));
+        }
+    }
+
+    Ok(dtz_handle)
+}
+
+/// DateTime::setTimezone(DateTimeZone $timezone): DateTime
+pub fn php_datetime_set_timezone(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateTime::setTimezone() called outside object context")?;
+    let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+
+    if args.is_empty() {
+        return Err("DateTime::setTimezone() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let tz_data = get_internal_data::<DateTimeZoneData>(vm, args[0])?;
+    let new_dt = data.dt.with_timezone(&tz_data.tz);
+
+    if let Val::Object(payload_handle) = &vm.arena.get(this_handle).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+        }
+    }
+
+    Ok(this_handle)
+}
+
+// ============================================================================
+// DateInterval Class
+// ============================================================================
+
+/// DateInterval::__construct(string $duration)
+pub fn php_dateinterval_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DateInterval::__construct() called outside object context")?;
+
+    if args.is_empty() {
+        return Err("DateInterval::__construct() expects exactly 1 parameter, 0 given".into());
+    }
+
+    let duration_str = String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string();
+    
+    // ISO 8601 duration parser: P[n]Y[n]M[n]DT[n]H[n]M[n]S
+    let re = Regex::new(r"^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$").unwrap();
+    
+    if let Some(caps) = re.captures(&duration_str) {
+        let y = caps.get(1).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let m = caps.get(2).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let d = caps.get(3).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let h = caps.get(4).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let i = caps.get(5).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        let s = caps.get(6).map_or(0, |m| m.as_str().parse().unwrap_or(0));
+        
+        let data = DateIntervalData {
+            y, m, d, h, i, s,
+            f: 0.0,
+            invert: 0,
+            days: None,
+        };
+        
+        let payload_handle = match &vm.arena.get(this_handle).value {
+            Val::Object(h) => *h,
+            _ => return Err("Invalid 'this'".into()),
+        };
+        
+        // Pre-allocate all values to avoid double borrow of vm.arena
+        let y_val = vm.arena.alloc(Val::Int(y));
+        let m_val = vm.arena.alloc(Val::Int(m));
+        let d_val = vm.arena.alloc(Val::Int(d));
+        let h_val = vm.arena.alloc(Val::Int(h));
+        let i_val = vm.arena.alloc(Val::Int(i));
+        let s_val = vm.arena.alloc(Val::Int(s));
+        let f_val = vm.arena.alloc(Val::Float(0.0));
+        let invert_val = vm.arena.alloc(Val::Int(0));
+        let days_val = vm.arena.alloc(Val::Bool(false));
+
+        if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+            obj_data.internal = Some(Rc::new(data));
+            
+            // Also set public properties for PHP access
+            let y_sym = vm.context.interner.intern(b"y");
+            let m_sym = vm.context.interner.intern(b"m");
+            let d_sym = vm.context.interner.intern(b"d");
+            let h_sym = vm.context.interner.intern(b"h");
+            let i_sym = vm.context.interner.intern(b"i");
+            let s_sym = vm.context.interner.intern(b"s");
+            let f_sym = vm.context.interner.intern(b"f");
+            let invert_sym = vm.context.interner.intern(b"invert");
+            let days_sym = vm.context.interner.intern(b"days");
+
+            obj_data.properties.insert(y_sym, y_val);
+            obj_data.properties.insert(m_sym, m_val);
+            obj_data.properties.insert(d_sym, d_val);
+            obj_data.properties.insert(h_sym, h_val);
+            obj_data.properties.insert(i_sym, i_val);
+            obj_data.properties.insert(s_sym, s_val);
+            obj_data.properties.insert(f_sym, f_val);
+            obj_data.properties.insert(invert_sym, invert_val);
+            obj_data.properties.insert(days_sym, days_val);
+        }
+        
+        Ok(vm.arena.alloc(Val::Null))
+    } else {
+        Err(format!("Invalid duration string: {}", duration_str))
+    }
+}
+
+pub fn php_datetime_modify(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    if args.is_empty() {
+        return Err("DateTime::modify() expects exactly 1 parameter, 0 given".into());
+    }
+    let modify_handle = args[0];
+    let modify_str = String::from_utf8_lossy(&get_string_arg(vm, modify_handle)?).to_string();
+
+    let dt_data = get_internal_data::<DateTimeData>(vm, this_handle)?;
+    
+    // Simple implementation for now: just parse the new string relative to current time
+    // In a real implementation, we'd use a relative date parser.
+    let new_dt = if modify_str == "now" {
+        Utc::now().with_timezone(&dt_data.dt.timezone())
+    } else if let Ok(ndt) = NaiveDateTime::parse_from_str(&modify_str, "%Y-%m-%d %H:%M:%S") {
+        dt_data.dt.timezone().from_local_datetime(&ndt).unwrap()
+    } else {
+        return Err(format!("Failed to parse modify string: {}", modify_str));
+    };
+
+    let payload_handle = match &vm.arena.get(this_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Invalid 'this'".into()),
+    };
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+    }
+
+    Ok(this_handle)
+}
+
+/// DateInterval::format(string $format): string
+pub fn php_dateinterval_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let (interval_handle, format_handle) = if args.len() >= 2 {
+        // Procedural: date_interval_format($interval, $format)
+        (args[0], args[1])
+    } else if args.len() == 1 {
+        // Method: $interval->format($format)
+        let this_handle = vm
+            .frames
+            .last()
+            .and_then(|f| f.this)
+            .ok_or("DateInterval::format() called outside object context")?;
+        (this_handle, args[0])
+    } else {
+        return Err("date_interval_format() expects at least 1 parameter".into());
+    };
+
+    let format_str = String::from_utf8_lossy(&get_string_arg(vm, format_handle)?).to_string();
+    let data = get_internal_data::<DateIntervalData>(vm, interval_handle)?;
+
+    let mut result = String::new();
+    let mut chars = format_str.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            if let Some(next) = chars.next() {
+                match next {
+                    'Y' => result.push_str(&format!("{:02}", data.y)),
+                    'y' => result.push_str(&data.y.to_string()),
+                    'M' => result.push_str(&format!("{:02}", data.m)),
+                    'm' => result.push_str(&data.m.to_string()),
+                    'D' => result.push_str(&format!("{:02}", data.d)),
+                    'd' => result.push_str(&data.d.to_string()),
+                    'H' => result.push_str(&format!("{:02}", data.h)),
+                    'h' => result.push_str(&data.h.to_string()),
+                    'I' => result.push_str(&format!("{:02}", data.i)),
+                    'i' => result.push_str(&data.i.to_string()),
+                    'S' => result.push_str(&format!("{:02}", data.s)),
+                    's' => result.push_str(&data.s.to_string()),
+                    'F' => result.push_str(&format!("{:06}", (data.f * 1000000.0) as i64)),
+                    'f' => result.push_str(&((data.f * 1000000.0) as i64).to_string()),
+                    'R' => result.push(if data.invert == 1 { '-' } else { '+' }),
+                    'r' => {
+                        if data.invert == 1 {
+                            result.push('-');
+                        }
+                    }
+                    'a' => {
+                        if let Some(days) = data.days {
+                            result.push_str(&days.to_string());
+                        } else {
+                            result.push_str("(unknown)");
+                        }
+                    }
+                    '%' => result.push('%'),
+                    _ => {
+                        result.push('%');
+                        result.push(next);
+                    }
+                }
+            } else {
+                result.push('%');
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into_bytes().into())))
+}
+
+// ============================================================================
+// DatePeriod Class
+// ============================================================================
+
+/// DatePeriod::__construct(...)
+pub fn php_dateperiod_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm
+        .frames
+        .last()
+        .and_then(|f| f.this)
+        .ok_or("DatePeriod::__construct() called outside object context")?;
+
+    if args.len() < 2 {
+        return Err("DatePeriod::__construct() expects at least 2 parameters".into());
+    }
+
+    let start_data = get_internal_data::<DateTimeData>(vm, args[0])?;
+    let interval_data = get_internal_data::<DateIntervalData>(vm, args[1])?;
+    
+    let mut end = None;
+    let mut recurrences = None;
+    let mut options = 0;
+
+    if args.len() >= 3 {
+        let arg2 = vm.arena.get(args[2]);
+        match &arg2.value {
+            Val::Int(r) => recurrences = Some(*r),
+            Val::Object(_) => {
+                let end_data = get_internal_data::<DateTimeData>(vm, args[2])?;
+                end = Some(end_data.dt.clone());
+            }
+            _ => return Err("DatePeriod::__construct(): Argument #3 must be of type DateTimeInterface|int".into()),
+        }
+    }
+    
+    if args.len() >= 4 {
+        options = get_int_arg(vm, args[3])?;
+    }
+    
+    let include_start_date = (options & 1) == 0;
+
+    let data = DatePeriodData {
+        start: start_data.dt.clone(),
+        end,
+        interval: interval_data,
+        recurrences,
+        include_start_date,
+        current_date: RefCell::new(None),
+        current_index: RefCell::new(0),
+    };
+
+    let payload_handle = match &vm.arena.get(this_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Invalid 'this'".into()),
+    };
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(data));
+    }
+
+    Ok(this_handle)
+}
+
+pub fn php_dateperiod_get_start_date(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    let dt_sym = vm.context.interner.intern(b"DateTimeImmutable");
+    let now_str = vm.arena.alloc(Val::String(b"now".to_vec().into()));
+    let dt_handle = vm.instantiate_class(dt_sym, &[now_str])?;
+    let payload_handle = match &vm.arena.get(dt_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Failed to create DateTimeImmutable".into()),
+    };
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(DateTimeData { dt: data.start.clone() }));
+    }
+    Ok(dt_handle)
+}
+
+pub fn php_dateperiod_get_end_date(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    if let Some(end) = &data.end {
+        let dt_sym = vm.context.interner.intern(b"DateTimeImmutable");
+        let now_str = vm.arena.alloc(Val::String(b"now".to_vec().into()));
+        let dt_handle = vm.instantiate_class(dt_sym, &[now_str])?;
+        let payload_handle = match &vm.arena.get(dt_handle).value {
+            Val::Object(h) => *h,
+            _ => return Err("Failed to create DateTimeImmutable".into()),
+        };
+        if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: end.clone() }));
+        }
+        Ok(dt_handle)
+    } else {
+        Ok(vm.arena.alloc(Val::Null))
+    }
+}
+
+pub fn php_dateperiod_get_interval(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    let interval_sym = vm.context.interner.intern(b"DateInterval");
+    let dummy_spec = vm.arena.alloc(Val::String(b"PT0S".to_vec().into()));
+    let interval_handle = vm.instantiate_class(interval_sym, &[dummy_spec])?;
+    let payload_handle = match &vm.arena.get(interval_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Failed to create DateInterval".into()),
+    };
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(data.interval.clone());
+    }
+    Ok(interval_handle)
+}
+
+pub fn php_dateperiod_get_recurrences(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    if let Some(r) = data.recurrences {
+        Ok(vm.arena.alloc(Val::Int(r)))
+    } else {
+        Ok(vm.arena.alloc(Val::Null))
+    }
+}
+
+pub fn php_dateperiod_rewind(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    *data.current_index.borrow_mut() = 0;
+    if data.include_start_date {
+        *data.current_date.borrow_mut() = Some(data.start.clone());
+    } else {
+        let next = add_interval(&data.start, &data.interval, false);
+        *data.current_date.borrow_mut() = Some(next);
+    }
+    
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+pub fn php_dateperiod_valid(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    let current = data.current_date.borrow();
+    if current.is_none() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+    
+    let current_dt = current.as_ref().unwrap();
+    
+    if let Some(end_dt) = &data.end {
+        if current_dt >= end_dt {
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+    }
+    
+    if let Some(max_recurrences) = data.recurrences {
+        if *data.current_index.borrow() >= max_recurrences {
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+    }
+    
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+pub fn php_dateperiod_current(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    let current = data.current_date.borrow();
+    if let Some(dt) = current.as_ref() {
+        let dt_sym = vm.context.interner.intern(b"DateTime");
+        let now_str = vm.arena.alloc(Val::String(b"now".to_vec().into()));
+        let dt_handle = vm.instantiate_class(dt_sym, &[now_str])?;
+        let payload_handle = match &vm.arena.get(dt_handle).value {
+            Val::Object(h) => *h,
+            _ => return Err("Failed to create DateTime".into()),
+        };
+        if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: dt.clone() }));
+        }
+        Ok(dt_handle)
+    } else {
+        Ok(vm.arena.alloc(Val::Null))
+    }
+}
+
+pub fn php_dateperiod_key(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    let index = *data.current_index.borrow();
+    Ok(vm.arena.alloc(Val::Int(index)))
+}
+
+pub fn php_dateperiod_next(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let this_handle = vm.frames.last().and_then(|f| f.this).ok_or("Missing 'this'")?;
+    let data = get_internal_data::<DatePeriodData>(vm, this_handle)?;
+    
+    let mut current = data.current_date.borrow_mut();
+    if let Some(dt) = current.as_ref() {
+        let next = add_interval(dt, &data.interval, false);
+        *current = Some(next);
+        *data.current_index.borrow_mut() += 1;
+    }
+    
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+// ============================================================================
 // Date/Time Functions
 // ============================================================================
 
@@ -317,11 +1237,10 @@ pub fn php_date(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Utc::now().timestamp()
     };
 
-    // Use system default timezone (simplified - in real PHP this would use date.timezone ini setting)
-    let dt = Local.timestamp_opt(timestamp, 0).unwrap();
-    let tz_dt = dt.with_timezone(&Tz::UTC); // Simplified - should use configured timezone
+    let tz = parse_timezone(&vm.context.timezone)?;
+    let dt = Utc.timestamp_opt(timestamp, 0).unwrap().with_timezone(&tz);
 
-    let formatted = format_php_date(&tz_dt, &format);
+    let formatted = format_php_date(&dt, &format);
     Ok(vm.arena.alloc(Val::String(formatted.into_bytes().into())))
 }
 
@@ -339,10 +1258,9 @@ pub fn php_gmdate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Utc::now().timestamp()
     };
 
-    let dt = Utc.timestamp_opt(timestamp, 0).unwrap();
-    let tz_dt = dt.with_timezone(&Tz::UTC);
+    let dt = Utc.timestamp_opt(timestamp, 0).unwrap().with_timezone(&Tz::UTC);
 
-    let formatted = format_php_date(&tz_dt, &format);
+    let formatted = format_php_date(&dt, &format);
     Ok(vm.arena.alloc(Val::String(formatted.into_bytes().into())))
 }
 
@@ -793,11 +1711,9 @@ pub fn php_localtime(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
 /// date_default_timezone_get(): string
 pub fn php_date_default_timezone_get(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    // In a real implementation, this would read from ini settings
-    // For now, return UTC
     Ok(vm
         .arena
-        .alloc(Val::String("UTC".as_bytes().to_vec().into())))
+        .alloc(Val::String(vm.context.timezone.as_bytes().to_vec().into())))
 }
 
 /// date_default_timezone_set(string $timezoneId): bool
@@ -810,7 +1726,10 @@ pub fn php_date_default_timezone_set(vm: &mut VM, args: &[Handle]) -> Result<Han
 
     // Validate timezone
     match parse_timezone(&tz_str) {
-        Ok(_) => Ok(vm.arena.alloc(Val::Bool(true))),
+        Ok(_) => {
+            vm.context.timezone = tz_str;
+            Ok(vm.arena.alloc(Val::Bool(true)))
+        }
         Err(_) => Ok(vm.arena.alloc(Val::Bool(false))),
     }
 }
@@ -920,6 +1839,33 @@ pub fn php_date_sun_info(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
             map,
             next_free: 0,
         }))))
+}
+
+/// date_create(string $datetime = "now", ?DateTimeZone $timezone = null): DateTime|false
+pub fn php_date_create(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let datetime_sym = vm.context.interner.intern(b"DateTime");
+    vm.instantiate_class(datetime_sym, args)
+}
+
+/// date_create_immutable(string $datetime = "now", ?DateTimeZone $timezone = null): DateTimeImmutable|false
+pub fn php_date_create_immutable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let datetime_immutable_sym = vm.context.interner.intern(b"DateTimeImmutable");
+    vm.instantiate_class(datetime_immutable_sym, args)
+}
+
+/// date_format(DateTimeInterface $object, string $format): string
+pub fn php_date_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_format() expects at least 2 parameters".into());
+    }
+
+    // We can't easily call the method on the object here without more VM infrastructure
+    // But we can just call the internal implementation
+    let data = get_internal_data::<DateTimeData>(vm, args[0])?;
+    let format = String::from_utf8_lossy(&get_string_arg(vm, args[1])?).to_string();
+    let formatted = format_php_date(&data.dt, &format);
+
+    Ok(vm.arena.alloc(Val::String(formatted.into_bytes().into())))
 }
 
 // ============================================================================
@@ -1067,3 +2013,158 @@ pub fn php_date_parse_from_format(vm: &mut VM, args: &[Handle]) -> Result<Handle
             next_free: 0,
         }))))
 }
+
+// ============================================================================
+// Procedural Functions
+// ============================================================================
+
+fn get_internal_data_mut<T: 'static>(vm: &mut VM, handle: Handle) -> Result<&mut T, String> {
+    let val = vm.arena.get(handle);
+    let payload_handle = match &val.value {
+        Val::Object(h) => *h,
+        _ => return Err("Expected object".into()),
+    };
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        if let Some(internal) = &mut obj_data.internal {
+            if let Some(data) = Rc::get_mut(internal) {
+                if let Some(typed_data) = data.downcast_mut::<T>() {
+                    return Ok(typed_data);
+                }
+            }
+            return Err("Failed to get mutable internal data (shared reference)".into());
+        }
+    }
+    Err("Object has no internal data".into())
+}
+
+fn get_obj_data_mut<'a>(
+    vm: &'a mut VM,
+    handle: Handle,
+) -> Result<&'a mut crate::core::value::ObjectData, String> {
+    let val = vm.arena.get(handle);
+    let payload_handle = match &val.value {
+        Val::Object(h) => *h,
+        _ => return Err("Expected object".into()),
+    };
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        return Ok(obj_data);
+    }
+    Err("Expected object payload".into())
+}
+
+pub fn php_date_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_add() expects 2 parameters".into());
+    }
+    let obj = args[0];
+    let interval = args[1];
+
+    let interval_data = get_internal_data::<DateIntervalData>(vm, interval)?;
+    let data_mut = get_internal_data_mut::<DateTimeData>(vm, obj)?;
+    data_mut.dt = add_interval(&data_mut.dt, &interval_data, false);
+
+    Ok(obj)
+}
+
+pub fn php_date_sub(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_sub() expects 2 parameters".into());
+    }
+    let obj = args[0];
+    let interval = args[1];
+
+    let interval_data = get_internal_data::<DateIntervalData>(vm, interval)?;
+    let data_mut = get_internal_data_mut::<DateTimeData>(vm, obj)?;
+    data_mut.dt = add_interval(&data_mut.dt, &interval_data, true);
+
+    Ok(obj)
+}
+
+pub fn php_date_diff(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_diff() expects at least 2 parameters".into());
+    }
+    let obj1 = args[0];
+    let obj2 = args[1];
+    let absolute = if args.len() > 2 {
+        let val = vm.arena.get(args[2]);
+        matches!(val.value, Val::Bool(true))
+    } else {
+        false
+    };
+
+    let data1 = get_internal_data::<DateTimeData>(vm, obj1)?;
+    let data2 = get_internal_data::<DateTimeData>(vm, obj2)?;
+
+    let diff = data2.dt.signed_duration_since(data1.dt);
+    let mut seconds = diff.num_seconds();
+    if absolute && seconds < 0 {
+        seconds = -seconds;
+    }
+
+    let invert = if seconds < 0 { 1 } else { 0 };
+    let abs_seconds = seconds.abs();
+
+    let days = abs_seconds / 86400;
+    let rem = abs_seconds % 86400;
+    let h = rem / 3600;
+    let rem = rem % 3600;
+    let i = rem / 60;
+    let s = rem % 60;
+
+    let interval_data = DateIntervalData {
+        y: 0,
+        m: 0,
+        d: days,
+        h,
+        i,
+        s,
+        f: 0.0,
+        invert,
+        days: Some(days),
+    };
+
+    let interval_sym = vm.context.interner.intern(b"DateInterval");
+    let p0d = vm.arena.alloc(Val::String(b"P0D".to_vec().into()));
+    let interval_handle = vm.instantiate_class(interval_sym, &[p0d])?;
+    let obj_data = get_obj_data_mut(vm, interval_handle)?;
+    obj_data.internal = Some(Rc::new(interval_data));
+
+    Ok(interval_handle)
+}
+
+pub fn php_date_modify(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_modify() expects 2 parameters".into());
+    }
+    let obj = args[0];
+    let modifier_bytes = get_string_arg(vm, args[1])?;
+    let modifier = String::from_utf8_lossy(&modifier_bytes);
+
+    let data_mut = get_internal_data_mut::<DateTimeData>(vm, obj)?;
+    if modifier == "+1 day" {
+        data_mut.dt = data_mut.dt + chrono::Duration::days(1);
+    } else if modifier == "-1 day" {
+        data_mut.dt = data_mut.dt - chrono::Duration::days(1);
+    } else {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    Ok(obj)
+}
+
+pub fn php_timezone_open(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    let tz_sym = vm.context.interner.intern(b"DateTimeZone");
+    vm.instantiate_class(tz_sym, args)
+}
+
+pub fn php_date_interval_create_from_date_string(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("date_interval_create_from_date_string() expects 1 parameter".into());
+    }
+    let interval_sym = vm.context.interner.intern(b"DateInterval");
+    vm.instantiate_class(interval_sym, args)
+}
+

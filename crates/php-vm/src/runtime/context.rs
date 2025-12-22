@@ -518,6 +518,9 @@ impl EngineContext {
         functions.insert(b"date".to_vec(), datetime::php_date as NativeHandler);
         functions.insert(b"gmdate".to_vec(), datetime::php_gmdate as NativeHandler);
         functions.insert(b"time".to_vec(), datetime::php_time as NativeHandler);
+        functions.insert(b"date_create".to_vec(), datetime::php_date_create as NativeHandler);
+        functions.insert(b"date_create_immutable".to_vec(), datetime::php_date_create_immutable as NativeHandler);
+        functions.insert(b"date_format".to_vec(), datetime::php_date_format as NativeHandler);
         functions.insert(
             b"microtime".to_vec(),
             datetime::php_microtime as NativeHandler,
@@ -569,6 +572,23 @@ impl EngineContext {
             b"date_parse_from_format".to_vec(),
             datetime::php_date_parse_from_format as NativeHandler,
         );
+        functions.insert(b"date_add".to_vec(), datetime::php_date_add as NativeHandler);
+        functions.insert(b"date_sub".to_vec(), datetime::php_date_sub as NativeHandler);
+        functions.insert(b"date_diff".to_vec(), datetime::php_date_diff as NativeHandler);
+        functions.insert(b"date_modify".to_vec(), datetime::php_date_modify as NativeHandler);
+        functions.insert(
+            b"date_create_from_format".to_vec(),
+            datetime::php_datetime_create_from_format as NativeHandler,
+        );
+        functions.insert(
+            b"date_interval_create_from_date_string".to_vec(),
+            datetime::php_date_interval_create_from_date_string as NativeHandler,
+        );
+        functions.insert(
+            b"date_interval_format".to_vec(),
+            datetime::php_dateinterval_format as NativeHandler,
+        );
+        functions.insert(b"timezone_open".to_vec(), datetime::php_timezone_open as NativeHandler);
 
         // Output Control functions
         functions.insert(
@@ -726,6 +746,7 @@ pub struct RequestContext {
     pub zip_archives: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
     pub zip_resources: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
     pub zip_entries: HashMap<u64, (u64, usize)>,
+    pub timezone: String,
 }
 
 impl RequestContext {
@@ -756,6 +777,7 @@ impl RequestContext {
             zip_archives: HashMap::new(),           // Initialize Zip archives
             zip_resources: HashMap::new(),          // Initialize Zip resources
             zip_entries: HashMap::new(),            // Initialize Zip entries
+            timezone: "UTC".to_string(),            // Default timezone
         };
         ctx.register_builtin_classes();
         ctx.materialize_extension_classes();
@@ -1477,6 +1499,340 @@ impl RequestContext {
         );
 
         //=====================================================================
+        //=====================================================================
+        // Date/Time Classes
+        //=====================================================================
+
+        let datetime_interface_sym = self.interner.intern(b"DateTimeInterface");
+        let datetime_sym = self.interner.intern(b"DateTime");
+        let datetime_immutable_sym = self.interner.intern(b"DateTimeImmutable");
+        let datetimezone_sym = self.interner.intern(b"DateTimeZone");
+        let dateinterval_sym = self.interner.intern(b"DateInterval");
+        let dateperiod_sym = self.interner.intern(b"DatePeriod");
+
+        // Date/Time Exceptions
+        let date_error_sym = self.interner.intern(b"DateError");
+        let date_object_error_sym = self.interner.intern(b"DateObjectError");
+        let date_range_error_sym = self.interner.intern(b"DateRangeError");
+        let date_exception_sym = self.interner.intern(b"DateException");
+        let date_invalid_operation_exception_sym = self.interner.intern(b"DateInvalidOperationException");
+        let date_invalid_timezone_exception_sym = self.interner.intern(b"DateInvalidTimeZoneException");
+        let date_malformed_interval_string_exception_sym = self.interner.intern(b"DateMalformedIntervalStringException");
+        let date_malformed_period_string_exception_sym = self.interner.intern(b"DateMalformedPeriodStringException");
+        let date_malformed_string_exception_sym = self.interner.intern(b"DateMalformedStringException");
+
+        // DateTimeInterface
+        self.classes.insert(
+            datetime_interface_sym,
+            ClassDef {
+                name: datetime_interface_sym,
+                parent: None,
+                is_interface: true,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        // DateTimeZone
+        self.classes.insert(
+            datetimezone_sym,
+            ClassDef {
+                name: datetimezone_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        register_native_method(self, datetimezone_sym, b"__construct", datetime::php_datetimezone_construct, Visibility::Public, false);
+        register_native_method(self, datetimezone_sym, b"getName", datetime::php_datetimezone_get_name, Visibility::Public, false);
+        register_native_method(self, datetimezone_sym, b"getOffset", datetime::php_datetimezone_get_offset, Visibility::Public, false);
+        register_native_method(self, datetimezone_sym, b"getLocation", datetime::php_datetimezone_get_location, Visibility::Public, false);
+        register_native_method(self, datetimezone_sym, b"listIdentifiers", datetime::php_datetimezone_list_identifiers, Visibility::Public, true);
+
+        // DateTime
+        self.classes.insert(
+            datetime_sym,
+            ClassDef {
+                name: datetime_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![datetime_interface_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        register_native_method(self, datetime_sym, b"__construct", datetime::php_datetime_construct, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"format", datetime::php_datetime_format, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"getTimestamp", datetime::php_datetime_get_timestamp, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"setTimestamp", datetime::php_datetime_set_timestamp, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"getTimezone", datetime::php_datetime_get_timezone, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"setTimezone", datetime::php_datetime_set_timezone, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"add", datetime::php_datetime_add, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"sub", datetime::php_datetime_sub, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"diff", datetime::php_datetime_diff, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"modify", datetime::php_datetime_modify, Visibility::Public, false);
+        register_native_method(self, datetime_sym, b"createFromFormat", datetime::php_datetime_create_from_format, Visibility::Public, true);
+
+        // DateTimeImmutable
+        self.classes.insert(
+            datetime_immutable_sym,
+            ClassDef {
+                name: datetime_immutable_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![datetime_interface_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        register_native_method(self, datetime_immutable_sym, b"__construct", datetime::php_datetime_construct, Visibility::Public, false);
+        register_native_method(self, datetime_immutable_sym, b"format", datetime::php_datetime_format, Visibility::Public, false);
+        register_native_method(self, datetime_immutable_sym, b"getTimestamp", datetime::php_datetime_get_timestamp, Visibility::Public, false);
+        register_native_method(self, datetime_immutable_sym, b"getTimezone", datetime::php_datetime_get_timezone, Visibility::Public, false);
+        register_native_method(self, datetime_immutable_sym, b"createFromFormat", datetime::php_datetime_create_from_format, Visibility::Public, true);
+
+        // DateInterval
+        self.classes.insert(
+            dateinterval_sym,
+            ClassDef {
+                name: dateinterval_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        register_native_method(self, dateinterval_sym, b"__construct", datetime::php_dateinterval_construct, Visibility::Public, false);
+        register_native_method(self, dateinterval_sym, b"format", datetime::php_dateinterval_format, Visibility::Public, false);
+
+        let traversable_sym = self.interner.intern(b"Traversable");
+        let iterator_sym = self.interner.intern(b"Iterator");
+
+        // DatePeriod
+        self.classes.insert(
+            dateperiod_sym,
+            ClassDef {
+                name: dateperiod_sym,
+                parent: None,
+                is_interface: false,
+                is_trait: false,
+                interfaces: vec![traversable_sym, iterator_sym],
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        register_native_method(self, dateperiod_sym, b"__construct", datetime::php_dateperiod_construct, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"getStartDate", datetime::php_dateperiod_get_start_date, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"getEndDate", datetime::php_dateperiod_get_end_date, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"getInterval", datetime::php_dateperiod_get_interval, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"getRecurrences", datetime::php_dateperiod_get_recurrences, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"current", datetime::php_dateperiod_current, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"key", datetime::php_dateperiod_key, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"next", datetime::php_dateperiod_next, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"rewind", datetime::php_dateperiod_rewind, Visibility::Public, false);
+        register_native_method(self, dateperiod_sym, b"valid", datetime::php_dateperiod_valid, Visibility::Public, false);
+
+        self.classes.get_mut(&dateperiod_sym).unwrap().constants.insert(
+            self.interner.intern(b"EXCLUDE_START_DATE"),
+            (Val::Int(1), Visibility::Public),
+        );
+
+        // Date Exceptions
+        let error_sym = self.interner.intern(b"Error");
+        let exception_sym = self.interner.intern(b"Exception");
+        let runtime_exception_sym = self.interner.intern(b"RuntimeException");
+
+        self.classes.insert(
+            date_error_sym,
+            ClassDef {
+                name: date_error_sym,
+                parent: Some(error_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_object_error_sym,
+            ClassDef {
+                name: date_object_error_sym,
+                parent: Some(date_error_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_range_error_sym,
+            ClassDef {
+                name: date_range_error_sym,
+                parent: Some(date_error_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_exception_sym,
+            ClassDef {
+                name: date_exception_sym,
+                parent: Some(exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_invalid_operation_exception_sym,
+            ClassDef {
+                name: date_invalid_operation_exception_sym,
+                parent: Some(date_exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_invalid_timezone_exception_sym,
+            ClassDef {
+                name: date_invalid_timezone_exception_sym,
+                parent: Some(date_exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_malformed_interval_string_exception_sym,
+            ClassDef {
+                name: date_malformed_interval_string_exception_sym,
+                parent: Some(date_exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_malformed_period_string_exception_sym,
+            ClassDef {
+                name: date_malformed_period_string_exception_sym,
+                parent: Some(date_exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
+        self.classes.insert(
+            date_malformed_string_exception_sym,
+            ClassDef {
+                name: date_malformed_string_exception_sym,
+                parent: Some(date_exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+
         // Exception and Error Classes
         //=====================================================================
 
@@ -1918,6 +2274,26 @@ impl RequestContext {
         self.insert_builtin_constant(b"PHP_URL_FRAGMENT", Val::Int(url::PHP_URL_FRAGMENT));
         self.insert_builtin_constant(b"PHP_QUERY_RFC1738", Val::Int(url::PHP_QUERY_RFC1738));
         self.insert_builtin_constant(b"PHP_QUERY_RFC3986", Val::Int(url::PHP_QUERY_RFC3986));
+
+        // Date constants
+        self.insert_builtin_constant(b"DATE_ATOM", Val::String(Rc::new(datetime::DATE_ATOM.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_COOKIE", Val::String(Rc::new(datetime::DATE_COOKIE.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_ISO8601", Val::String(Rc::new(datetime::DATE_ISO8601.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_ISO8601_EXPANDED", Val::String(Rc::new(datetime::DATE_ISO8601_EXPANDED.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC822", Val::String(Rc::new(datetime::DATE_RFC822.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC850", Val::String(Rc::new(datetime::DATE_RFC850.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC1036", Val::String(Rc::new(datetime::DATE_RFC1036.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC1123", Val::String(Rc::new(datetime::DATE_RFC1123.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC7231", Val::String(Rc::new(datetime::DATE_RFC7231.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC2822", Val::String(Rc::new(datetime::DATE_RFC2822.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC3339", Val::String(Rc::new(datetime::DATE_RFC3339.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RFC3339_EXTENDED", Val::String(Rc::new(datetime::DATE_RFC3339_EXTENDED.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_RSS", Val::String(Rc::new(datetime::DATE_RSS.as_bytes().to_vec())));
+        self.insert_builtin_constant(b"DATE_W3C", Val::String(Rc::new(datetime::DATE_W3C.as_bytes().to_vec())));
+
+        self.insert_builtin_constant(b"SUNFUNCS_RET_TIMESTAMP", Val::Int(datetime::SUNFUNCS_RET_TIMESTAMP));
+        self.insert_builtin_constant(b"SUNFUNCS_RET_STRING", Val::Int(datetime::SUNFUNCS_RET_STRING));
+        self.insert_builtin_constant(b"SUNFUNCS_RET_DOUBLE", Val::Int(datetime::SUNFUNCS_RET_DOUBLE));
 
         // Error reporting constants
         self.insert_builtin_constant(b"E_ERROR", Val::Int(1));

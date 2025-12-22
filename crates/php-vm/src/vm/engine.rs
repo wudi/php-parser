@@ -345,6 +345,83 @@ impl VM {
         vm
     }
 
+    /// Instantiate a class and call its constructor.
+    pub fn instantiate_class(&mut self, class_name: Symbol, args: &[Handle]) -> Result<Handle, String> {
+        let resolved_class = self.resolve_class_name(class_name).map_err(|e| format!("{:?}", e))?;
+        
+        if !self.context.classes.contains_key(&resolved_class) {
+            self.trigger_autoload(resolved_class).map_err(|e| format!("{:?}", e))?;
+        }
+
+        if let Some(_class_def) = self.context.classes.get(&resolved_class) {
+            let properties = self.collect_properties(resolved_class, PropertyCollectionMode::All);
+
+            let obj_data = ObjectData {
+                class: resolved_class,
+                properties,
+                internal: None,
+                dynamic_properties: std::collections::HashSet::new(),
+            };
+
+            let payload_handle = self.arena.alloc(Val::ObjPayload(obj_data));
+            let obj_val = Val::Object(payload_handle);
+            let obj_handle = self.arena.alloc(obj_val);
+
+            // Check for constructor
+            let constructor_name = self.context.interner.intern(b"__construct");
+            let method_lookup = self.find_method(resolved_class, constructor_name);
+
+            if let Some((constructor, vis, _, defined_class)) = method_lookup {
+                // For internal instantiation, we might want to bypass visibility checks,
+                // but let's keep them for now or assume internal calls are "public".
+                
+                // Collect args
+                let mut frame = CallFrame::new(constructor.chunk.clone());
+                frame.func = Some(constructor.clone());
+                frame.this = Some(obj_handle);
+                frame.is_constructor = true;
+                frame.class_scope = Some(defined_class);
+                frame.args = args.to_vec().into();
+                self.push_frame(frame);
+                
+                // We need to execute the constructor. 
+                // This is tricky because we are already in a native function.
+                // For now, let's just return the object and hope the caller knows what they are doing,
+                // OR we can try to execute the frame if it's a native constructor.
+                
+                // If it's a native constructor, we can call it directly.
+                let native_constructor = self.find_native_method(resolved_class, constructor_name);
+                if let Some(native_entry) = native_constructor {
+                    let saved_this = self.frames.last().and_then(|f| f.this);
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = Some(obj_handle);
+                    }
+                    (native_entry.handler)(self, args).map_err(|e| format!("{:?}", e))?;
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = saved_this;
+                    }
+                }
+            } else {
+                // Check for native constructor directly if no PHP method found
+                let native_constructor = self.find_native_method(resolved_class, constructor_name);
+                if let Some(native_entry) = native_constructor {
+                    let saved_this = self.frames.last().and_then(|f| f.this);
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = Some(obj_handle);
+                    }
+                    (native_entry.handler)(self, args).map_err(|e| format!("{:?}", e))?;
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.this = saved_this;
+                    }
+                }
+            }
+
+            Ok(obj_handle)
+        } else {
+            Err(format!("Class {:?} not found", class_name))
+        }
+    }
+
     /// Convert bytes to lowercase for case-insensitive lookups
     #[inline(always)]
     pub(super) fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
@@ -1039,6 +1116,44 @@ impl VM {
                 .get(&(cls, method_name))
                 .cloned()
         })
+    }
+
+    pub(crate) fn call_native_method_simple(
+        &mut self,
+        obj_handle: Handle,
+        method_name: Symbol,
+    ) -> Result<Handle, VmError> {
+        let class_name = if let Val::Object(h) = self.arena.get(obj_handle).value {
+            if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError("Not an object".into()));
+        };
+
+        if let Some(native_entry) = self.find_native_method(class_name, method_name) {
+            let saved_this = self.frames.last().and_then(|f| f.this);
+            if let Some(frame) = self.frames.last_mut() {
+                frame.this = Some(obj_handle);
+            }
+            let result = (native_entry.handler)(self, &[]).map_err(VmError::RuntimeError)?;
+            if let Some(frame) = self.frames.last_mut() {
+                frame.this = saved_this;
+            }
+            Ok(result)
+        } else {
+            Err(VmError::RuntimeError(format!(
+                "Native method not found: {}::{}",
+                String::from_utf8_lossy(
+                    self.context.interner.lookup(class_name).unwrap_or(b"unknown")
+                ),
+                String::from_utf8_lossy(
+                    self.context.interner.lookup(method_name).unwrap_or(b"unknown")
+                )
+            )))
+        }
     }
 
     pub fn collect_methods(&self, class_name: Symbol, caller_scope: Option<Symbol>) -> Vec<Symbol> {
@@ -4485,6 +4600,7 @@ impl VM {
                     Val::Object(payload_handle) => {
                         let payload = self.arena.get(*payload_handle);
                         if let Val::ObjPayload(obj_data) = &payload.value {
+                            let mut handled = false;
                             if let Some(internal) = &obj_data.internal {
                                 if let Ok(gen_data) =
                                     internal.clone().downcast::<RefCell<GeneratorData>>()
@@ -4512,12 +4628,34 @@ impl VM {
                                             ))
                                         }
                                     }
-                                } else {
-                                    return Err(VmError::RuntimeError(
-                                        "Object not iterable".into(),
-                                    ));
+                                    handled = true;
                                 }
-                            } else {
+                            }
+
+                            if !handled {
+                                let iterator_sym = self.context.interner.intern(b"Iterator");
+                                if self.is_instance_of(iterable_handle, iterator_sym) {
+                                    let rewind_sym = self.context.interner.intern(b"rewind");
+                                    let valid_sym = self.context.interner.intern(b"valid");
+
+                                    self.call_native_method_simple(iterable_handle, rewind_sym)?;
+                                    let is_valid = self
+                                        .call_native_method_simple(iterable_handle, valid_sym)?;
+
+                                    if let Val::Bool(false) = self.arena.get(is_valid).value {
+                                        self.operand_stack.pop(); // Pop object
+                                        let frame = self.frames.last_mut().unwrap();
+                                        frame.ip = target as usize;
+                                    } else {
+                                        // Push dummy index
+                                        let idx_handle = self.arena.alloc(Val::Int(0));
+                                        self.operand_stack.push(idx_handle);
+                                    }
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
                                 return Err(VmError::RuntimeError("Object not iterable".into()));
                             }
                         } else {
@@ -4585,6 +4723,7 @@ impl VM {
                     Val::Object(payload_handle) => {
                         let payload = self.arena.get(*payload_handle);
                         if let Val::ObjPayload(obj_data) = &payload.value {
+                            let mut handled = false;
                             if let Some(internal) = &obj_data.internal {
                                 if let Ok(gen_data) =
                                     internal.clone().downcast::<RefCell<GeneratorData>>()
@@ -4596,6 +4735,24 @@ impl VM {
                                         let frame = self.frames.last_mut().unwrap();
                                         frame.ip = target as usize;
                                     }
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
+                                let iterator_sym = self.context.interner.intern(b"Iterator");
+                                if self.is_instance_of(iterable_handle, iterator_sym) {
+                                    let valid_sym = self.context.interner.intern(b"valid");
+                                    let is_valid = self
+                                        .call_native_method_simple(iterable_handle, valid_sym)?;
+
+                                    if let Val::Bool(false) = self.arena.get(is_valid).value {
+                                        self.operand_stack.pop(); // Pop Index
+                                        self.operand_stack.pop(); // Pop Iterable
+                                        let frame = self.frames.last_mut().unwrap();
+                                        frame.ip = target as usize;
+                                    }
+                                    handled = true;
                                 }
                             }
                         }
@@ -4636,6 +4793,7 @@ impl VM {
                     Val::Object(payload_handle) => {
                         let payload = self.arena.get(*payload_handle);
                         if let Val::ObjPayload(obj_data) = &payload.value {
+                            let mut handled = false;
                             if let Some(internal) = &obj_data.internal {
                                 if let Ok(gen_data) =
                                     internal.clone().downcast::<RefCell<GeneratorData>>()
@@ -4671,12 +4829,22 @@ impl VM {
                                             "Cannot resume running generator".into(),
                                         ));
                                     }
-                                } else {
-                                    return Err(VmError::RuntimeError(
-                                        "Object not iterable".into(),
-                                    ));
+                                    handled = true;
                                 }
-                            } else {
+                            }
+
+                            if !handled {
+                                let iterator_sym = self.context.interner.intern(b"Iterator");
+                                if self.is_instance_of(iterable_handle, iterator_sym) {
+                                    let next_sym = self.context.interner.intern(b"next");
+                                    self.call_native_method_simple(iterable_handle, next_sym)?;
+                                    // Push dummy index back
+                                    self.operand_stack.push(idx_handle);
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
                                 return Err(VmError::RuntimeError("Object not iterable".into()));
                             }
                         } else {
@@ -4732,6 +4900,7 @@ impl VM {
                     Val::Object(payload_handle) => {
                         let payload = self.arena.get(*payload_handle);
                         if let Val::ObjPayload(obj_data) = &payload.value {
+                            let mut handled = false;
                             if let Some(internal) = &obj_data.internal {
                                 if let Ok(gen_data) =
                                     internal.clone().downcast::<RefCell<GeneratorData>>()
@@ -4745,12 +4914,23 @@ impl VM {
                                             "Generator has no current value".into(),
                                         ));
                                     }
-                                } else {
-                                    return Err(VmError::RuntimeError(
-                                        "Object not iterable".into(),
-                                    ));
+                                    handled = true;
                                 }
-                            } else {
+                            }
+
+                            if !handled {
+                                let iterator_sym = self.context.interner.intern(b"Iterator");
+                                if self.is_instance_of(iterable_handle, iterator_sym) {
+                                    let current_sym = self.context.interner.intern(b"current");
+                                    let val_handle = self
+                                        .call_native_method_simple(iterable_handle, current_sym)?;
+                                    let frame = self.frames.last_mut().unwrap();
+                                    frame.locals.insert(sym, val_handle);
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
                                 return Err(VmError::RuntimeError("Object not iterable".into()));
                             }
                         } else {
@@ -4837,19 +5017,60 @@ impl VM {
                 };
 
                 let array_val = &self.arena.get(array_handle).value;
-                if let Val::Array(map) = array_val {
-                    if let Some((key, _)) = map.map.get_index(idx) {
-                        let key_val = match key {
-                            ArrayKey::Int(i) => Val::Int(*i),
-                            ArrayKey::Str(s) => Val::String(s.as_ref().clone().into()),
-                        };
-                        let key_handle = self.arena.alloc(key_val);
+                match array_val {
+                    Val::Array(map) => {
+                        if let Some((key, _)) = map.map.get_index(idx) {
+                            let key_val = match key {
+                                ArrayKey::Int(i) => Val::Int(*i),
+                                ArrayKey::Str(s) => Val::String(s.as_ref().clone().into()),
+                            };
+                            let key_handle = self.arena.alloc(key_val);
 
-                        // Store in local
-                        let frame = self.frames.last_mut().unwrap();
-                        frame.locals.insert(sym, key_handle);
-                    } else {
-                        return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
+                            // Store in local
+                            let frame = self.frames.last_mut().unwrap();
+                            frame.locals.insert(sym, key_handle);
+                        } else {
+                            return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
+                        }
+                    }
+                    Val::Object(payload_handle) => {
+                        let payload = self.arena.get(*payload_handle);
+                        if let Val::ObjPayload(obj_data) = &payload.value {
+                            let mut handled = false;
+                            if let Some(internal) = &obj_data.internal {
+                                if let Ok(gen_data) =
+                                    internal.clone().downcast::<RefCell<GeneratorData>>()
+                                {
+                                    let data = gen_data.borrow();
+                                    let key =
+                                        data.current_key.unwrap_or(self.arena.alloc(Val::Null));
+                                    let frame = self.frames.last_mut().unwrap();
+                                    frame.locals.insert(sym, key);
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
+                                let iterator_sym = self.context.interner.intern(b"Iterator");
+                                if self.is_instance_of(array_handle, iterator_sym) {
+                                    let key_sym = self.context.interner.intern(b"key");
+                                    let key_handle =
+                                        self.call_native_method_simple(array_handle, key_sym)?;
+                                    let frame = self.frames.last_mut().unwrap();
+                                    frame.locals.insert(sym, key_handle);
+                                    handled = true;
+                                }
+                            }
+
+                            if !handled {
+                                return Err(VmError::RuntimeError("Object not iterable".into()));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(VmError::RuntimeError(
+                            "IterGetKey expects array or object".into(),
+                        ))
                     }
                 }
             }
