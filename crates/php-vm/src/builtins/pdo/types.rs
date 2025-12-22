@@ -9,7 +9,6 @@
 //!
 //! Reference: $PHP_SRC_PATH/ext/pdo/php_pdo_driver.h
 
-use crate::core::value::Handle;
 use indexmap::IndexMap;
 use std::fmt;
 
@@ -18,9 +17,9 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i64)]
 pub enum ErrorMode {
-    Silent = 0,      // PDO::ERRMODE_SILENT - just set error codes
-    Warning = 1,     // PDO::ERRMODE_WARNING - raise E_WARNING
-    Exception = 2,   // PDO::ERRMODE_EXCEPTION - throw exceptions
+    Silent = 0,    // PDO::ERRMODE_SILENT - just set error codes
+    Warning = 1,   // PDO::ERRMODE_WARNING - raise E_WARNING
+    Exception = 2, // PDO::ERRMODE_EXCEPTION - throw exceptions
 }
 
 impl ErrorMode {
@@ -40,13 +39,13 @@ impl ErrorMode {
 #[repr(i64)]
 pub enum FetchMode {
     // Note: PDO::FETCH_LAZY (1) is deprecated, we start at 2
-    Assoc = 2,       // PDO::FETCH_ASSOC - associative array
-    Num = 3,         // PDO::FETCH_NUM - numeric array
-    Both = 4,        // PDO::FETCH_BOTH - both numeric and associative
-    Obj = 5,         // PDO::FETCH_OBJ - anonymous object
-    Bound = 6,       // PDO::FETCH_BOUND - fetch into bound variables
-    Column = 7,      // PDO::FETCH_COLUMN - single column
-    Class = 8,       // PDO::FETCH_CLASS - class instance
+    Assoc = 2,  // PDO::FETCH_ASSOC - associative array
+    Num = 3,    // PDO::FETCH_NUM - numeric array
+    Both = 4,   // PDO::FETCH_BOTH - both numeric and associative
+    Obj = 5,    // PDO::FETCH_OBJ - anonymous object
+    Bound = 6,  // PDO::FETCH_BOUND - fetch into bound variables
+    Column = 7, // PDO::FETCH_COLUMN - single column
+    Class = 8,  // PDO::FETCH_CLASS - class instance
 }
 
 impl FetchMode {
@@ -69,12 +68,12 @@ impl FetchMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i64)]
 pub enum ParamType {
-    Null = 0,        // PDO::PARAM_NULL
-    Int = 1,         // PDO::PARAM_INT
-    Str = 2,         // PDO::PARAM_STR
-    Lob = 3,         // PDO::PARAM_LOB - large object
-    Stmt = 4,        // PDO::PARAM_STMT - statement (not commonly used)
-    Bool = 5,        // PDO::PARAM_BOOL
+    Null = 0, // PDO::PARAM_NULL
+    Int = 1,  // PDO::PARAM_INT
+    Str = 2,  // PDO::PARAM_STR
+    Lob = 3,  // PDO::PARAM_LOB - large object
+    Stmt = 4, // PDO::PARAM_STMT - statement (not commonly used)
+    Bool = 5, // PDO::PARAM_BOOL
 }
 
 impl ParamType {
@@ -96,27 +95,27 @@ impl ParamType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(i64)]
 pub enum Attribute {
-    Autocommit = 0,          // PDO::ATTR_AUTOCOMMIT
-    Prefetch = 1,            // PDO::ATTR_PREFETCH
-    Timeout = 2,             // PDO::ATTR_TIMEOUT
-    ErrorMode = 3,           // PDO::ATTR_ERRMODE
-    ServerVersion = 4,       // PDO::ATTR_SERVER_VERSION
-    ClientVersion = 5,       // PDO::ATTR_CLIENT_VERSION
-    ServerInfo = 6,          // PDO::ATTR_SERVER_INFO
-    ConnectionStatus = 7,    // PDO::ATTR_CONNECTION_STATUS
-    Case = 8,                // PDO::ATTR_CASE
-    CursorName = 9,          // PDO::ATTR_CURSOR_NAME
-    Cursor = 10,             // PDO::ATTR_CURSOR
-    OracleNulls = 11,        // PDO::ATTR_ORACLE_NULLS
-    Persistent = 12,         // PDO::ATTR_PERSISTENT
-    StatementClass = 13,     // PDO::ATTR_STATEMENT_CLASS
-    FetchTableNames = 14,    // PDO::ATTR_FETCH_TABLE_NAMES
-    FetchCatalogNames = 15,  // PDO::ATTR_FETCH_CATALOG_NAMES
-    DriverName = 16,         // PDO::ATTR_DRIVER_NAME
-    StringifyFetches = 17,   // PDO::ATTR_STRINGIFY_FETCHES
-    MaxColumnLen = 18,       // PDO::ATTR_MAX_COLUMN_LEN
-    DefaultFetchMode = 19,   // PDO::ATTR_DEFAULT_FETCH_MODE
-    EmulatePrep = 20,        // PDO::ATTR_EMULATE_PREPARES
+    Autocommit = 0,         // PDO::ATTR_AUTOCOMMIT
+    Prefetch = 1,           // PDO::ATTR_PREFETCH
+    Timeout = 2,            // PDO::ATTR_TIMEOUT
+    ErrorMode = 3,          // PDO::ATTR_ERRMODE
+    ServerVersion = 4,      // PDO::ATTR_SERVER_VERSION
+    ClientVersion = 5,      // PDO::ATTR_CLIENT_VERSION
+    ServerInfo = 6,         // PDO::ATTR_SERVER_INFO
+    ConnectionStatus = 7,   // PDO::ATTR_CONNECTION_STATUS
+    Case = 8,               // PDO::ATTR_CASE
+    CursorName = 9,         // PDO::ATTR_CURSOR_NAME
+    Cursor = 10,            // PDO::ATTR_CURSOR
+    OracleNulls = 11,       // PDO::ATTR_ORACLE_NULLS
+    Persistent = 12,        // PDO::ATTR_PERSISTENT
+    StatementClass = 13,    // PDO::ATTR_STATEMENT_CLASS
+    FetchTableNames = 14,   // PDO::ATTR_FETCH_TABLE_NAMES
+    FetchCatalogNames = 15, // PDO::ATTR_FETCH_CATALOG_NAMES
+    DriverName = 16,        // PDO::ATTR_DRIVER_NAME
+    StringifyFetches = 17,  // PDO::ATTR_STRINGIFY_FETCHES
+    MaxColumnLen = 18,      // PDO::ATTR_MAX_COLUMN_LEN
+    DefaultFetchMode = 19,  // PDO::ATTR_DEFAULT_FETCH_MODE
+    EmulatePrep = 20,       // PDO::ATTR_EMULATE_PREPARES
 }
 
 impl Attribute {
@@ -151,17 +150,27 @@ impl Attribute {
 /// Parameter identifier (position or name)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ParamIdentifier {
-    Position(usize),  // ?1, ?2, ... (1-based)
-    Name(String),     // :name, :id, ...
+    Position(usize), // ?1, ?2, ... (1-based)
+    Name(String),    // :name, :id, ...
+}
+
+/// PDO value type (handle-independent for driver safety)
+#[derive(Debug, Clone)]
+pub enum PdoValue {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(Vec<u8>),
 }
 
 /// Fetched row data in various formats
 #[derive(Debug, Clone)]
 pub enum FetchedRow {
-    Assoc(IndexMap<String, Handle>),
-    Num(Vec<Handle>),
-    Both(IndexMap<String, Handle>, Vec<Handle>),
-    Obj(Handle), // Object handle
+    Assoc(IndexMap<String, PdoValue>),
+    Num(Vec<PdoValue>),
+    Both(IndexMap<String, PdoValue>, Vec<PdoValue>),
+    Obj(IndexMap<String, PdoValue>), // Object properties
 }
 
 /// Column metadata
@@ -180,19 +189,19 @@ pub struct ColumnMeta {
 pub enum PdoError {
     /// Connection failed
     ConnectionFailed(String),
-    
+
     /// SQL syntax error (SQLSTATE, message)
     SyntaxError(String, Option<String>),
-    
+
     /// Invalid parameter
     InvalidParameter(String),
-    
+
     /// Statement execution failed
     ExecutionFailed(String),
-    
+
     /// Generic error
     Error(String),
-    
+
     /// Invalid context (finalized, wrong type, etc.)
     InvalidContext(String),
 }

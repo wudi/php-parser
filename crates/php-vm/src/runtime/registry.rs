@@ -10,6 +10,7 @@ pub struct NativeClassDef {
     pub parent: Option<Vec<u8>>,
     pub interfaces: Vec<Vec<u8>>,
     pub methods: HashMap<Vec<u8>, NativeMethodEntry>,
+    pub constants: HashMap<Vec<u8>, (Val, Visibility)>,
     pub constructor: Option<NativeHandler>,
 }
 
@@ -204,6 +205,11 @@ impl ExtensionRegistry {
     /// Get all registered constants
     pub fn constants(&self) -> &HashMap<Vec<u8>, Val> {
         &self.constants
+    }
+
+    /// Get all registered classes
+    pub fn classes(&self) -> &HashMap<Vec<u8>, NativeClassDef> {
+        &self.classes
     }
 }
 

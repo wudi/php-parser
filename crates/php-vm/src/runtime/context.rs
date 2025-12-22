@@ -611,10 +611,7 @@ impl EngineContext {
             b"hash_algos".to_vec(),
             hash::php_hash_algos as NativeHandler,
         );
-        functions.insert(
-            b"hash_file".to_vec(),
-            hash::php_hash_file as NativeHandler,
-        );
+        functions.insert(b"hash_file".to_vec(), hash::php_hash_file as NativeHandler);
         functions.insert(b"hash_init".to_vec(), hash::php_hash_init as NativeHandler);
         functions.insert(
             b"hash_update".to_vec(),
@@ -627,18 +624,26 @@ impl EngineContext {
         functions.insert(b"hash_copy".to_vec(), hash::php_hash_copy as NativeHandler);
 
         let mut registry = ExtensionRegistry::new();
-        
+
         // Register JSON extension
         use crate::runtime::json_extension::JsonExtension;
         registry
             .register_extension(Box::new(JsonExtension))
             .expect("Failed to register JSON extension");
 
+        // Register PDO extension
+        use crate::runtime::pdo_extension::PdoExtension;
+        registry
+            .register_extension(Box::new(PdoExtension))
+            .expect("Failed to register PDO extension");
+
         Self {
             registry,
             functions,
             constants: HashMap::new(),
-            pdo_driver_registry: None,
+            pdo_driver_registry: Some(Arc::new(
+                crate::builtins::pdo::drivers::DriverRegistry::new(),
+            )),
         }
     }
 }
@@ -656,14 +661,19 @@ pub struct RequestContext {
     pub last_error: Option<ErrorInfo>,
     pub headers: Vec<HeaderEntry>,
     pub http_status: Option<i64>,
-    pub max_execution_time: i64, // in seconds, 0 = unlimited
-    pub native_methods: HashMap<(Symbol, Symbol), NativeMethodEntry>, // (class_name, method_name) -> handler
-    pub json_last_error: json::JsonError, // JSON extension error state
-    pub hash_registry: Option<Arc<hash::HashRegistry>>, // Hash algorithm registry
-    pub hash_states: Option<HashMap<u64, Box<dyn hash::HashState>>>, // Active hash contexts
-    pub next_resource_id: u64, // Counter for resource IDs
-    pub mysqli_connections: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliConnection>>>, // MySQLi connections
-    pub mysqli_results: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliResult>>>, // MySQLi result sets
+    pub max_execution_time: i64,
+    pub native_methods: HashMap<(Symbol, Symbol), NativeMethodEntry>,
+    pub json_last_error: json::JsonError,
+    pub hash_registry: Option<Arc<hash::HashRegistry>>,
+    pub hash_states: Option<HashMap<u64, Box<dyn hash::HashState>>>,
+    pub next_resource_id: u64,
+    pub mysqli_connections:
+        HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliConnection>>>,
+    pub mysqli_results: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::mysqli::MysqliResult>>>,
+    pub pdo_connections:
+        HashMap<u64, Rc<std::cell::RefCell<Box<dyn crate::builtins::pdo::driver::PdoConnection>>>>,
+    pub pdo_statements:
+        HashMap<u64, Rc<std::cell::RefCell<Box<dyn crate::builtins::pdo::driver::PdoStatement>>>>,
 }
 
 impl RequestContext {
@@ -685,14 +695,68 @@ impl RequestContext {
             native_methods: HashMap::new(),
             json_last_error: json::JsonError::None, // Initialize JSON error state
             hash_registry: Some(Arc::new(hash::HashRegistry::new())), // Initialize hash registry
-            hash_states: Some(HashMap::new()), // Initialize hash states map
-            next_resource_id: 1, // Start resource IDs from 1
-            mysqli_connections: HashMap::new(), // Initialize MySQLi connections
-            mysqli_results: HashMap::new(), // Initialize MySQLi results
+            hash_states: Some(HashMap::new()),      // Initialize hash states map
+            next_resource_id: 1,                    // Start resource IDs from 1
+            mysqli_connections: HashMap::new(),     // Initialize MySQLi connections
+            mysqli_results: HashMap::new(),         // Initialize MySQLi results
+            pdo_connections: HashMap::new(),        // Initialize PDO connections
+            pdo_statements: HashMap::new(),         // Initialize PDO statements
         };
         ctx.register_builtin_classes();
+        ctx.materialize_extension_classes();
         ctx.register_builtin_constants();
         ctx
+    }
+
+    fn materialize_extension_classes(&mut self) {
+        let native_classes: Vec<_> = self.engine.registry.classes().values().cloned().collect();
+        for native_class in native_classes {
+            let class_sym = self.interner.intern(&native_class.name);
+            let parent_sym = native_class
+                .parent
+                .as_ref()
+                .map(|p| self.interner.intern(p));
+            let mut interfaces = Vec::new();
+            for iface in &native_class.interfaces {
+                interfaces.push(self.interner.intern(iface));
+            }
+
+            let mut constants = HashMap::new();
+            for (name, (val, visibility)) in &native_class.constants {
+                constants.insert(self.interner.intern(name), (val.clone(), *visibility));
+            }
+
+            self.classes.insert(
+                class_sym,
+                ClassDef {
+                    name: class_sym,
+                    parent: parent_sym,
+                    is_interface: false,
+                    is_trait: false,
+                    interfaces,
+                    traits: Vec::new(),
+                    methods: HashMap::new(),
+                    properties: IndexMap::new(),
+                    constants,
+                    static_properties: HashMap::new(),
+                    allows_dynamic_properties: true,
+                },
+            );
+
+            for (name, native_method) in &native_class.methods {
+                let method_sym = self.interner.intern(name);
+                self.native_methods.insert(
+                    (class_sym, method_sym),
+                    NativeMethodEntry {
+                        name: method_sym,
+                        handler: native_method.handler,
+                        visibility: native_method.visibility,
+                        is_static: native_method.is_static,
+                        declaring_class: class_sym,
+                    },
+                );
+            }
+        }
     }
 }
 
