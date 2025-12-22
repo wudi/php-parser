@@ -113,13 +113,36 @@ impl VM {
 
         // Check extension registry first (new way)
         if let Some(handler) = self.context.engine.registry.get_function(&lower_name) {
+            let by_ref = self
+                .context
+                .engine
+                .registry
+                .get_function_by_ref(&lower_name)
+                .map(|list| list.to_vec());
+            self.handle_pending_undefined_for_call(&args, by_ref.as_deref());
+            if let Some(by_ref) = by_ref.as_deref() {
+                for &idx in by_ref {
+                    if let Some(&arg_handle) = args.get(idx) {
+                        if !self.arena.get(arg_handle).is_ref {
+                            self.arena.get_mut(arg_handle).is_ref = true;
+                        }
+                        if let Some(&sym) = self.var_handle_map.get(&arg_handle) {
+                            if let Some(frame) = self.frames.last_mut() {
+                                frame.locals.entry(sym).or_insert(arg_handle);
+                            }
+                        }
+                    }
+                }
+            }
             let res = handler(self, &args).map_err(VmError::RuntimeError)?;
             self.operand_stack.push(res);
             return Ok(());
         }
 
         // Fall back to legacy functions HashMap (backward compatibility)
-        if let Some(handler) = self.context.engine.functions.get(&lower_name) {
+        let legacy_handler = self.context.engine.functions.get(&lower_name).copied();
+        if let Some(handler) = legacy_handler {
+            self.handle_pending_undefined_for_call(&args, None);
             let res = handler(self, &args).map_err(VmError::RuntimeError)?;
             self.operand_stack.push(res);
             return Ok(());
@@ -128,6 +151,7 @@ impl VM {
         // User-defined function
         let func_opt = self.context.user_functions.get(&name).cloned();
         if let Some(func) = func_opt {
+            self.handle_pending_undefined_for_call(&args, None);
             let mut frame = CallFrame::new(func.chunk.clone());
             frame.func = Some(func.clone());
             frame.args = args;

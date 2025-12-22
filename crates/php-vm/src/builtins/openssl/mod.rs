@@ -194,25 +194,9 @@ pub fn openssl_public_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
     
-    let pkey = {
-        let val = &vm.arena.get(args[2]).value;
-        match val {
-            Val::ObjPayload(obj) => {
-                if let Some(internal) = &obj.internal {
-                    if let Some(pkey) = internal.downcast_ref::<PKey<Public>>() {
-                        pkey.clone()
-                    } else if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-                        let der = pkey.public_key_to_der().map_err(|e| e.to_string())?;
-                        PKey::public_key_from_der(&der).map_err(|e| e.to_string())?
-                    } else {
-                        return Ok(vm.arena.alloc(Val::Bool(false)));
-                    }
-                } else {
-                    return Ok(vm.arena.alloc(Val::Bool(false)));
-                }
-            }
-            _ => return Ok(vm.arena.alloc(Val::Bool(false))),
-        }
+    let pkey = match get_public_key(vm, args[2]) {
+        Ok(pkey) => pkey,
+        Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
     
     let padding = if args.len() > 3 {
@@ -253,45 +237,32 @@ pub fn openssl_private_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
     
-    let decrypted = {
-        let val = &vm.arena.get(args[2]).value;
-        let obj = match val {
-            Val::ObjPayload(obj) => obj,
-            _ => return Ok(vm.arena.alloc(Val::Bool(false))),
-        };
-        let internal = match &obj.internal {
-            Some(i) => i,
-            None => return Ok(vm.arena.alloc(Val::Bool(false))),
-        };
-        
-        if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-            let padding = if args.len() > 3 {
-                match &vm.arena.get(args[3]).value {
-                    Val::Int(i) => *i,
-                    _ => OPENSSL_PKCS1_PADDING,
-                }
-            } else {
-                OPENSSL_PKCS1_PADDING
-            };
-            
-            let mut decrypter = Decrypter::new(pkey).map_err(|e| e.to_string())?;
-            let p = match padding {
-                OPENSSL_PKCS1_PADDING => openssl::rsa::Padding::PKCS1,
-                OPENSSL_NO_PADDING => openssl::rsa::Padding::NONE,
-                OPENSSL_PKCS1_OAEP_PADDING => openssl::rsa::Padding::PKCS1_OAEP,
-                _ => openssl::rsa::Padding::PKCS1,
-            };
-            decrypter.set_rsa_padding(p).map_err(|e| e.to_string())?;
-            
-            let buffer_len = decrypter.decrypt_len(data).map_err(|e| e.to_string())?;
-            let mut decrypted = vec![0u8; buffer_len];
-            let decrypted_len = decrypter.decrypt(data, &mut decrypted).map_err(|e| e.to_string())?;
-            decrypted.truncate(decrypted_len);
-            decrypted
-        } else {
-            return Ok(vm.arena.alloc(Val::Bool(false)));
-        }
+    let pkey = match get_private_key(vm, args[2]) {
+        Ok(pkey) => pkey,
+        Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
+    let padding = if args.len() > 3 {
+        match &vm.arena.get(args[3]).value {
+            Val::Int(i) => *i,
+            _ => OPENSSL_PKCS1_PADDING,
+        }
+    } else {
+        OPENSSL_PKCS1_PADDING
+    };
+    
+    let mut decrypter = Decrypter::new(&pkey).map_err(|e| e.to_string())?;
+    let p = match padding {
+        OPENSSL_PKCS1_PADDING => openssl::rsa::Padding::PKCS1,
+        OPENSSL_NO_PADDING => openssl::rsa::Padding::NONE,
+        OPENSSL_PKCS1_OAEP_PADDING => openssl::rsa::Padding::PKCS1_OAEP,
+        _ => openssl::rsa::Padding::PKCS1,
+    };
+    decrypter.set_rsa_padding(p).map_err(|e| e.to_string())?;
+    
+    let buffer_len = decrypter.decrypt_len(data).map_err(|e| e.to_string())?;
+    let mut decrypted = vec![0u8; buffer_len];
+    let decrypted_len = decrypter.decrypt(data, &mut decrypted).map_err(|e| e.to_string())?;
+    decrypted.truncate(decrypted_len);
     
     set_ref_value(vm, args[1], Val::String(Rc::new(decrypted)));
     
@@ -612,33 +583,17 @@ pub fn openssl_public_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
         openssl::rsa::Padding::PKCS1
     };
 
-    let decrypted_data = {
-        let val = &vm.arena.get(args[2]).value;
-        let obj = match val {
-            Val::ObjPayload(obj) => obj,
-            _ => return Ok(vm.arena.alloc(Val::Bool(false))),
-        };
-        let internal = match &obj.internal {
-            Some(i) => i,
-            None => return Ok(vm.arena.alloc(Val::Bool(false))),
-        };
-
-        if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-            let rsa = pkey.rsa().map_err(|e: openssl::error::ErrorStack| e.to_string())?;
-            let mut buf = vec![0; rsa.size() as usize];
-            let len = rsa.public_decrypt(&data, &mut buf, padding).map_err(|e: openssl::error::ErrorStack| e.to_string())?;
-            buf.truncate(len);
-            buf
-        } else if let Some(pkey) = internal.downcast_ref::<PKey<Public>>() {
-            let rsa = pkey.rsa().map_err(|e: openssl::error::ErrorStack| e.to_string())?;
-            let mut buf = vec![0; rsa.size() as usize];
-            let len = rsa.public_decrypt(&data, &mut buf, padding).map_err(|e: openssl::error::ErrorStack| e.to_string())?;
-            buf.truncate(len);
-            buf
-        } else {
-            return Ok(vm.arena.alloc(Val::Bool(false)));
-        }
+    let pkey = match get_public_key(vm, args[2]) {
+        Ok(pkey) => pkey,
+        Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
+    let rsa = pkey.rsa().map_err(|e: openssl::error::ErrorStack| e.to_string())?;
+    let mut buf = vec![0; rsa.size() as usize];
+    let len = rsa
+        .public_decrypt(&data, &mut buf, padding)
+        .map_err(|e: openssl::error::ErrorStack| e.to_string())?;
+    buf.truncate(len);
+    let decrypted_data = buf;
 
     set_ref_value(vm, args[1], Val::String(Rc::new(decrypted_data)));
     Ok(vm.arena.alloc(Val::Bool(true)))
@@ -698,15 +653,17 @@ pub fn openssl_pkey_get_details(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
     
-    let (bits, id) = {
+    let (bits, id, public_pem) = {
         let val = &vm.arena.get(args[0]).value;
         match val {
             Val::ObjPayload(obj) => {
                 if let Some(internal) = &obj.internal {
                     if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-                        (pkey.bits() as i64, pkey.id())
+                        let pem = pkey.public_key_to_pem().map_err(|e| e.to_string())?;
+                        (pkey.bits() as i64, pkey.id(), pem)
                     } else if let Some(pkey) = internal.downcast_ref::<PKey<Public>>() {
-                        (pkey.bits() as i64, pkey.id())
+                        let pem = pkey.public_key_to_pem().map_err(|e| e.to_string())?;
+                        (pkey.bits() as i64, pkey.id(), pem)
                     } else {
                         return Ok(vm.arena.alloc(Val::Bool(false)));
                     }
@@ -732,6 +689,9 @@ pub fn openssl_pkey_get_details(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     
     let type_val = vm.arena.alloc(Val::Int(key_type));
     details.insert(ArrayKey::Str(Rc::new(b"type".to_vec())), type_val);
+
+    let key_val = vm.arena.alloc(Val::String(Rc::new(public_pem)));
+    details.insert(ArrayKey::Str(Rc::new(b"key".to_vec())), key_val);
     
     Ok(vm.arena.alloc(Val::Array(Rc::new(details))))
 }
@@ -1286,22 +1246,9 @@ pub fn openssl_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
     
-    let pkey = {
-        let val = &vm.arena.get(args[2]).value;
-        match val {
-            Val::ObjPayload(obj) => {
-                if let Some(internal) = &obj.internal {
-                    if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-                        pkey.clone()
-                    } else {
-                        return Ok(vm.arena.alloc(Val::Bool(false)));
-                    }
-                } else {
-                    return Ok(vm.arena.alloc(Val::Bool(false)));
-                }
-            }
-            _ => return Ok(vm.arena.alloc(Val::Bool(false))),
-        }
+    let pkey = match get_private_key(vm, args[2]) {
+        Ok(pkey) => pkey,
+        Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
     
     let algo = if args.len() > 3 {
@@ -1352,25 +1299,9 @@ pub fn openssl_verify(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Ok(vm.arena.alloc(Val::Int(-1))),
     };
     
-    let pkey = {
-        let val = &vm.arena.get(args[2]).value;
-        match val {
-            Val::ObjPayload(obj) => {
-                if let Some(internal) = &obj.internal {
-                    if let Some(pkey) = internal.downcast_ref::<PKey<Public>>() {
-                        pkey.clone()
-                    } else if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
-                        let der = pkey.public_key_to_der().map_err(|e| e.to_string())?;
-                        PKey::public_key_from_der(&der).map_err(|e| e.to_string())?
-                    } else {
-                        return Ok(vm.arena.alloc(Val::Int(-1)));
-                    }
-                } else {
-                    return Ok(vm.arena.alloc(Val::Int(-1)));
-                }
-            }
-            _ => return Ok(vm.arena.alloc(Val::Int(-1))),
-        }
+    let pkey = match get_public_key(vm, args[2]) {
+        Ok(pkey) => pkey,
+        Err(_) => return Ok(vm.arena.alloc(Val::Int(-1))),
     };
     
     let algo = if args.len() > 3 {
@@ -2007,6 +1938,44 @@ fn get_pkey(vm: &VM, handle: Handle) -> Result<PKey<Private>, String> {
                 if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
                     return Ok(pkey.clone());
                 }
+            }
+        }
+        Val::String(s) => {
+            return PKey::private_key_from_pem(s).map_err(|e| e.to_string());
+        }
+        _ => {}
+    }
+    Err("Expected OpenSSLAsymmetricKey".to_string())
+}
+
+fn get_private_key(vm: &VM, handle: Handle) -> Result<PKey<Private>, String> {
+    get_pkey(vm, handle)
+}
+
+fn get_public_key(vm: &VM, handle: Handle) -> Result<PKey<Public>, String> {
+    let val = &vm.arena.get(handle).value;
+    match val {
+        Val::ObjPayload(obj) => {
+            if let Some(internal) = &obj.internal {
+                if let Some(pkey) = internal.downcast_ref::<PKey<Public>>() {
+                    return Ok(pkey.clone());
+                }
+                if let Some(pkey) = internal.downcast_ref::<PKey<Private>>() {
+                    let der = pkey.public_key_to_der().map_err(|e| e.to_string())?;
+                    return PKey::public_key_from_der(&der).map_err(|e| e.to_string());
+                }
+            }
+        }
+        Val::String(s) => {
+            if let Ok(pkey) = PKey::public_key_from_pem(s) {
+                return Ok(pkey);
+            }
+            if let Ok(pkey) = PKey::private_key_from_pem(s) {
+                let der = pkey.public_key_to_der().map_err(|e| e.to_string())?;
+                return PKey::public_key_from_der(&der).map_err(|e| e.to_string());
+            }
+            if let Ok(cert) = X509::from_pem(s) {
+                return cert.public_key().map_err(|e| e.to_string());
             }
         }
         _ => {}

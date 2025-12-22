@@ -90,19 +90,39 @@ impl Extension for OpenSSLExtension {
 
         // Register functions
         registry.register_function(b"openssl_error_string", openssl::openssl_error_string);
-        registry.register_function(b"openssl_random_pseudo_bytes", openssl::openssl_random_pseudo_bytes);
+        registry.register_function_with_by_ref(
+            b"openssl_random_pseudo_bytes",
+            openssl::openssl_random_pseudo_bytes,
+            vec![1],
+        );
         registry.register_function(b"openssl_cipher_iv_length", openssl::openssl_cipher_iv_length);
         registry.register_function(b"openssl_cipher_key_length", openssl::openssl_cipher_key_length);
         registry.register_function(b"openssl_digest", openssl::openssl_digest);
-        registry.register_function(b"openssl_encrypt", openssl::openssl_encrypt);
+        registry.register_function_with_by_ref(
+            b"openssl_encrypt",
+            openssl::openssl_encrypt,
+            vec![5],
+        );
         registry.register_function(b"openssl_decrypt", openssl::openssl_decrypt);
-        registry.register_function(b"openssl_public_encrypt", openssl::openssl_public_encrypt);
-        registry.register_function(b"openssl_private_decrypt", openssl::openssl_private_decrypt);
+        registry.register_function_with_by_ref(
+            b"openssl_public_encrypt",
+            openssl::openssl_public_encrypt,
+            vec![1],
+        );
+        registry.register_function_with_by_ref(
+            b"openssl_private_decrypt",
+            openssl::openssl_private_decrypt,
+            vec![1],
+        );
         registry.register_function(b"openssl_pkey_new", openssl::openssl_pkey_new);
         registry.register_function(b"openssl_pkey_get_details", openssl::openssl_pkey_get_details);
         registry.register_function(b"openssl_pkey_get_private", openssl::openssl_pkey_get_private);
         registry.register_function(b"openssl_pkey_get_public", openssl::openssl_pkey_get_public);
-        registry.register_function(b"openssl_pkey_export", openssl::openssl_pkey_export);
+        registry.register_function_with_by_ref(
+            b"openssl_pkey_export",
+            openssl::openssl_pkey_export,
+            vec![1],
+        );
         registry.register_function(b"openssl_pkey_export_to_file", openssl::openssl_pkey_export_to_file);
         registry.register_function(b"openssl_pkey_derive", openssl::openssl_pkey_derive);
         registry.register_function(b"openssl_pkey_free", openssl::openssl_pkey_free);
@@ -110,20 +130,32 @@ impl Extension for OpenSSLExtension {
         registry.register_function(b"openssl_get_publickey", openssl::openssl_pkey_get_public);
         registry.register_function(b"openssl_free_key", openssl::openssl_pkey_free);
         registry.register_function(b"openssl_x509_read", openssl::openssl_x509_read);
-        registry.register_function(b"openssl_x509_export", openssl::openssl_x509_export);
+        registry.register_function_with_by_ref(
+            b"openssl_x509_export",
+            openssl::openssl_x509_export,
+            vec![1],
+        );
         registry.register_function(b"openssl_x509_export_to_file", openssl::openssl_x509_export_to_file);
         registry.register_function(b"openssl_x509_fingerprint", openssl::openssl_x509_fingerprint);
         registry.register_function(b"openssl_x509_parse", openssl::openssl_x509_parse);
         registry.register_function(b"openssl_x509_check_private_key", openssl::openssl_x509_check_private_key);
         registry.register_function(b"openssl_x509_verify", openssl::openssl_x509_verify);
         registry.register_function(b"openssl_x509_free", openssl::openssl_x509_free);
-        registry.register_function(b"openssl_csr_new", openssl::openssl_csr_new);
-        registry.register_function(b"openssl_csr_export", openssl::openssl_csr_export);
+        registry.register_function_with_by_ref(
+            b"openssl_csr_new",
+            openssl::openssl_csr_new,
+            vec![1],
+        );
+        registry.register_function_with_by_ref(
+            b"openssl_csr_export",
+            openssl::openssl_csr_export,
+            vec![1],
+        );
         registry.register_function(b"openssl_csr_export_to_file", openssl::openssl_csr_export_to_file);
         registry.register_function(b"openssl_csr_sign", openssl::openssl_csr_sign);
         registry.register_function(b"openssl_csr_get_subject", openssl::openssl_csr_get_subject);
         registry.register_function(b"openssl_csr_get_public_key", openssl::openssl_csr_get_public_key);
-        registry.register_function(b"openssl_sign", openssl::openssl_sign);
+        registry.register_function_with_by_ref(b"openssl_sign", openssl::openssl_sign, vec![1]);
         registry.register_function(b"openssl_verify", openssl::openssl_verify);
         registry.register_function(b"openssl_pbkdf2", openssl::openssl_pbkdf2);
         registry.register_function(b"openssl_get_curve_names", openssl::openssl_get_curve_names);
@@ -141,11 +173,27 @@ impl Extension for OpenSSLExtension {
         registry.register_function(b"openssl_spki_new", openssl::openssl_spki_new);
         registry.register_function(b"openssl_spki_export", openssl::openssl_spki_export);
         registry.register_function(b"openssl_spki_verify", openssl::openssl_spki_verify);
-        registry.register_function(b"openssl_pkcs12_export", openssl::openssl_pkcs12_export);
+        registry.register_function_with_by_ref(
+            b"openssl_pkcs12_export",
+            openssl::openssl_pkcs12_export,
+            vec![1],
+        );
         registry.register_function(b"openssl_pkcs12_export_to_file", openssl::openssl_pkcs12_export_to_file);
-        registry.register_function(b"openssl_pkcs12_read", openssl::openssl_pkcs12_read);
-        registry.register_function(b"openssl_private_encrypt", openssl::openssl_private_encrypt);
-        registry.register_function(b"openssl_public_decrypt", openssl::openssl_public_decrypt);
+        registry.register_function_with_by_ref(
+            b"openssl_pkcs12_read",
+            openssl::openssl_pkcs12_read,
+            vec![1],
+        );
+        registry.register_function_with_by_ref(
+            b"openssl_private_encrypt",
+            openssl::openssl_private_encrypt,
+            vec![1],
+        );
+        registry.register_function_with_by_ref(
+            b"openssl_public_decrypt",
+            openssl::openssl_public_decrypt,
+            vec![1],
+        );
 
         // Register classes
         registry.register_class(NativeClassDef {
@@ -178,4 +226,3 @@ impl Extension for OpenSSLExtension {
         ExtensionResult::Success
     }
 }
-

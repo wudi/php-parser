@@ -303,6 +303,9 @@ pub struct VM {
     pub url_rewrite_vars: HashMap<Rc<Vec<u8>>, Rc<Vec<u8>>>,
     trace_includes: bool,
     superglobal_map: HashMap<Symbol, SuperglobalKind>,
+    pub(crate) var_handle_map: HashMap<Handle, Symbol>,
+    pending_undefined: HashMap<Handle, Symbol>,
+    pub(crate) suppress_undefined_notice: bool,
     pub execution_start_time: SystemTime,
     /// Track if we're currently executing finally blocks to prevent recursion
     executing_finally: bool,
@@ -331,6 +334,9 @@ impl VM {
             url_rewrite_vars: HashMap::new(),
             trace_includes,
             superglobal_map: HashMap::new(),
+            var_handle_map: HashMap::new(),
+            pending_undefined: HashMap::new(),
+            suppress_undefined_notice: false,
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
@@ -650,6 +656,9 @@ impl VM {
             url_rewrite_vars: HashMap::new(),
             trace_includes,
             superglobal_map: HashMap::new(),
+            var_handle_map: HashMap::new(),
+            pending_undefined: HashMap::new(),
+            suppress_undefined_notice: false,
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
@@ -837,11 +846,46 @@ impl VM {
     {
         let count = arg_count.into();
         let mut args = ArgList::with_capacity(count);
+        let prev_suppress = self.suppress_undefined_notice;
+        self.suppress_undefined_notice = true;
         for _ in 0..count {
             args.push(self.pop_operand_required()?);
         }
+        self.suppress_undefined_notice = prev_suppress;
         args.reverse();
         Ok(args)
+    }
+
+    #[inline]
+    pub(crate) fn handle_pending_undefined_for_call(
+        &mut self,
+        args: &ArgList,
+        by_ref: Option<&[usize]>,
+    ) {
+        for (idx, handle) in args.iter().enumerate() {
+            if self.pending_undefined.contains_key(handle) {
+                let is_by_ref = by_ref.map_or(false, |list| list.contains(&idx));
+                if is_by_ref {
+                    self.pending_undefined.remove(handle);
+                } else {
+                    self.maybe_report_undefined(*handle);
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn maybe_report_undefined(&mut self, handle: Handle) {
+        if let Some(sym) = self.pending_undefined.remove(&handle) {
+            let var_name = self
+                .context
+                .interner
+                .lookup(sym)
+                .map(String::from_utf8_lossy)
+                .unwrap_or_else(|| "unknown".into());
+            let msg = format!("Undefined variable: ${}", var_name);
+            self.report_error(ErrorLevel::Notice, &msg);
+        }
     }
 
     fn resolve_script_path(&self, raw: &str) -> Result<PathBuf, VmError> {
@@ -2320,6 +2364,7 @@ impl VM {
         // Special handling for $GLOBALS - always refresh to ensure it's current
         if self.is_globals_symbol(sym) {
             if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                self.var_handle_map.insert(handle, sym);
                 self.operand_stack.push(handle);
                 return Ok(());
             }
@@ -2331,12 +2376,14 @@ impl VM {
         };
 
         if let Some(handle) = handle {
+            self.var_handle_map.insert(handle, sym);
             self.operand_stack.push(handle);
         } else {
             let name = self.context.interner.lookup(sym);
             if name == Some(b"this") {
                 let frame = self.current_frame()?;
                 if let Some(this_val) = frame.this {
+                    self.var_handle_map.insert(this_val, sym);
                     self.operand_stack.push(this_val);
                 } else {
                     return Err(VmError::RuntimeError(
@@ -2347,16 +2394,17 @@ impl VM {
                 if let Some(handle) = self.ensure_superglobal_handle(sym) {
                     let frame = self.current_frame_mut()?;
                     frame.locals.entry(sym).or_insert(handle);
+                    self.var_handle_map.insert(handle, sym);
                     self.operand_stack.push(handle);
                 } else {
                     let null = self.arena.alloc(Val::Null);
+                    self.var_handle_map.insert(null, sym);
                     self.operand_stack.push(null);
                 }
             } else {
-                let var_name = String::from_utf8_lossy(name.unwrap_or(b"unknown"));
-                let msg = format!("Undefined variable: ${}", var_name);
-                self.report_error(ErrorLevel::Notice, &msg);
                 let null = self.arena.alloc(Val::Null);
+                self.var_handle_map.insert(null, sym);
+                self.pending_undefined.insert(null, sym);
                 self.operand_stack.push(null);
             }
         }
@@ -2411,22 +2459,24 @@ impl VM {
                     .and_then(|frame| frame.locals.get(&sym).copied());
 
                 if let Some(handle) = existing {
+                    self.var_handle_map.insert(handle, sym);
                     self.operand_stack.push(handle);
                 } else if self.is_superglobal(sym) {
                     if let Some(handle) = self.ensure_superglobal_handle(sym) {
                         if let Some(frame) = self.frames.last_mut() {
                             frame.locals.entry(sym).or_insert(handle);
                         }
+                        self.var_handle_map.insert(handle, sym);
                         self.operand_stack.push(handle);
                     } else {
                         let null = self.arena.alloc(Val::Null);
+                        self.var_handle_map.insert(null, sym);
                         self.operand_stack.push(null);
                     }
                 } else {
-                    let var_name = String::from_utf8_lossy(&name_bytes);
-                    let msg = format!("Undefined variable: ${}", var_name);
-                    self.report_error(ErrorLevel::Notice, &msg);
                     let null = self.arena.alloc(Val::Null);
+                    self.var_handle_map.insert(null, sym);
+                    self.pending_undefined.insert(null, sym);
                     self.operand_stack.push(null);
                 }
             }

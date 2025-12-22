@@ -30,9 +30,14 @@ impl VM {
     /// Reference: Reduces boilerplate for stack operations
     #[inline(always)]
     pub(crate) fn pop_operand_required(&mut self) -> Result<Handle, VmError> {
-        self.operand_stack
+        let handle = self
+            .operand_stack
             .pop()
-            .ok_or(VmError::StackUnderflow { operation: "pop" })
+            .ok_or(VmError::StackUnderflow { operation: "pop" })?;
+        if !self.suppress_undefined_notice {
+            self.maybe_report_undefined(handle);
+        }
+        Ok(handle)
     }
 
     /// Pop two operands for binary operations (returns in (left, right) order)

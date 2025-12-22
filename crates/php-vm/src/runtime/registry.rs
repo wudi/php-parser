@@ -29,6 +29,8 @@ pub struct NativeMethodEntry {
 pub struct ExtensionRegistry {
     /// Native function handlers (name -> handler)
     functions: HashMap<Vec<u8>, NativeHandler>,
+    /// Native function by-ref argument indexes (name -> zero-based indexes)
+    functions_by_ref: HashMap<Vec<u8>, Vec<usize>>,
     /// Native class definitions (name -> class def)
     classes: HashMap<Vec<u8>, NativeClassDef>,
     /// Registered extensions
@@ -44,6 +46,7 @@ impl ExtensionRegistry {
     pub fn new() -> Self {
         Self {
             functions: HashMap::new(),
+            functions_by_ref: HashMap::new(),
             classes: HashMap::new(),
             extensions: Vec::new(),
             extension_map: HashMap::new(),
@@ -56,6 +59,19 @@ impl ExtensionRegistry {
     /// Function names are stored as-is (case-sensitive in storage, but PHP lookups are case-insensitive)
     pub fn register_function(&mut self, name: &[u8], handler: NativeHandler) {
         self.functions.insert(name.to_vec(), handler);
+    }
+
+    /// Register a native function handler with by-ref argument positions.
+    pub fn register_function_with_by_ref(
+        &mut self,
+        name: &[u8],
+        handler: NativeHandler,
+        by_ref: Vec<usize>,
+    ) {
+        self.functions.insert(name.to_vec(), handler);
+        if !by_ref.is_empty() {
+            self.functions_by_ref.insert(name.to_vec(), by_ref);
+        }
     }
 
     /// Register a native class definition
@@ -83,6 +99,22 @@ impl ExtensionRegistry {
             let lower_key: Vec<u8> = key.iter().map(|b| b.to_ascii_lowercase()).collect();
             if lower_key == lower_name {
                 return Some(handler);
+            }
+        }
+        None
+    }
+
+    /// Get by-ref argument indexes for a function (case-insensitive lookup)
+    pub fn get_function_by_ref(&self, name: &[u8]) -> Option<&[usize]> {
+        if let Some(by_ref) = self.functions_by_ref.get(name) {
+            return Some(by_ref.as_slice());
+        }
+
+        let lower_name: Vec<u8> = name.iter().map(|b| b.to_ascii_lowercase()).collect();
+        for (key, by_ref) in &self.functions_by_ref {
+            let lower_key: Vec<u8> = key.iter().map(|b| b.to_ascii_lowercase()).collect();
+            if lower_key == lower_name {
+                return Some(by_ref.as_slice());
             }
         }
         None
