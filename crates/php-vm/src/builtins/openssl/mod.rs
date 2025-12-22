@@ -2,6 +2,7 @@ use crate::core::value::{Val, Handle, ArrayData, ArrayKey, ObjectData, Symbol};
 use crate::runtime::context::RequestContext;
 use crate::vm::engine::VM;
 use openssl::symm::{Cipher, encrypt, decrypt};
+use openssl::nid::Nid;
 use openssl::pkey::{PKey, Public, Private};
 use openssl::x509::{X509, X509Name, X509Req};
 use openssl::sign::{Signer, Verifier};
@@ -92,6 +93,10 @@ pub const OPENSSL_ZERO_PADDING: i64 = 3;
 pub const OPENSSL_ENCODING_SMIME: i64 = 1;
 pub const OPENSSL_ENCODING_DER: i64 = 2;
 pub const OPENSSL_ENCODING_PEM: i64 = 3;
+
+fn set_ref_value(vm: &mut VM, handle: Handle, value: Val) {
+    vm.arena.get_mut(handle).value = value;
+}
 
 
 
@@ -233,7 +238,7 @@ pub fn openssl_public_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
     let encrypted_len = encrypter.encrypt(data, &mut encrypted).map_err(|e| e.to_string())?;
     encrypted.truncate(encrypted_len);
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(encrypted));
+    set_ref_value(vm, args[1], Val::String(Rc::new(encrypted)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -288,7 +293,7 @@ pub fn openssl_private_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
         }
     };
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(decrypted));
+    set_ref_value(vm, args[1], Val::String(Rc::new(decrypted)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -331,7 +336,7 @@ pub fn openssl_pkey_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         pkey.private_key_to_pem_pkcs8().map_err(|e| e.to_string())?
     };
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(pem));
+    set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -342,10 +347,19 @@ pub fn openssl_random_pseudo_bytes(vm: &mut VM, args: &[Handle]) -> Result<Handl
     }
     let length = match &vm.arena.get(args[0]).value {
         Val::Int(l) if *l > 0 => *l as usize,
-        _ => return Ok(vm.arena.alloc(Val::Bool(false))),
+        _ => {
+            if args.len() > 1 {
+                set_ref_value(vm, args[1], Val::Bool(false));
+            }
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
     };
     let mut buf = vec![0u8; length];
-    if openssl::rand::rand_bytes(&mut buf).is_ok() {
+    let success = openssl::rand::rand_bytes(&mut buf).is_ok();
+    if args.len() > 1 {
+        set_ref_value(vm, args[1], Val::Bool(success));
+    }
+    if success {
         Ok(vm.arena.alloc(Val::String(Rc::new(buf))))
     } else {
         Ok(vm.arena.alloc(Val::Bool(false)))
@@ -571,7 +585,7 @@ pub fn openssl_private_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     let len = rsa.private_encrypt(&data, &mut buf, padding).map_err(|e| e.to_string())?;
     buf.truncate(len);
 
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(buf));
+    set_ref_value(vm, args[1], Val::String(Rc::new(buf)));
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -626,7 +640,7 @@ pub fn openssl_public_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
         }
     };
 
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(decrypted_data));
+    set_ref_value(vm, args[1], Val::String(Rc::new(decrypted_data)));
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -778,7 +792,7 @@ pub fn openssl_x509_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         }
     };
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(pem));
+    set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -1050,7 +1064,7 @@ pub fn openssl_csr_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         }
     };
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(pem));
+    set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -1237,10 +1251,10 @@ fn map_cipher(name: &[u8]) -> Option<Cipher> {
         "cast5-ecb" => Some(Cipher::cast5_ecb()),
         "cast5-cfb" => Some(Cipher::cast5_cfb64()),
         "cast5-ofb" => Some(Cipher::cast5_ofb()),
-        "idea-cbc" => Some(Cipher::idea_cbc()),
-        "idea-ecb" => Some(Cipher::idea_ecb()),
-        "idea-cfb" => Some(Cipher::idea_cfb64()),
-        "idea-ofb" => Some(Cipher::idea_ofb()),
+        "idea-cbc" => Cipher::from_nid(Nid::IDEA_CBC),
+        "idea-ecb" => Cipher::from_nid(Nid::IDEA_ECB),
+        "idea-cfb" => Cipher::from_nid(Nid::IDEA_CFB64),
+        "idea-ofb" => Cipher::from_nid(Nid::IDEA_OFB64),
         "rc2-cbc" => Some(Cipher::rc2_cbc()),
         "rc4" => Some(Cipher::rc4()),
         _ => None,
@@ -1318,7 +1332,7 @@ pub fn openssl_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     signer.update(&data).map_err(|e| e.to_string())?;
     let signature = signer.sign_to_vec().map_err(|e| e.to_string())?;
     
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(signature));
+    set_ref_value(vm, args[1], Val::String(Rc::new(signature)));
     
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -1915,7 +1929,7 @@ pub fn openssl_pkcs12_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     let der = pkcs12.to_der().map_err(|e| e.to_string())?;
 
     // Set the output reference (args[1])
-    vm.arena.get_mut(args[1]).value = Val::String(Rc::new(der));
+    set_ref_value(vm, args[1], Val::String(Rc::new(der)));
 
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -1965,7 +1979,7 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         certs_array.insert(ArrayKey::Str(Rc::new(b"extracerts".to_vec())), vm.arena.alloc(Val::Array(Rc::new(chain_array))));
     }
 
-    vm.arena.get_mut(args[1]).value = Val::Array(Rc::new(certs_array));
+    set_ref_value(vm, args[1], Val::Array(Rc::new(certs_array)));
 
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -2285,4 +2299,3 @@ pub fn openssl_get_cert_locations(vm: &mut VM, _args: &[Handle]) -> Result<Handl
     let mut array = ArrayData::new();
     Ok(vm.arena.alloc(Val::Array(Rc::new(array))))
 }
-

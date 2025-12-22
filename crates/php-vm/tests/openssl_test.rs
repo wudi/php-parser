@@ -24,6 +24,53 @@ fn test_openssl_random_pseudo_bytes() {
 }
 
 #[test]
+fn test_openssl_random_pseudo_bytes_crypto_strong() {
+    let mut vm = create_test_vm();
+    let length_handle = vm.arena.alloc(Val::Int(16));
+    let crypto_strong_handle = vm.arena.alloc(Val::Bool(false));
+
+    let result_handle = php_vm::builtins::openssl::openssl_random_pseudo_bytes(
+        &mut vm,
+        &[length_handle, crypto_strong_handle],
+    )
+    .unwrap();
+    assert!(matches!(vm.arena.get(result_handle).value, Val::String(_)));
+
+    assert_eq!(vm.arena.get(crypto_strong_handle).value, Val::Bool(true));
+}
+
+#[test]
+fn test_openssl_public_encrypt_private_decrypt() {
+    let mut vm = create_test_vm();
+
+    let pkey_handle = php_vm::builtins::openssl::openssl_pkey_new(&mut vm, &[]).unwrap();
+    let data = b"hello openssl".to_vec();
+    let data_handle = vm.arena.alloc(Val::String(Rc::new(data.clone())));
+    let encrypted_handle = vm.arena.alloc(Val::String(Rc::new(vec![])));
+    let decrypted_handle = vm.arena.alloc(Val::String(Rc::new(vec![])));
+
+    let encrypt_ok = php_vm::builtins::openssl::openssl_public_encrypt(
+        &mut vm,
+        &[data_handle, encrypted_handle, pkey_handle],
+    )
+    .unwrap();
+    assert_eq!(vm.arena.get(encrypt_ok).value, Val::Bool(true));
+
+    let decrypt_ok = php_vm::builtins::openssl::openssl_private_decrypt(
+        &mut vm,
+        &[encrypted_handle, decrypted_handle, pkey_handle],
+    )
+    .unwrap();
+    assert_eq!(vm.arena.get(decrypt_ok).value, Val::Bool(true));
+
+    let decrypted = match &vm.arena.get(decrypted_handle).value {
+        Val::String(s) => s.clone(),
+        _ => panic!("openssl_private_decrypt did not return a string"),
+    };
+    assert_eq!(decrypted.as_ref(), data.as_slice());
+}
+
+#[test]
 fn test_openssl_cipher_iv_length() {
     let mut vm = create_test_vm();
     let cipher_handle = vm.arena.alloc(Val::String(Rc::new(b"aes-128-cbc".to_vec())));
