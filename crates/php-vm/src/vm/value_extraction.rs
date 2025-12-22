@@ -31,17 +31,12 @@ impl VM {
 
     /// Extract object class and payload handle
     #[inline]
-    pub(crate) fn extract_object_parts(
-        &self,
-        handle: Handle,
-    ) -> Result<(Symbol, Handle), VmError> {
+    pub(crate) fn extract_object_parts(&self, handle: Handle) -> Result<(Symbol, Handle), VmError> {
         match &self.arena.get(handle).value {
-            Val::Object(payload_handle) => {
-                match &self.arena.get(*payload_handle).value {
-                    Val::ObjPayload(obj_data) => Ok((obj_data.class, *payload_handle)),
-                    _ => Err(VmError::runtime("Invalid object payload")),
-                }
-            }
+            Val::Object(payload_handle) => match &self.arena.get(*payload_handle).value {
+                Val::ObjPayload(obj_data) => Ok((obj_data.class, *payload_handle)),
+                _ => Err(VmError::runtime("Invalid object payload")),
+            },
             _ => Err(VmError::runtime("Not an object")),
         }
     }
@@ -133,6 +128,9 @@ mod tests {
         assert_eq!(vm.type_name(&Val::Null), "null");
         assert_eq!(vm.type_name(&Val::Int(42)), "int");
         assert_eq!(vm.type_name(&Val::Bool(true)), "bool");
-        assert_eq!(vm.type_name(&Val::String(b"test".to_vec().into())), "string");
+        assert_eq!(
+            vm.type_name(&Val::String(b"test".to_vec().into())),
+            "string"
+        );
     }
 }

@@ -1,13 +1,15 @@
-use crate::core::value::{Handle, Val, ObjectData, ArrayData, ArrayKey};
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Val};
 use crate::vm::engine::VM;
-use std::rc::Rc;
-use flate2::read::{ZlibEncoder, ZlibDecoder, DeflateEncoder, DeflateDecoder, GzDecoder, GzEncoder as GzReadEncoder};
+use flate2::read::{
+    DeflateDecoder, DeflateEncoder, GzDecoder, GzEncoder as GzReadEncoder, ZlibDecoder, ZlibEncoder,
+};
 use flate2::write::GzEncoder as GzWriteEncoder;
-use flate2::{Compression, FlushCompress, FlushDecompress, Compress, Decompress, Status};
+use flate2::{Compress, Compression, Decompress, FlushCompress, FlushDecompress, Status};
 use std::any::Any;
-use std::fs::File;
-use std::io::{Write, Read};
 use std::cell::RefCell;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::rc::Rc;
 
 pub struct GzFile {
     pub inner: RefCell<Box<dyn GzFileInner>>,
@@ -40,7 +42,10 @@ impl GzFileInner for GzFileReader {
         Ok(n)
     }
     fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "File opened for reading"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "File opened for reading",
+        ))
     }
     fn eof(&mut self) -> bool {
         self.eof
@@ -70,7 +75,10 @@ impl GzFileInner for GzFileReader {
                 }
                 Ok(self.pos)
             }
-            _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "Limited seek support on GzFileReader")),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Limited seek support on GzFileReader",
+            )),
         }
     }
     fn gets(&mut self, length: usize) -> std::io::Result<Vec<u8>> {
@@ -99,7 +107,10 @@ struct GzFileWriter {
 
 impl GzFileInner for GzFileWriter {
     fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "File opened for writing"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "File opened for writing",
+        ))
     }
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if let Some(ref mut encoder) = self.encoder {
@@ -107,7 +118,10 @@ impl GzFileInner for GzFileWriter {
             self.pos += n as u64;
             Ok(n)
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "File already closed"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "File already closed",
+            ))
         }
     }
     fn eof(&mut self) -> bool {
@@ -117,10 +131,16 @@ impl GzFileInner for GzFileWriter {
         self.pos
     }
     fn seek(&mut self, _pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "Seek not supported on GzFileWriter"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Seek not supported on GzFileWriter",
+        ))
     }
     fn gets(&mut self, _length: usize) -> std::io::Result<Vec<u8>> {
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "File opened for writing"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "File opened for writing",
+        ))
     }
     fn close(&mut self) -> std::io::Result<()> {
         if let Some(encoder) = self.encoder.take() {
@@ -205,7 +225,7 @@ pub fn php_gzuncompress(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     let mut decoder = ZlibDecoder::new(&data[..]);
     let mut buffer = Vec::new();
-    
+
     let result = if max_length > 0 {
         decoder.take(max_length as u64).read_to_end(&mut buffer)
     } else {
@@ -282,7 +302,7 @@ pub fn php_gzinflate(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let mut decoder = DeflateDecoder::new(&data[..]);
     let mut buffer = Vec::new();
-    
+
     let result = if max_length > 0 {
         decoder.take(max_length as u64).read_to_end(&mut buffer)
     } else {
@@ -359,7 +379,7 @@ pub fn php_gzdecode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let mut decoder = GzDecoder::new(&data[..]);
     let mut buffer = Vec::new();
-    
+
     let result = if max_length > 0 {
         decoder.take(max_length as u64).read_to_end(&mut buffer)
     } else {
@@ -412,19 +432,22 @@ pub fn php_zlib_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let mut buffer = Vec::new();
     match encoding {
-        15 => { // ZLIB_ENCODING_DEFLATE
+        15 => {
+            // ZLIB_ENCODING_DEFLATE
             let mut encoder = ZlibEncoder::new(&data[..], compression);
             if encoder.read_to_end(&mut buffer).is_err() {
                 return Ok(vm.arena.alloc(Val::Bool(false)));
             }
         }
-        31 => { // ZLIB_ENCODING_GZIP
+        31 => {
+            // ZLIB_ENCODING_GZIP
             let mut encoder = GzReadEncoder::new(&data[..], compression);
             if encoder.read_to_end(&mut buffer).is_err() {
                 return Ok(vm.arena.alloc(Val::Bool(false)));
             }
         }
-        -1 => { // ZLIB_ENCODING_RAW
+        -1 => {
+            // ZLIB_ENCODING_RAW
             let mut encoder = DeflateEncoder::new(&data[..], compression);
             if encoder.read_to_end(&mut buffer).is_err() {
                 return Ok(vm.arena.alloc(Val::Bool(false)));
@@ -459,7 +482,7 @@ pub fn php_zlib_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // zlib_decode is supposed to auto-detect the encoding.
     // flate2 doesn't have an auto-detect decoder easily.
     // PHP's zlib_decode supports raw, zlib, and gzip.
-    
+
     // Try GZIP first
     let mut decoder = GzDecoder::new(&data[..]);
     let mut buffer = Vec::new();
@@ -590,22 +613,27 @@ pub fn php_deflate_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let internal = match &vm.arena.get(obj_handle).value {
         Val::ObjPayload(p) => p.internal.clone(),
-        _ => return Err("deflate_add(): Argument #1 ($context) must be of type DeflateContext".into()),
+        _ => {
+            return Err(
+                "deflate_add(): Argument #1 ($context) must be of type DeflateContext".into(),
+            )
+        }
     };
 
     let internal = internal.ok_or("deflate_add(): Invalid DeflateContext")?;
-    let context = internal.downcast_ref::<DeflateContext>()
+    let context = internal
+        .downcast_ref::<DeflateContext>()
         .ok_or("deflate_add(): Invalid DeflateContext")?;
 
     let mut compress = context.compress.borrow_mut();
     let mut output = Vec::with_capacity(data.len() / 2 + 64);
-    
+
     // Incremental compression
     let mut input_pos = 0;
     while input_pos < data.len() {
         let before_in = compress.total_in();
         let before_out = compress.total_out();
-        
+
         let mut temp_out = vec![0u8; 4096];
         match compress.compress(&data[input_pos..], &mut temp_out, flush_mode) {
             Ok(Status::Ok) | Ok(Status::BufError) => {
@@ -627,7 +655,10 @@ pub fn php_deflate_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     // If flush_mode is Finish or Sync, we might need more calls to get all data
-    if flush_mode == FlushCompress::Finish || flush_mode == FlushCompress::Sync || flush_mode == FlushCompress::Full {
+    if flush_mode == FlushCompress::Finish
+        || flush_mode == FlushCompress::Sync
+        || flush_mode == FlushCompress::Full
+    {
         loop {
             let before_out = compress.total_out();
             let mut temp_out = vec![0u8; 4096];
@@ -713,21 +744,26 @@ pub fn php_inflate_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let internal = match &vm.arena.get(obj_handle).value {
         Val::ObjPayload(p) => p.internal.clone(),
-        _ => return Err("inflate_add(): Argument #1 ($context) must be of type InflateContext".into()),
+        _ => {
+            return Err(
+                "inflate_add(): Argument #1 ($context) must be of type InflateContext".into(),
+            )
+        }
     };
 
     let internal = internal.ok_or("inflate_add(): Invalid InflateContext")?;
-    let context = internal.downcast_ref::<InflateContext>()
+    let context = internal
+        .downcast_ref::<InflateContext>()
         .ok_or("inflate_add(): Invalid InflateContext")?;
 
     let mut decompress = context.decompress.borrow_mut();
     let mut output = Vec::with_capacity(data.len() * 2);
-    
+
     let mut input_pos = 0;
     loop {
         let before_in = decompress.total_in();
         let before_out = decompress.total_out();
-        
+
         let mut temp_out = vec![0u8; 4096];
         match decompress.decompress(&data[input_pos..], &mut temp_out, flush_mode) {
             Ok(status) => {
@@ -737,7 +773,7 @@ pub fn php_inflate_add(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 input_pos += consumed;
                 *context.read_len.borrow_mut() += consumed;
                 *context.status.borrow_mut() = status;
-                
+
                 if status == Status::StreamEnd {
                     break;
                 }
@@ -762,15 +798,21 @@ pub fn php_inflate_get_status(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
 
     let internal = match &vm.arena.get(args[0]).value {
         Val::ObjPayload(p) => p.internal.clone(),
-        _ => return Err("inflate_get_status(): Argument #1 ($context) must be of type InflateContext".into()),
+        _ => {
+            return Err(
+                "inflate_get_status(): Argument #1 ($context) must be of type InflateContext"
+                    .into(),
+            )
+        }
     };
 
     let internal = internal.ok_or("inflate_get_status(): Invalid InflateContext")?;
-    let context = internal.downcast_ref::<InflateContext>()
+    let context = internal
+        .downcast_ref::<InflateContext>()
         .ok_or("inflate_get_status(): Invalid InflateContext")?;
 
     let status = match *context.status.borrow() {
-        Status::Ok => 0, // ZLIB_OK
+        Status::Ok => 0,        // ZLIB_OK
         Status::StreamEnd => 1, // ZLIB_STREAM_END
         Status::BufError => -5, // ZLIB_BUF_ERROR
     };
@@ -786,11 +828,17 @@ pub fn php_inflate_get_read_len(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
 
     let internal = match &vm.arena.get(args[0]).value {
         Val::ObjPayload(p) => p.internal.clone(),
-        _ => return Err("inflate_get_read_len(): Argument #1 ($context) must be of type InflateContext".into()),
+        _ => {
+            return Err(
+                "inflate_get_read_len(): Argument #1 ($context) must be of type InflateContext"
+                    .into(),
+            )
+        }
     };
 
     let internal = internal.ok_or("inflate_get_read_len(): Invalid InflateContext")?;
-    let context = internal.downcast_ref::<InflateContext>()
+    let context = internal
+        .downcast_ref::<InflateContext>()
         .ok_or("inflate_get_read_len(): Invalid InflateContext")?;
 
     let read_len = *context.read_len.borrow();
@@ -856,11 +904,16 @@ pub fn php_gzread(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzread(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzread(): Invalid resource")?;
 
     let mut buffer = vec![0u8; length];
-    let n = gz_file.inner.borrow_mut().read(&mut buffer).map_err(|e| e.to_string())?;
+    let n = gz_file
+        .inner
+        .borrow_mut()
+        .read(&mut buffer)
+        .map_err(|e| e.to_string())?;
     buffer.truncate(n);
 
     Ok(vm.arena.alloc(Val::String(Rc::new(buffer))))
@@ -892,7 +945,8 @@ pub fn php_gzwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzwrite(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzwrite(): Invalid resource")?;
 
     let to_write = if let Some(l) = length {
@@ -905,7 +959,11 @@ pub fn php_gzwrite(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         &data[..]
     };
 
-    let n = gz_file.inner.borrow_mut().write(to_write).map_err(|e| e.to_string())?;
+    let n = gz_file
+        .inner
+        .borrow_mut()
+        .write(to_write)
+        .map_err(|e| e.to_string())?;
 
     Ok(vm.arena.alloc(Val::Int(n as i64)))
 }
@@ -921,10 +979,15 @@ pub fn php_gzclose(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzclose(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzclose(): Invalid resource")?;
 
-    gz_file.inner.borrow_mut().close().map_err(|e| e.to_string())?;
+    gz_file
+        .inner
+        .borrow_mut()
+        .close()
+        .map_err(|e| e.to_string())?;
 
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
@@ -940,7 +1003,8 @@ pub fn php_gzeof(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzeof(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzeof(): Invalid resource")?;
 
     let eof = gz_file.inner.borrow_mut().eof();
@@ -958,7 +1022,8 @@ pub fn php_gztell(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gztell(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gztell(): Invalid resource")?;
 
     let pos = gz_file.inner.borrow_mut().tell();
@@ -991,7 +1056,8 @@ pub fn php_gzseek(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         0 // SEEK_SET
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzseek(): Invalid resource")?;
 
     let seek_from = match whence {
@@ -1019,7 +1085,8 @@ pub fn php_gzrewind(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzrewind(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzrewind(): Invalid resource")?;
 
     let result = match gz_file.inner.borrow_mut().seek(std::io::SeekFrom::Start(0)) {
@@ -1049,10 +1116,15 @@ pub fn php_gzgets(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzgets(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzgets(): Invalid resource")?;
 
-    let line = gz_file.inner.borrow_mut().gets(length).map_err(|e| e.to_string())?;
+    let line = gz_file
+        .inner
+        .borrow_mut()
+        .gets(length)
+        .map_err(|e| e.to_string())?;
     if line.is_empty() && gz_file.inner.borrow_mut().eof() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
@@ -1071,11 +1143,16 @@ pub fn php_gzgetc(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzgetc(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzgetc(): Invalid resource")?;
 
     let mut byte = [0u8; 1];
-    let n = gz_file.inner.borrow_mut().read(&mut byte).map_err(|e| e.to_string())?;
+    let n = gz_file
+        .inner
+        .borrow_mut()
+        .read(&mut byte)
+        .map_err(|e| e.to_string())?;
     if n == 0 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
@@ -1094,13 +1171,18 @@ pub fn php_gzpassthru(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("gzpassthru(): Argument #1 ($stream) must be of type resource".into()),
     };
 
-    let gz_file = resource.downcast_ref::<GzFile>()
+    let gz_file = resource
+        .downcast_ref::<GzFile>()
         .ok_or("gzpassthru(): Invalid resource")?;
 
     let mut total = 0;
     let mut buf = [0u8; 8192];
     loop {
-        let n = gz_file.inner.borrow_mut().read(&mut buf).map_err(|e| e.to_string())?;
+        let n = gz_file
+            .inner
+            .borrow_mut()
+            .read(&mut buf)
+            .map_err(|e| e.to_string())?;
         if n == 0 {
             break;
         }
@@ -1119,7 +1201,7 @@ pub fn php_readgzfile(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let mode_handle = vm.arena.alloc(Val::String(Rc::new(b"rb".to_vec())));
     let gz_handle = php_gzopen(vm, &[args[0], mode_handle])?;
-    
+
     if let Val::Bool(false) = vm.arena.get(gz_handle).value {
         return Ok(gz_handle);
     }
@@ -1138,7 +1220,7 @@ pub fn php_gzfile(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let mode_handle = vm.arena.alloc(Val::String(Rc::new(b"rb".to_vec())));
     let gz_handle = php_gzopen(vm, &[args[0], mode_handle])?;
-    
+
     if let Val::Bool(false) = vm.arena.get(gz_handle).value {
         return Ok(gz_handle);
     }

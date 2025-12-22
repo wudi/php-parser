@@ -41,7 +41,7 @@ try {
     echo " finally";
 }
 "#;
-    
+
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
 

@@ -45,7 +45,10 @@ fn test_mysqli_connect_success() {
     match &vm.arena.get(conn_handle).value {
         Val::Resource(_) => { /* OK */ }
         Val::Bool(false) => panic!("Connection failed"),
-        _ => panic!("Expected resource or false, got {:?}", vm.arena.get(conn_handle).value),
+        _ => panic!(
+            "Expected resource or false, got {:?}",
+            vm.arena.get(conn_handle).value
+        ),
     }
 
     // Cleanup

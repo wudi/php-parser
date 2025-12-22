@@ -90,7 +90,7 @@ function test() {
 }
 echo test();
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -119,7 +119,7 @@ function outer() {
 }
 echo outer();
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -140,7 +140,7 @@ function test() {
 }
 echo test();
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -168,7 +168,7 @@ for ($i = 0; $i < 3; $i++) {
 }
 echo "end";
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -195,7 +195,7 @@ for ($i = 0; $i < 2; $i++) {
 }
 echo "end";
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -223,7 +223,7 @@ for ($i = 0; $i < 3; $i++) {
 }
 echo "end";
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -255,7 +255,7 @@ for ($i = 0; $i < 2; $i++) {
 }
 echo "end";
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();

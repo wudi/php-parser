@@ -127,10 +127,10 @@ try {
 }
 echo " end";  // Not reached due to uncaught exception
 "#;
-    
+
     let (result, output) = run_code_with_output(code);
     assert!(result.is_err(), "Should error due to uncaught exception");
-    
+
     // PHP outputs "before finally" before the error
     assert_eq!(output, "before finally");
 }
@@ -149,7 +149,7 @@ try {
 }
 echo " end";
 "#;
-    
+
     let result = run_code(code);
     assert!(result.is_ok());
     let (_, output) = result.unwrap();
@@ -171,7 +171,7 @@ function test() {
 }
 echo test();
 "#;
-    
+
     let result = run_code(code);
     // Current implementation: return skips finally
     // TODO: Should be "try finally" + "value"
@@ -194,7 +194,7 @@ function test() {
 }
 echo test();
 "#;
-    
+
     let result = run_code(code);
     // TODO: Should output "catch finally" + "value"
     assert!(result.is_ok());
@@ -218,7 +218,7 @@ try {
 }
 echo " end";
 "#;
-    
+
     let result = run_code(code);
     // TODO: Should output "inner-catch inner-finally outer-catch end"
     assert!(result.is_ok());
@@ -240,7 +240,7 @@ try {
     echo " outer-finally";
 }
 "#;
-    
+
     let result = run_code(code);
     // TODO: Should output "outer inner inner-finally outer-finally" then error
     assert!(result.is_err(), "Should error due to uncaught exception");
@@ -260,7 +260,7 @@ for ($i = 0; $i < 3; $i++) {
 }
 echo " end";
 "#;
-    
+
     let result = run_code(code);
     // TODO: Should output "0f1f end"
     assert!(result.is_ok());
@@ -281,7 +281,7 @@ for ($i = 0; $i < 3; $i++) {
 }
 echo " end";
 "#;
-    
+
     let result = run_code(code);
     // TODO: Should output "0xf1f2xf end"
     assert!(result.is_ok());

@@ -125,7 +125,9 @@ pub fn php_mysqli_close(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     // Extract connection resource ID
     let conn_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_close(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_close(): Invalid resource type")?,
         _ => return Err("mysqli_close(): Argument #1 must be mysqli link".into()),
     };
 
@@ -147,7 +149,9 @@ pub fn php_mysqli_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     // Extract connection
     let conn_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_query(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_query(): Invalid resource type")?,
         _ => return Err("mysqli_query(): Argument #1 must be mysqli link".into()),
     };
 
@@ -199,7 +203,9 @@ pub fn php_mysqli_fetch_assoc(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
 
     // Extract result resource ID
     let result_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_fetch_assoc(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_fetch_assoc(): Invalid resource type")?,
         _ => return Err("mysqli_fetch_assoc(): Argument #1 must be mysqli_result".into()),
     };
 
@@ -212,7 +218,7 @@ pub fn php_mysqli_fetch_assoc(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
 
     // Fetch next row (release borrow immediately)
     let row_opt = result_ref.borrow_mut().fetch_assoc();
-    
+
     match row_opt {
         Some(row) => {
             // Convert to PHP array
@@ -246,7 +252,9 @@ pub fn php_mysqli_fetch_row(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
 
     // Extract result resource ID
     let result_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_fetch_row(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_fetch_row(): Invalid resource type")?,
         _ => return Err("mysqli_fetch_row(): Argument #1 must be mysqli_result".into()),
     };
 
@@ -259,7 +267,7 @@ pub fn php_mysqli_fetch_row(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
 
     // Fetch next row (release borrow immediately)
     let row_opt = result_ref.borrow_mut().fetch_row();
-    
+
     match row_opt {
         Some(row) => {
             // Convert to PHP numeric array
@@ -292,7 +300,9 @@ pub fn php_mysqli_num_rows(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
 
     // Extract result resource ID
     let result_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_num_rows(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_num_rows(): Invalid resource type")?,
         _ => return Err("mysqli_num_rows(): Argument #1 must be mysqli_result".into()),
     };
 
@@ -320,7 +330,9 @@ pub fn php_mysqli_affected_rows(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
 
     // Extract connection resource ID
     let conn_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_affected_rows(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_affected_rows(): Invalid resource type")?,
         _ => return Err("mysqli_affected_rows(): Argument #1 must be mysqli link".into()),
     };
 
@@ -348,7 +360,9 @@ pub fn php_mysqli_error(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     // Extract connection resource ID
     let conn_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_error(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_error(): Invalid resource type")?,
         _ => return Err("mysqli_error(): Argument #1 must be mysqli link".into()),
     };
 
@@ -376,7 +390,9 @@ pub fn php_mysqli_errno(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     // Extract connection resource ID
     let conn_id = match &vm.arena.get(args[0]).value {
-        Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("mysqli_errno(): Invalid resource type")?,
+        Val::Resource(rc) => *rc
+            .downcast_ref::<u64>()
+            .ok_or("mysqli_errno(): Invalid resource type")?,
         _ => return Err("mysqli_errno(): Argument #1 must be mysqli link".into()),
     };
 

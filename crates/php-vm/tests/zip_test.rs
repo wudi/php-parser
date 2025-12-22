@@ -1,13 +1,13 @@
-use php_vm::core::value::{Val, ObjectData, Handle, Symbol};
+use indexmap::IndexMap;
+use php_vm::compiler::chunk::CodeChunk;
+use php_vm::core::value::{Handle, ObjectData, Symbol, Val};
+use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
 use php_vm::vm::frame::CallFrame;
-use php_vm::runtime::context::{RequestContext, EngineContext};
-use php_vm::compiler::chunk::CodeChunk;
-use std::rc::Rc;
-use std::sync::Arc;
 use std::collections::HashSet;
 use std::fs;
-use indexmap::IndexMap;
+use std::rc::Rc;
+use std::sync::Arc;
 
 fn create_test_vm() -> VM {
     let engine = Arc::new(EngineContext::new());
@@ -39,15 +39,20 @@ fn test_zip_archive_basic() {
     vm.frames.push(frame);
 
     // $zip->open("test.zip", ZipArchive::CREATE)
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     let create_flag = vm.arena.alloc(Val::Int(1));
-    let result = php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val, create_flag]).unwrap();
+    let result =
+        php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val, create_flag]).unwrap();
     assert_eq!(vm.arena.get(result).value, Val::Bool(true));
 
     // $zip->addFromString("test.txt", "hello zip")
     let name_val = vm.arena.alloc(Val::String(Rc::new(b"test.txt".to_vec())));
     let content_val = vm.arena.alloc(Val::String(Rc::new(b"hello zip".to_vec())));
-    let result = php_vm::builtins::zip::php_zip_archive_add_from_string(&mut vm, &[name_val, content_val]).unwrap();
+    let result =
+        php_vm::builtins::zip::php_zip_archive_add_from_string(&mut vm, &[name_val, content_val])
+            .unwrap();
     assert_eq!(vm.arena.get(result).value, Val::Bool(true));
 
     // $zip->close()
@@ -79,16 +84,19 @@ fn test_zip_procedural_basic() {
     {
         let file = fs::File::create(&zip_path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        zip.start_file("test.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file("test.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         use std::io::Write;
         zip.write_all(b"procedural hello").unwrap();
         zip.finish().unwrap();
     }
 
     // $zip = zip_open("test_proc.zip")
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     let zip_res = php_vm::builtins::zip::php_zip_open(&mut vm, &[path_val]).unwrap();
-    
+
     assert!(matches!(vm.arena.get(zip_res).value, Val::Resource(_)));
 
     // $entry = zip_read($zip)
@@ -139,13 +147,20 @@ fn test_zip_archive_add_file() {
     frame.this = Some(zip_handle);
     vm.frames.push(frame);
 
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     let create_flag = vm.arena.alloc(Val::Int(1));
     php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val, create_flag]).unwrap();
 
-    let file_val = vm.arena.alloc(Val::String(Rc::new(to_add_str.as_bytes().to_vec())));
-    let local_val = vm.arena.alloc(Val::String(Rc::new(b"renamed.txt".to_vec())));
-    let result = php_vm::builtins::zip::php_zip_archive_add_file(&mut vm, &[file_val, local_val]).unwrap();
+    let file_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(to_add_str.as_bytes().to_vec())));
+    let local_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(b"renamed.txt".to_vec())));
+    let result =
+        php_vm::builtins::zip::php_zip_archive_add_file(&mut vm, &[file_val, local_val]).unwrap();
     assert_eq!(vm.arena.get(result).value, Val::Bool(true));
 
     php_vm::builtins::zip::php_zip_archive_close(&mut vm, &[]).unwrap();
@@ -180,7 +195,9 @@ fn test_zip_archive_add_empty_dir() {
     frame.this = Some(zip_handle);
     vm.frames.push(frame);
 
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     let create_flag = vm.arena.alloc(Val::Int(1));
     php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val, create_flag]).unwrap();
 
@@ -222,7 +239,9 @@ fn test_zip_archive_properties() {
     vm.frames.push(frame);
 
     // Open
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     let create_flag = vm.arena.alloc(Val::Int(1));
     php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val, create_flag]).unwrap();
 
@@ -231,7 +250,10 @@ fn test_zip_archive_properties() {
         let obj_val = vm.arena.get(obj_handle);
         if let Val::ObjPayload(obj_data) = &obj_val.value {
             let num_files_sym = vm.context.interner.intern(b"numFiles");
-            let num_files_handle = obj_data.properties.get(&num_files_sym).expect("numFiles property missing");
+            let num_files_handle = obj_data
+                .properties
+                .get(&num_files_sym)
+                .expect("numFiles property missing");
             match &vm.arena.get(*num_files_handle).value {
                 Val::Int(n) => assert_eq!(*n, 0),
                 _ => panic!("numFiles should be int"),
@@ -242,14 +264,18 @@ fn test_zip_archive_properties() {
     // Add a file
     let name_handle = vm.arena.alloc(Val::String(Rc::new(b"test.txt".to_vec())));
     let content_handle = vm.arena.alloc(Val::String(Rc::new(b"hello".to_vec())));
-    php_vm::builtins::zip::php_zip_archive_add_from_string(&mut vm, &[name_handle, content_handle]).unwrap();
+    php_vm::builtins::zip::php_zip_archive_add_from_string(&mut vm, &[name_handle, content_handle])
+        .unwrap();
 
     // Check properties after add
     {
         let obj_val = vm.arena.get(obj_handle);
         if let Val::ObjPayload(obj_data) = &obj_val.value {
             let num_files_sym = vm.context.interner.intern(b"numFiles");
-            let num_files_handle = obj_data.properties.get(&num_files_sym).expect("numFiles property missing");
+            let num_files_handle = obj_data
+                .properties
+                .get(&num_files_sym)
+                .expect("numFiles property missing");
             match &vm.arena.get(*num_files_handle).value {
                 Val::Int(n) => assert_eq!(*n, 1),
                 _ => panic!("numFiles should be int"),
@@ -266,7 +292,10 @@ fn test_zip_archive_properties() {
         let obj_val = vm.arena.get(obj_handle);
         if let Val::ObjPayload(obj_data) = &obj_val.value {
             let num_files_sym = vm.context.interner.intern(b"numFiles");
-            let num_files_handle = obj_data.properties.get(&num_files_sym).expect("numFiles property missing");
+            let num_files_handle = obj_data
+                .properties
+                .get(&num_files_sym)
+                .expect("numFiles property missing");
             match &vm.arena.get(*num_files_handle).value {
                 Val::Int(n) => assert_eq!(*n, 0),
                 _ => panic!("numFiles should be int"),
@@ -289,10 +318,12 @@ fn test_zip_archive_extract_to() {
     {
         let file = fs::File::create(&zip_path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        zip.start_file("file1.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file("file1.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         use std::io::Write;
         zip.write_all(b"content1").unwrap();
-        zip.start_file("dir/file2.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file("dir/file2.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"content2").unwrap();
         zip.finish().unwrap();
     }
@@ -312,7 +343,9 @@ fn test_zip_archive_extract_to() {
     frame.this = Some(zip_handle);
     vm.frames.push(frame);
 
-    let path_val = vm.arena.alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
+    let path_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(zip_path_str.as_bytes().to_vec())));
     php_vm::builtins::zip::php_zip_archive_open(&mut vm, &[path_val]).unwrap();
 
     // getNameIndex(0)
@@ -326,13 +359,21 @@ fn test_zip_archive_extract_to() {
     // extractTo
     let extract_path = temp_dir.path().join("extracted");
     let extract_path_str = extract_path.to_str().unwrap();
-    let dest_val = vm.arena.alloc(Val::String(Rc::new(extract_path_str.as_bytes().to_vec())));
+    let dest_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(extract_path_str.as_bytes().to_vec())));
     let result = php_vm::builtins::zip::php_zip_archive_extract_to(&mut vm, &[dest_val]).unwrap();
     assert_eq!(vm.arena.get(result).value, Val::Bool(true));
 
     // Verify extracted files
-    assert_eq!(fs::read_to_string(extract_path.join("file1.txt")).unwrap(), "content1");
-    assert_eq!(fs::read_to_string(extract_path.join("dir/file2.txt")).unwrap(), "content2");
+    assert_eq!(
+        fs::read_to_string(extract_path.join("file1.txt")).unwrap(),
+        "content1"
+    );
+    assert_eq!(
+        fs::read_to_string(extract_path.join("dir/file2.txt")).unwrap(),
+        "content2"
+    );
 
     php_vm::builtins::zip::php_zip_archive_close(&mut vm, &[]).unwrap();
     vm.frames.pop();

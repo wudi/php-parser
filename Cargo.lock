@@ -2202,6 +2202,7 @@ dependencies = [
  "pcre2",
  "php-parser",
  "postgres",
+ "rand 0.8.5",
  "regex",
  "rusqlite",
  "rust_decimal",

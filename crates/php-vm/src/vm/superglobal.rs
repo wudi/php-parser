@@ -131,7 +131,12 @@ impl SuperglobalManager {
         insert_str(&mut data, vm, b"DOCUMENT_ROOT", doc_root.as_bytes());
         insert_str(&mut data, vm, b"SCRIPT_NAME", script_name.as_bytes());
         insert_str(&mut data, vm, b"PHP_SELF", script_name.as_bytes());
-        insert_str(&mut data, vm, b"SCRIPT_FILENAME", script_filename.as_bytes());
+        insert_str(
+            &mut data,
+            vm,
+            b"SCRIPT_FILENAME",
+            script_filename.as_bytes(),
+        );
 
         // Timing information
         let now = SystemTime::now()

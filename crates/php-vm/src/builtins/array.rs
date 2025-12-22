@@ -320,7 +320,11 @@ pub fn php_array_key_exists(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
             Val::Float(f) => ArrayKey::Int(f as i64),
             Val::Bool(b) => ArrayKey::Int(if b { 1 } else { 0 }),
             Val::Null => ArrayKey::Str(vec![].into()),
-            _ => return Err("array_key_exists(): Argument #1 ($key) must be a valid array key".into()),
+            _ => {
+                return Err(
+                    "array_key_exists(): Argument #1 ($key) must be a valid array key".into(),
+                )
+            }
         };
 
         let exists = arr_rc.map.contains_key(&key);

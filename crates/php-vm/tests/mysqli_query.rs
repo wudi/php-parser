@@ -32,9 +32,9 @@ fn test_mysqli_query_select() {
     match connect_test_db(&mut vm) {
         Ok(conn_handle) => {
             // Simple SELECT query
-            let sql = vm
-                .arena
-                .alloc(Val::String(Rc::new(b"SELECT 1 AS num, 'test' AS str".to_vec())));
+            let sql = vm.arena.alloc(Val::String(Rc::new(
+                b"SELECT 1 AS num, 'test' AS str".to_vec(),
+            )));
 
             let result = mysqli::php_mysqli_query(&mut vm, &[conn_handle, sql]);
             assert!(result.is_ok(), "Query should succeed");
@@ -61,9 +61,9 @@ fn test_mysqli_fetch_assoc() {
 
     match connect_test_db(&mut vm) {
         Ok(conn_handle) => {
-            let sql = vm
-                .arena
-                .alloc(Val::String(Rc::new(b"SELECT 42 AS answer, 'hello' AS greeting".to_vec())));
+            let sql = vm.arena.alloc(Val::String(Rc::new(
+                b"SELECT 42 AS answer, 'hello' AS greeting".to_vec(),
+            )));
 
             let result_handle = mysqli::php_mysqli_query(&mut vm, &[conn_handle, sql]).unwrap();
 

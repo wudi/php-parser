@@ -61,10 +61,7 @@ pub fn mysql_to_php(vm: &mut VM, value: MySqlValue) -> Handle {
             // Format as TIME string: [-][D ]HH:MM:SS
             let total_hours = days * 24 + hours as u32;
             let sign = if is_negative { "-" } else { "" };
-            let time_str = format!(
-                "{}{:02}:{:02}:{:02}",
-                sign, total_hours, minutes, seconds
-            );
+            let time_str = format!("{}{:02}:{:02}:{:02}", sign, total_hours, minutes, seconds);
             vm.arena.alloc(Val::String(Rc::new(time_str.into_bytes())))
         }
     }

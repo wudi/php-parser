@@ -1,16 +1,14 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
 use rust_decimal::{Decimal, RoundingStrategy};
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 use std::str::FromStr;
 
 fn get_op(vm: &mut VM, arg: Handle) -> Result<Decimal, String> {
     let val = vm.arena.get(arg);
     match &val.value {
-        Val::String(s) => {
-            Decimal::from_str(&String::from_utf8_lossy(s)).map_err(|e| e.to_string())
-        }
+        Val::String(s) => Decimal::from_str(&String::from_utf8_lossy(s)).map_err(|e| e.to_string()),
         Val::Int(i) => Ok(Decimal::from(*i)),
         Val::Float(f) => Decimal::from_str(&f.to_string()).map_err(|e| e.to_string()),
         _ => Err("bcmath functions expect numeric arguments or numeric strings".to_string()),
@@ -28,7 +26,9 @@ pub fn bcadd(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let result = left + right;
     let result_str = result.to_string();
 
-    Ok(vm.arena.alloc(Val::String(Rc::new(result_str.into_bytes()))))
+    Ok(vm
+        .arena
+        .alloc(Val::String(Rc::new(result_str.into_bytes()))))
 }
 
 pub fn bcsub(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -42,7 +42,9 @@ pub fn bcsub(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let result = left - right;
     let result_str = result.to_string();
 
-    Ok(vm.arena.alloc(Val::String(Rc::new(result_str.into_bytes()))))
+    Ok(vm
+        .arena
+        .alloc(Val::String(Rc::new(result_str.into_bytes()))))
 }
 
 pub fn bcmul(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -56,7 +58,9 @@ pub fn bcmul(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let result = left * right;
     let result_str = result.to_string();
 
-    Ok(vm.arena.alloc(Val::String(Rc::new(result_str.into_bytes()))))
+    Ok(vm
+        .arena
+        .alloc(Val::String(Rc::new(result_str.into_bytes()))))
 }
 
 pub fn bcdiv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -84,5 +88,7 @@ pub fn bcdiv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let result = (left / right).trunc_with_scale(scale);
     let result_str = result.to_string();
 
-    Ok(vm.arena.alloc(Val::String(Rc::new(result_str.into_bytes()))))
+    Ok(vm
+        .arena
+        .alloc(Val::String(Rc::new(result_str.into_bytes()))))
 }

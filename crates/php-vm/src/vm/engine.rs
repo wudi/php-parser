@@ -346,11 +346,18 @@ impl VM {
     }
 
     /// Instantiate a class and call its constructor.
-    pub fn instantiate_class(&mut self, class_name: Symbol, args: &[Handle]) -> Result<Handle, String> {
-        let resolved_class = self.resolve_class_name(class_name).map_err(|e| format!("{:?}", e))?;
-        
+    pub fn instantiate_class(
+        &mut self,
+        class_name: Symbol,
+        args: &[Handle],
+    ) -> Result<Handle, String> {
+        let resolved_class = self
+            .resolve_class_name(class_name)
+            .map_err(|e| format!("{:?}", e))?;
+
         if !self.context.classes.contains_key(&resolved_class) {
-            self.trigger_autoload(resolved_class).map_err(|e| format!("{:?}", e))?;
+            self.trigger_autoload(resolved_class)
+                .map_err(|e| format!("{:?}", e))?;
         }
 
         if let Some(_class_def) = self.context.classes.get(&resolved_class) {
@@ -374,7 +381,7 @@ impl VM {
             if let Some((constructor, vis, _, defined_class)) = method_lookup {
                 // For internal instantiation, we might want to bypass visibility checks,
                 // but let's keep them for now or assume internal calls are "public".
-                
+
                 // Collect args
                 let mut frame = CallFrame::new(constructor.chunk.clone());
                 frame.func = Some(constructor.clone());
@@ -383,12 +390,12 @@ impl VM {
                 frame.class_scope = Some(defined_class);
                 frame.args = args.to_vec().into();
                 self.push_frame(frame);
-                
-                // We need to execute the constructor. 
+
+                // We need to execute the constructor.
                 // This is tricky because we are already in a native function.
                 // For now, let's just return the object and hope the caller knows what they are doing,
                 // OR we can try to execute the frame if it's a native constructor.
-                
+
                 // If it's a native constructor, we can call it directly.
                 let native_constructor = self.find_native_method(resolved_class, constructor_name);
                 if let Some(native_entry) = native_constructor {
@@ -483,7 +490,7 @@ impl VM {
         let mut map = IndexMap::new();
         // $GLOBALS elements must share handles with global variables for reference behavior
         // When you do $ref = &$GLOBALS['x'], it should reference the actual global $x
-        
+
         // Include variables from context.globals (superglobals and 'global' keyword vars)
         for (sym, handle) in &self.context.globals {
             // Don't include $GLOBALS itself to avoid circular reference
@@ -493,7 +500,7 @@ impl VM {
                 map.insert(ArrayKey::Str(Rc::new(key_bytes.to_vec())), *handle);
             }
         }
-        
+
         // Include variables from the top-level frame (frame 0) if it exists
         // These are the actual global scope variables in PHP
         if let Some(frame) = self.frames.first() {
@@ -506,7 +513,7 @@ impl VM {
                 }
             }
         }
-        
+
         self.arena.alloc(Val::Array(ArrayData::from(map).into()))
     }
 
@@ -594,7 +601,7 @@ impl VM {
 
     pub(crate) fn ensure_superglobal_handle(&mut self, sym: Symbol) -> Option<Handle> {
         let kind = self.superglobal_map.get(&sym).copied()?;
-        
+
         // Special handling for $GLOBALS - always refresh to ensure it's current
         if kind == SuperglobalKind::Globals {
             // Update the $GLOBALS array to reflect current global state
@@ -602,7 +609,7 @@ impl VM {
             if let Some(&existing_handle) = self.context.globals.get(&globals_sym) {
                 // Update the existing array in place, maintaining handle sharing
                 let mut map = IndexMap::new();
-                
+
                 // Include variables from context.globals
                 for (sym, handle) in &self.context.globals {
                     let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"");
@@ -611,7 +618,7 @@ impl VM {
                         map.insert(ArrayKey::Str(Rc::new(key_bytes.to_vec())), *handle);
                     }
                 }
-                
+
                 // Include variables from the top-level frame (frame 0) if it exists
                 if let Some(frame) = self.frames.first() {
                     for (sym, handle) in &frame.locals {
@@ -623,7 +630,7 @@ impl VM {
                         }
                     }
                 }
-                
+
                 // Update the array value in-place
                 let array_val = Val::Array(ArrayData::from(map).into());
                 self.arena.get_mut(existing_handle).value = array_val;
@@ -636,7 +643,7 @@ impl VM {
                 return Some(handle);
             }
         }
-        
+
         let handle = if let Some(&existing) = self.context.globals.get(&sym) {
             existing
         } else {
@@ -666,12 +673,12 @@ impl VM {
     pub(crate) fn sync_globals_write(&mut self, key_bytes: &[u8], val_handle: Handle) {
         // Intern the key to get its symbol
         let sym = self.context.interner.intern(key_bytes);
-        
+
         // Don't create circular reference by syncing GLOBALS itself
         if key_bytes != b"GLOBALS" {
             // Mark handle as ref so future operations on it (via $GLOBALS) work correctly
             self.arena.get_mut(val_handle).is_ref = true;
-            
+
             // Always update the global symbol table with the same handle
             // This ensures references work correctly
             self.context.globals.insert(sym, val_handle);
@@ -702,14 +709,14 @@ impl VM {
         if self.context.globals.values().any(|&h| h == handle) {
             return true;
         }
-        
+
         // Check top-level frame (global scope variables)
         if let Some(frame) = self.frames.first() {
             if frame.locals.values().any(|&h| h == handle) {
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -865,17 +872,8 @@ impl VM {
 
     /// Convert a value to string
     pub fn value_to_string(&self, handle: Handle) -> Result<Vec<u8>, String> {
-        match &self.arena.get(handle).value {
-            Val::String(s) => Ok(s.as_ref().clone()),
-            Val::Int(i) => Ok(i.to_string().into_bytes()),
-            Val::Float(f) => Ok(f.to_string().into_bytes()),
-            Val::Bool(true) => Ok(b"1".to_vec()),
-            Val::Bool(false) => Ok(Vec::new()),
-            Val::Null => Ok(Vec::new()),
-            Val::Array(_) => Ok(b"Array".to_vec()),
-            Val::Object(_) => Ok(b"Object".to_vec()),
-            _ => Ok(Vec::new()),
-        }
+        let val = self.arena.get(handle);
+        Ok(val.value.to_php_string_bytes())
     }
 
     pub fn print_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
@@ -1147,10 +1145,16 @@ impl VM {
             Err(VmError::RuntimeError(format!(
                 "Native method not found: {}::{}",
                 String::from_utf8_lossy(
-                    self.context.interner.lookup(class_name).unwrap_or(b"unknown")
+                    self.context
+                        .interner
+                        .lookup(class_name)
+                        .unwrap_or(b"unknown")
                 ),
                 String::from_utf8_lossy(
-                    self.context.interner.lookup(method_name).unwrap_or(b"unknown")
+                    self.context
+                        .interner
+                        .lookup(method_name)
+                        .unwrap_or(b"unknown")
                 )
             )))
         }
@@ -1221,10 +1225,13 @@ impl VM {
             Val::ConstArray(const_arr) => {
                 use crate::core::value::{ArrayData, ArrayKey};
                 let mut new_array = ArrayData::new();
-                
+
                 // Clone the const array data to avoid borrow conflicts
-                let entries: Vec<_> = const_arr.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                
+                let entries: Vec<_> = const_arr
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
                 // Deep clone each element, converting ConstArrayKey to ArrayKey
                 for (key, val) in entries {
                     let runtime_key = match key {
@@ -1234,24 +1241,24 @@ impl VM {
                     let runtime_val_handle = self.deep_clone_val(&val);
                     new_array.insert(runtime_key, runtime_val_handle);
                 }
-                
+
                 self.arena.alloc(Val::Array(Rc::new(new_array)))
             }
             Val::Array(arr) => {
                 // Runtime array - needs deep cloning of all elements
                 use crate::core::value::ArrayData;
                 let mut new_array = ArrayData::new();
-                
+
                 // Clone entries to avoid borrow conflicts
                 let entries: Vec<_> = arr.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
-                
+
                 for (key, val_handle) in entries {
                     let val = &self.arena.get(val_handle).value;
-                    let val_clone = val.clone();  // Clone to avoid borrow conflict
+                    let val_clone = val.clone(); // Clone to avoid borrow conflict
                     let new_val_handle = self.deep_clone_val(&val_clone);
                     new_array.insert(key, new_val_handle);
                 }
-                
+
                 self.arena.alloc(Val::Array(Rc::new(new_array)))
             }
             other => {
@@ -1807,7 +1814,12 @@ impl VM {
                     // Check for finally-only entry (no catch type)
                     if entry.catch_type.is_none() {
                         // This is a finally-only entry - collect it
-                        finally_blocks.push((frame_idx, chunk.clone(), entry.target, entry.finally_end));
+                        finally_blocks.push((
+                            frame_idx,
+                            chunk.clone(),
+                            entry.target,
+                            entry.finally_end,
+                        ));
                         continue;
                     }
 
@@ -1851,15 +1863,18 @@ impl VM {
 
     /// Execute finally blocks
     /// Blocks should be provided in the order they should execute (innermost to outermost)
-    fn execute_finally_blocks(&mut self, finally_blocks: &[(usize, Rc<CodeChunk>, u32, Option<u32>)]) {
+    fn execute_finally_blocks(
+        &mut self,
+        finally_blocks: &[(usize, Rc<CodeChunk>, u32, Option<u32>)],
+    ) {
         // Execute in the order provided (innermost to outermost)
         for (frame_idx, chunk, target, end) in finally_blocks.iter() {
             // Truncate frames to the finally's level
             self.frames.truncate(*frame_idx + 1);
-            
+
             // Save the original frame state
             let saved_stack_base = self.frames[*frame_idx].stack_base;
-            
+
             // Set up the frame to execute the finally block
             {
                 let frame = &mut self.frames[*frame_idx];
@@ -1868,7 +1883,7 @@ impl VM {
                 // Set stack_base to current operand stack length so return can work correctly
                 frame.stack_base = Some(self.operand_stack.len());
             }
-            
+
             // Execute only the finally block, not code after it
             if let Some(finally_end) = end {
                 // Execute statements until IP reaches finally_end
@@ -1881,21 +1896,21 @@ impl VM {
                             frame.ip < *finally_end as usize && frame.ip < frame.chunk.code.len()
                         }
                     };
-                    
+
                     if !should_continue {
                         break;
                     }
-                    
+
                     let op = {
                         let frame = &self.frames[*frame_idx];
                         frame.chunk.code[frame.ip]
                     };
-                    
+
                     self.frames[*frame_idx].ip += 1;
-                    
+
                     // Execute the opcode, ignoring errors from finally itself
                     let _ = self.execute_opcode(op, *frame_idx);
-                    
+
                     // If the frame was popped (return happened), break out
                     if *frame_idx >= self.frames.len() {
                         break;
@@ -1908,7 +1923,7 @@ impl VM {
                     self.frames.truncate(*frame_idx);
                 }
             }
-            
+
             // Restore stack_base if frame still exists
             if *frame_idx < self.frames.len() {
                 self.frames[*frame_idx].stack_base = saved_stack_base;
@@ -1920,33 +1935,39 @@ impl VM {
     /// Returns a list of (frame_idx, chunk, target, end) tuples
     fn collect_finally_blocks_for_return(&self) -> Vec<(usize, Rc<CodeChunk>, u32, Option<u32>)> {
         let mut finally_blocks = Vec::new();
-        
+
         if self.frames.is_empty() {
             return finally_blocks;
         }
-        
+
         let current_frame_idx = self.frames.len() - 1;
         let frame = &self.frames[current_frame_idx];
         let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 } as u32;
-        
+
         // Collect all finally blocks that contain the current IP
         // We need to collect from innermost to outermost (will reverse later for execution)
-        let mut entries_to_execute: Vec<_> = frame.chunk.catch_table.iter()
-            .filter(|entry| {
-                ip >= entry.start && ip < entry.end && entry.catch_type.is_none()
-            })
+        let mut entries_to_execute: Vec<_> = frame
+            .chunk
+            .catch_table
+            .iter()
+            .filter(|entry| ip >= entry.start && ip < entry.end && entry.catch_type.is_none())
             .collect();
-        
+
         // Sort by range size (smaller = more nested = inner)
         // Execute from inner to outer
         entries_to_execute.sort_by_key(|entry| entry.end - entry.start);
-        
+
         for entry in entries_to_execute {
             if let Some(end) = entry.finally_end {
-                finally_blocks.push((current_frame_idx, frame.chunk.clone(), entry.target, Some(end)));
+                finally_blocks.push((
+                    current_frame_idx,
+                    frame.chunk.clone(),
+                    entry.target,
+                    Some(end),
+                ));
             }
         }
-        
+
         finally_blocks
     }
 
@@ -1954,37 +1975,48 @@ impl VM {
     /// Similar to collect_finally_blocks_for_return but used for break/continue
     fn collect_finally_blocks_for_jump(&self) -> Vec<(usize, Rc<CodeChunk>, u32, Option<u32>)> {
         let mut finally_blocks = Vec::new();
-        
+
         if self.frames.is_empty() {
             return finally_blocks;
         }
-        
+
         let current_frame_idx = self.frames.len() - 1;
         let frame = &self.frames[current_frame_idx];
         let ip = if frame.ip > 0 { frame.ip - 1 } else { 0 } as u32;
-        
+
         // Collect all finally blocks that contain the current IP
-        let mut entries_to_execute: Vec<_> = frame.chunk.catch_table.iter()
-            .filter(|entry| {
-                ip >= entry.start && ip < entry.end && entry.catch_type.is_none()
-            })
+        let mut entries_to_execute: Vec<_> = frame
+            .chunk
+            .catch_table
+            .iter()
+            .filter(|entry| ip >= entry.start && ip < entry.end && entry.catch_type.is_none())
             .collect();
-        
+
         // Sort by range size (smaller = more nested = inner)
         // Execute from inner to outer
         entries_to_execute.sort_by_key(|entry| entry.end - entry.start);
-        
+
         for entry in entries_to_execute {
             if let Some(end) = entry.finally_end {
-                finally_blocks.push((current_frame_idx, frame.chunk.clone(), entry.target, Some(end)));
+                finally_blocks.push((
+                    current_frame_idx,
+                    frame.chunk.clone(),
+                    entry.target,
+                    Some(end),
+                ));
             }
         }
-        
+
         finally_blocks
     }
 
     /// Complete the return after finally blocks have executed
-    fn complete_return(&mut self, ret_val: Handle, force_by_ref: bool, target_depth: usize) -> Result<(), VmError> {
+    fn complete_return(
+        &mut self,
+        ret_val: Handle,
+        force_by_ref: bool,
+        target_depth: usize,
+    ) -> Result<(), VmError> {
         // Verify return type BEFORE popping the frame
         let return_type_check = {
             let frame = self.current_frame()?;
@@ -2232,22 +2264,22 @@ impl VM {
 
         // Check if we need to execute finally blocks before returning
         let finally_blocks = self.collect_finally_blocks_for_return();
-        
+
         // Execute finally blocks if any
         if !finally_blocks.is_empty() {
             // Save return value before executing finally
             let saved_ret_val = ret_val;
-            
+
             // Mark that we're executing finally blocks
             self.executing_finally = true;
             self.finally_return_value = None;
-            
+
             // Execute finally blocks
             self.execute_finally_blocks(&finally_blocks);
-            
+
             // Clear the flag
             self.executing_finally = false;
-            
+
             // Check if finally block set a return value (override)
             let final_ret_val = if let Some(finally_val) = self.finally_return_value.take() {
                 // Finally block returned - use its value instead
@@ -2256,7 +2288,7 @@ impl VM {
                 // Finally didn't return - use original value
                 saved_ret_val
             };
-            
+
             // Continue with normal return handling using the final value
             return self.complete_return(final_ret_val, force_by_ref, target_depth);
         }
@@ -2644,15 +2676,17 @@ impl VM {
                     .operand_stack
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                
+
                 // PHP 8.1+: Disallow writing to entire $GLOBALS array
                 // Exception: if we're "storing back" the same handle (e.g., after array modification),
                 // that's fine - it's a no-op
                 if self.is_globals_symbol(sym) {
-                    let existing_handle = self.frames.last()
+                    let existing_handle = self
+                        .frames
+                        .last()
                         .and_then(|f| f.locals.get(&sym).copied())
                         .or_else(|| self.context.globals.get(&sym).copied());
-                    
+
                     if existing_handle == Some(val_handle) {
                         // Same handle - no-op, skip the rest
                     } else {
@@ -2667,10 +2701,10 @@ impl VM {
                     } else {
                         None
                     };
-                    
+
                     // Check if we're at top-level (before borrowing frame)
                     let is_top_level = self.frames.len() == 1;
-                    
+
                     let mut ref_handle: Option<Handle> = None;
                     {
                         let frame = self.frames.last_mut().unwrap();
@@ -2907,10 +2941,10 @@ impl VM {
                 // PHP 8.1+: Cannot unset $GLOBALS itself
                 if self.is_globals_symbol(sym) {
                     return Err(VmError::RuntimeError(
-                        "Cannot unset $GLOBALS variable".into()
+                        "Cannot unset $GLOBALS variable".into(),
                     ));
                 }
-                
+
                 if !self.is_superglobal(sym) {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
@@ -2923,14 +2957,14 @@ impl VM {
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 let name_bytes = self.convert_to_string(name_handle)?;
                 let sym = self.context.interner.intern(&name_bytes);
-                
-                // PHP 8.1+: Cannot unset $GLOBALS itself  
+
+                // PHP 8.1+: Cannot unset $GLOBALS itself
                 if self.is_globals_symbol(sym) {
                     return Err(VmError::RuntimeError(
-                        "Cannot unset $GLOBALS variable".into()
+                        "Cannot unset $GLOBALS variable".into(),
                     ));
                 }
-                
+
                 if !self.is_superglobal(sym) {
                     let frame = self.frames.last_mut().unwrap();
                     frame.locals.remove(&sym);
@@ -4456,7 +4490,7 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
                 self.append_array(array_handle, val_handle)?;
-                
+
                 // Check if we just appended to an element of $GLOBALS and sync it
                 // This handles cases like: $GLOBALS['arr'][] = 4
                 let is_globals_element = {
@@ -4472,7 +4506,7 @@ impl VM {
                         false
                     }
                 };
-                
+
                 if is_globals_element {
                     // The array was already modified in place, and since $GLOBALS elements
                     // share handles with global variables, the change is already synced
@@ -4512,13 +4546,13 @@ impl VM {
                 let array_zval_mut = self.arena.get_mut(array_handle);
                 if let Val::Array(map) = &mut array_zval_mut.value {
                     Rc::make_mut(map).map.shift_remove(&key);
-                    
+
                     // Check if this is a write to $GLOBALS and sync it
                     let is_globals_write = {
                         let globals_sym = self.context.interner.intern(b"GLOBALS");
                         self.context.globals.get(&globals_sym).copied() == Some(array_handle)
                     };
-                    
+
                     if is_globals_write {
                         // Sync the deletion back to the global symbol table
                         if let ArrayKey::Str(key_bytes) = &key {
@@ -4650,8 +4684,8 @@ impl VM {
                                     let valid_sym = self.context.interner.intern(b"valid");
 
                                     self.call_native_method_simple(iterable_handle, rewind_sym)?;
-                                    let is_valid = self
-                                        .call_native_method_simple(iterable_handle, valid_sym)?;
+                                    let is_valid =
+                                        self.call_native_method_simple(iterable_handle, valid_sym)?;
 
                                     if let Val::Bool(false) = self.arena.get(is_valid).value {
                                         self.operand_stack.pop(); // Pop object
@@ -4754,8 +4788,8 @@ impl VM {
                                 let iterator_sym = self.context.interner.intern(b"Iterator");
                                 if self.is_instance_of(iterable_handle, iterator_sym) {
                                     let valid_sym = self.context.interner.intern(b"valid");
-                                    let is_valid = self
-                                        .call_native_method_simple(iterable_handle, valid_sym)?;
+                                    let is_valid =
+                                        self.call_native_method_simple(iterable_handle, valid_sym)?;
 
                                     if let Val::Bool(false) = self.arena.get(is_valid).value {
                                         self.operand_stack.pop(); // Pop Index
@@ -5041,7 +5075,9 @@ impl VM {
                             let frame = self.frames.last_mut().unwrap();
                             frame.locals.insert(sym, key_handle);
                         } else {
-                            return Err(VmError::RuntimeError("Iterator index out of bounds".into()));
+                            return Err(VmError::RuntimeError(
+                                "Iterator index out of bounds".into(),
+                            ));
                         }
                     }
                     Val::Object(payload_handle) => {
@@ -5520,7 +5556,7 @@ impl VM {
             OpCode::New(class_name, arg_count) => {
                 // Resolve special class names (self, parent, static)
                 let resolved_class = self.resolve_class_name(class_name)?;
-                
+
                 // Try autoloading if class doesn't exist
                 if !self.context.classes.contains_key(&resolved_class) {
                     self.trigger_autoload(resolved_class)?;
@@ -6213,7 +6249,7 @@ impl VM {
                     // Wrap the code in PHP tags for the parser
                     let mut wrapped_source = b"<?php ".to_vec();
                     wrapped_source.extend_from_slice(path_str.as_bytes());
-                    
+
                     let arena = bumpalo::Bump::new();
                     let lexer = php_parser::lexer::Lexer::new(&wrapped_source);
                     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
@@ -6227,8 +6263,10 @@ impl VM {
                         )));
                     }
 
-                    let emitter =
-                        crate::compiler::emitter::Emitter::new(&wrapped_source, &mut self.context.interner);
+                    let emitter = crate::compiler::emitter::Emitter::new(
+                        &wrapped_source,
+                        &mut self.context.interner,
+                    );
                     let (chunk, _) = emitter.compile(program.statements);
 
                     let caller_frame_idx = self.frames.len() - 1;
@@ -6252,7 +6290,7 @@ impl VM {
                         if self.frames.len() >= depth {
                             last_eval_locals = Some(self.frames[depth - 1].locals.clone());
                         }
-                        
+
                         if self.frames.len() < depth {
                             break;
                         }
@@ -7565,7 +7603,7 @@ impl VM {
                                 // isset(): just use __isset's result
                                 // Create a dummy non-null value to make isset return isset_bool
                                 if isset_bool {
-                                    Some(self.arena.alloc(Val::Int(1)))  // Any non-null value
+                                    Some(self.arena.alloc(Val::Int(1))) // Any non-null value
                                 } else {
                                     None
                                 }
@@ -7573,7 +7611,7 @@ impl VM {
                                 // empty(): need to call __get if __isset returned true
                                 if isset_bool {
                                     let magic_get = self.context.interner.intern(b"__get");
-                                    
+
                                     // Save and restore return value again for __get
                                     let saved_return_value2 = self.last_return_value.take();
                                     let get_result = self.call_magic_method_sync(
@@ -7583,7 +7621,7 @@ impl VM {
                                         vec![name_handle],
                                     )?;
                                     self.last_return_value = saved_return_value2;
-                                    
+
                                     get_result
                                 } else {
                                     None
@@ -8042,7 +8080,7 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
+
                     if let Some(ret_handle) = self.call_magic_method_sync(
                         obj_handle,
                         class_name,
@@ -8076,13 +8114,16 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
-                    if self.call_magic_method_sync(
-                        obj_handle,
-                        class_name,
-                        magic_set,
-                        vec![name_handle, res_handle],
-                    )?.is_none() {
+
+                    if self
+                        .call_magic_method_sync(
+                            obj_handle,
+                            class_name,
+                            magic_set,
+                            vec![name_handle, res_handle],
+                        )?
+                        .is_none()
+                    {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -8157,7 +8198,7 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
+
                     if let Some(ret_handle) = self.call_magic_method_sync(
                         obj_handle,
                         class_name,
@@ -8191,13 +8232,16 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
-                    if self.call_magic_method_sync(
-                        obj_handle,
-                        class_name,
-                        magic_set,
-                        vec![name_handle, res_handle],
-                    )?.is_none() {
+
+                    if self
+                        .call_magic_method_sync(
+                            obj_handle,
+                            class_name,
+                            magic_set,
+                            vec![name_handle, res_handle],
+                        )?
+                        .is_none()
+                    {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -8272,7 +8316,7 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
+
                     if let Some(ret_handle) = self.call_magic_method_sync(
                         obj_handle,
                         class_name,
@@ -8308,13 +8352,16 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
-                    if self.call_magic_method_sync(
-                        obj_handle,
-                        class_name,
-                        magic_set,
-                        vec![name_handle, new_val_handle],
-                    )?.is_none() {
+
+                    if self
+                        .call_magic_method_sync(
+                            obj_handle,
+                            class_name,
+                            magic_set,
+                            vec![name_handle, new_val_handle],
+                        )?
+                        .is_none()
+                    {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -8389,7 +8436,7 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
+
                     if let Some(ret_handle) = self.call_magic_method_sync(
                         obj_handle,
                         class_name,
@@ -8425,13 +8472,16 @@ impl VM {
                         .unwrap_or(b"")
                         .to_vec();
                     let name_handle = self.arena.alloc(Val::String(prop_name_bytes.into()));
-                    
-                    if self.call_magic_method_sync(
-                        obj_handle,
-                        class_name,
-                        magic_set,
-                        vec![name_handle, new_val_handle],
-                    )?.is_none() {
+
+                    if self
+                        .call_magic_method_sync(
+                            obj_handle,
+                            class_name,
+                            magic_set,
+                            vec![name_handle, new_val_handle],
+                        )?
+                        .is_none()
+                    {
                         // No __set, do direct assignment
                         let payload_zval = self.arena.get_mut(payload_handle);
                         if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
@@ -8756,7 +8806,7 @@ impl VM {
                 } else {
                     // Property not found or not accessible. Check for __isset.
                     let isset_magic = self.context.interner.intern(b"__isset");
-                    
+
                     // Create method name string (prop name)
                     let prop_name_str = self
                         .context
@@ -9099,12 +9149,14 @@ impl VM {
             }
             OpCode::BindLexical => {
                 return Err(VmError::RuntimeError(
-                    "BindLexical opcode not implemented - requires closure capture semantics".into(),
+                    "BindLexical opcode not implemented - requires closure capture semantics"
+                        .into(),
                 ));
             }
             OpCode::CheckUndefArgs => {
                 return Err(VmError::RuntimeError(
-                    "CheckUndefArgs opcode not implemented - requires variadic argument handling".into(),
+                    "CheckUndefArgs opcode not implemented - requires variadic argument handling"
+                        .into(),
                 ));
             }
             OpCode::JmpNull => {
@@ -9118,7 +9170,7 @@ impl VM {
                     op
                 )));
             }
-            
+
             // Class/function declaration opcodes that may need implementation
             OpCode::DeclareLambdaFunction
             | OpCode::DeclareClassDelayed
@@ -9309,16 +9361,16 @@ impl VM {
                 array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
             }
 
-                if let Val::Array(map) = &mut array_zval_mut.value {
-                    Rc::make_mut(map).insert(key.clone(), val_handle);
+            if let Val::Array(map) = &mut array_zval_mut.value {
+                Rc::make_mut(map).insert(key.clone(), val_handle);
 
-                    // Sync to global symbol table if this is $GLOBALS
-                    if is_globals_write {
-                        self.sync_globals_key(&key, val_handle);
-                    }
-                } else {
-                    return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+                // Sync to global symbol table if this is $GLOBALS
+                if is_globals_write {
+                    self.sync_globals_key(&key, val_handle);
                 }
+            } else {
+                return Err(VmError::RuntimeError("Cannot use scalar as array".into()));
+            }
             self.operand_stack.push(array_handle);
         } else {
             let array_zval = self.arena.get(array_handle);
@@ -9797,7 +9849,7 @@ impl VM {
                 let current_zval = self.arena.get_mut(current_handle);
                 if let Val::Array(ref mut map) = current_zval.value {
                     Rc::make_mut(map).map.shift_remove(&key);
-                    
+
                     // Check if this is a write to $GLOBALS and sync it
                     let globals_sym = self.context.interner.intern(b"GLOBALS");
                     if self.context.globals.get(&globals_sym).copied() == Some(current_handle) {

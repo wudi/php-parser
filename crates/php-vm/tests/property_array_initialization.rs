@@ -51,7 +51,7 @@ fn run_test_with_echo(src: &str) -> Result<String, String> {
     vm.output_writer = Box::new(RefCellOutputWriter {
         writer: output_writer,
     });
-    
+
     vm.run(Rc::new(chunk)).map_err(|e| format!("{:?}", e))?;
 
     let output_bytes = output_writer_clone.borrow().buffer.clone();

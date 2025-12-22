@@ -97,11 +97,7 @@ impl HashRegistry {
     }
 
     pub fn list_algorithms(&self) -> Vec<&'static str> {
-        let mut algos: Vec<_> = self
-            .algorithms
-            .values()
-            .map(|algo| algo.name())
-            .collect();
+        let mut algos: Vec<_> = self.algorithms.values().map(|algo| algo.name()).collect();
         algos.sort_unstable();
         algos
     }
@@ -218,29 +214,35 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     // Get or define HashContext class
     let class_name = vm.context.interner.intern(b"HashContext");
-    
+
     // Create hash state (boxed for storage in Val::Resource)
     let state = algo.new_hasher();
     let resource_id = vm.context.next_resource_id;
     vm.context.next_resource_id += 1;
-    
+
     // Store state as a "resource" internally, wrapped in Rc<dyn Any>
     let state_handle = vm.arena.alloc(Val::Resource(Rc::new(resource_id)));
-    
+
     // Store algorithm name and state as properties
     let algo_prop = vm.context.interner.intern(b"__algorithm");
-    let algo_val = vm.arena.alloc(Val::String(Rc::new(algo_name.as_bytes().to_vec())));
-    
+    let algo_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(algo_name.as_bytes().to_vec())));
+
     let state_prop = vm.context.interner.intern(b"__state");
-    
+
     let finalized_prop = vm.context.interner.intern(b"__finalized");
-    
+
     // Store the BoxedHashState in the VM's hash_states map
     if vm.context.hash_states.is_none() {
         vm.context.hash_states = Some(HashMap::new());
     }
-    vm.context.hash_states.as_mut().unwrap().insert(resource_id, state);
-    
+    vm.context
+        .hash_states
+        .as_mut()
+        .unwrap()
+        .insert(resource_id, state);
+
     // Create HashContext object
     use indexmap::IndexMap;
     use std::collections::HashSet;
@@ -248,14 +250,14 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     properties.insert(algo_prop, algo_val);
     properties.insert(state_prop, state_handle);
     properties.insert(finalized_prop, vm.arena.alloc(Val::Bool(false)));
-    
+
     let obj = ObjectData {
         class: class_name,
         properties,
         internal: None,
         dynamic_properties: HashSet::new(),
     };
-    
+
     let payload_handle = vm.arena.alloc(Val::ObjPayload(obj));
     Ok(vm.arena.alloc(Val::Object(payload_handle)))
 }
@@ -270,9 +272,7 @@ pub fn php_hash_update(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let obj_handle = match &vm.arena.get(args[0]).value {
         Val::Object(h) => *h,
         _ => {
-            return Err(
-                "hash_update(): Argument #1 ($context) must be of type HashContext".into(),
-            )
+            return Err("hash_update(): Argument #1 ($context) must be of type HashContext".into())
         }
     };
 
@@ -300,7 +300,9 @@ pub fn php_hash_update(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let state_prop = vm.context.interner.intern(b"__state");
     let resource_id = match obj.properties.get(&state_prop) {
         Some(&handle) => match &vm.arena.get(handle).value {
-            Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("hash_update(): Invalid resource type")?,
+            Val::Resource(rc) => *rc
+                .downcast_ref::<u64>()
+                .ok_or("hash_update(): Invalid resource type")?,
             _ => return Err("hash_update(): Invalid hash state".into()),
         },
         None => return Err("hash_update(): Invalid hash state".into()),
@@ -328,11 +330,7 @@ pub fn php_hash_final(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Extract object
     let obj_handle = match &vm.arena.get(args[0]).value {
         Val::Object(h) => *h,
-        _ => {
-            return Err(
-                "hash_final(): Argument #1 ($context) must be of type HashContext".into(),
-            )
-        }
+        _ => return Err("hash_final(): Argument #1 ($context) must be of type HashContext".into()),
     };
 
     // Extract binary flag (optional)
@@ -364,7 +362,9 @@ pub fn php_hash_final(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let state_prop = vm.context.interner.intern(b"__state");
     let resource_id = match obj.properties.get(&state_prop) {
         Some(&handle) => match &vm.arena.get(handle).value {
-            Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("hash_final(): Invalid resource type")?,
+            Val::Resource(rc) => *rc
+                .downcast_ref::<u64>()
+                .ok_or("hash_final(): Invalid resource type")?,
             _ => return Err("hash_final(): Invalid hash state".into()),
         },
         None => return Err("hash_final(): Invalid hash state".into()),
@@ -384,7 +384,9 @@ pub fn php_hash_final(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Mark as finalized (need to mutate the object - this is tricky with arena)
     // We'll update it by modifying the existing ObjPayload
     if let Val::ObjPayload(mut obj_data) = vm.arena.get(obj_handle).value.clone() {
-        obj_data.properties.insert(finalized_prop, vm.arena.alloc(Val::Bool(true)));
+        obj_data
+            .properties
+            .insert(finalized_prop, vm.arena.alloc(Val::Bool(true)));
         // Replace the payload
         let new_payload_handle = vm.arena.alloc(Val::ObjPayload(obj_data));
         // Update the Object's reference... but we can't mutate arena values!
@@ -410,9 +412,7 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Extract object
     let obj_handle = match &vm.arena.get(args[0]).value {
         Val::Object(h) => *h,
-        _ => {
-            return Err("hash_copy(): Argument #1 ($context) must be of type HashContext".into())
-        }
+        _ => return Err("hash_copy(): Argument #1 ($context) must be of type HashContext".into()),
     };
 
     // Get object payload
@@ -443,7 +443,9 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let state_prop = vm.context.interner.intern(b"__state");
     let resource_id = match obj.properties.get(&state_prop) {
         Some(&handle) => match &vm.arena.get(handle).value {
-            Val::Resource(rc) => *rc.downcast_ref::<u64>().ok_or("hash_copy(): Invalid resource type")?,
+            Val::Resource(rc) => *rc
+                .downcast_ref::<u64>()
+                .ok_or("hash_copy(): Invalid resource type")?,
             _ => return Err("hash_copy(): Invalid hash state".into()),
         },
         None => return Err("hash_copy(): Invalid hash state".into()),
@@ -463,9 +465,9 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Create new resource ID and store cloned state
     let new_resource_id = vm.context.next_resource_id;
     vm.context.next_resource_id += 1;
-    
+
     let new_state_handle = vm.arena.alloc(Val::Resource(Rc::new(new_resource_id)));
-    
+
     if let Some(states) = vm.context.hash_states.as_mut() {
         states.insert(new_resource_id, new_state);
     }
@@ -475,19 +477,21 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     use std::collections::HashSet;
     let class_name = vm.context.interner.intern(b"HashContext");
     let mut properties = IndexMap::new();
-    
-    let algo_val = vm.arena.alloc(Val::String(Rc::new(algo_name.as_bytes().to_vec())));
+
+    let algo_val = vm
+        .arena
+        .alloc(Val::String(Rc::new(algo_name.as_bytes().to_vec())));
     properties.insert(algo_prop, algo_val);
     properties.insert(state_prop, new_state_handle);
     properties.insert(finalized_prop, vm.arena.alloc(Val::Bool(false)));
-    
+
     let new_obj = ObjectData {
         class: class_name,
         properties,
         internal: None,
         dynamic_properties: HashSet::new(),
     };
-    
+
     let new_payload_handle = vm.arena.alloc(Val::ObjPayload(new_obj));
     Ok(vm.arena.alloc(Val::Object(new_payload_handle)))
 }
@@ -547,12 +551,8 @@ pub fn php_hash_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     // Read file contents
     let filename_str = String::from_utf8_lossy(&filename);
-    let data = std::fs::read(filename_str.as_ref()).map_err(|e| {
-        format!(
-            "hash_file(): Failed to open '{}': {}",
-            filename_str, e
-        )
-    })?;
+    let data = std::fs::read(filename_str.as_ref())
+        .map_err(|e| format!("hash_file(): Failed to open '{}': {}", filename_str, e))?;
 
     // Get algorithm
     let registry = vm

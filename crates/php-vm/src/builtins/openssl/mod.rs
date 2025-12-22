@@ -1,20 +1,20 @@
-use crate::core::value::{Val, Handle, ArrayData, ArrayKey, ObjectData, Symbol};
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val};
 use crate::runtime::context::RequestContext;
 use crate::vm::engine::VM;
-use openssl::symm::{Cipher, encrypt, decrypt};
-use openssl::nid::Nid;
-use openssl::pkey::{PKey, Public, Private};
-use openssl::x509::{X509, X509Name, X509Req};
-use openssl::sign::{Signer, Verifier};
-use openssl::encrypt::{Encrypter, Decrypter};
-use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
-use openssl::cms::{CmsContentInfo, CMSOptions};
-use openssl::x509::store::X509StoreBuilder;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::any::Any;
-use std::collections::HashSet;
 use indexmap::IndexMap;
+use openssl::cms::{CMSOptions, CmsContentInfo};
+use openssl::encrypt::{Decrypter, Encrypter};
+use openssl::nid::Nid;
+use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
+use openssl::pkey::{PKey, Private, Public};
+use openssl::sign::{Signer, Verifier};
+use openssl::symm::{decrypt, encrypt, Cipher};
+use openssl::x509::store::X509StoreBuilder;
+use openssl::x509::{X509Name, X509Req, X509};
+use std::any::Any;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 
 // X509 Purpose checking flags
 pub const X509_PURPOSE_SSL_CLIENT: i64 = 1;
@@ -98,18 +98,16 @@ fn set_ref_value(vm: &mut VM, handle: Handle, value: Val) {
     vm.arena.get_mut(handle).value = value;
 }
 
-
-
 pub fn openssl_pkey_get_private(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let key_data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let passphrase = if args.len() > 1 {
         match &vm.arena.get(args[1]).value {
             Val::String(s) => Some(s.clone()),
@@ -118,13 +116,13 @@ pub fn openssl_pkey_get_private(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     } else {
         None
     };
-    
+
     let pkey = if let Some(pass) = passphrase {
         PKey::private_key_from_pem_passphrase(&key_data, &pass)
     } else {
         PKey::private_key_from_pem(&key_data)
     };
-    
+
     match pkey {
         Ok(pkey) => {
             let class_name = vm.context.interner.intern(b"OpenSSLAsymmetricKey");
@@ -144,16 +142,16 @@ pub fn openssl_pkey_get_public(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let key_data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     // Try PEM first
-    let pkey = PKey::public_key_from_pem(&key_data)
-        .or_else(|_| PKey::public_key_from_der(&key_data));
-        
+    let pkey =
+        PKey::public_key_from_pem(&key_data).or_else(|_| PKey::public_key_from_der(&key_data));
+
     match pkey {
         Ok(pkey) => {
             let class_name = vm.context.interner.intern(b"OpenSSLAsymmetricKey");
@@ -188,17 +186,17 @@ pub fn openssl_public_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pkey = match get_public_key(vm, args[2]) {
         Ok(pkey) => pkey,
         Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let padding = if args.len() > 3 {
         match &vm.arena.get(args[3]).value {
             Val::Int(i) => *i,
@@ -207,7 +205,7 @@ pub fn openssl_public_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
     } else {
         OPENSSL_PKCS1_PADDING
     };
-    
+
     let mut encrypter = Encrypter::new(&pkey).map_err(|e| e.to_string())?;
     let p = match padding {
         OPENSSL_PKCS1_PADDING => openssl::rsa::Padding::PKCS1,
@@ -216,14 +214,16 @@ pub fn openssl_public_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
         _ => openssl::rsa::Padding::PKCS1,
     };
     encrypter.set_rsa_padding(p).map_err(|e| e.to_string())?;
-    
+
     let buffer_len = encrypter.encrypt_len(data).map_err(|e| e.to_string())?;
     let mut encrypted = vec![0u8; buffer_len];
-    let encrypted_len = encrypter.encrypt(data, &mut encrypted).map_err(|e| e.to_string())?;
+    let encrypted_len = encrypter
+        .encrypt(data, &mut encrypted)
+        .map_err(|e| e.to_string())?;
     encrypted.truncate(encrypted_len);
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(encrypted)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -231,12 +231,12 @@ pub fn openssl_private_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pkey = match get_private_key(vm, args[2]) {
         Ok(pkey) => pkey,
         Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
@@ -249,7 +249,7 @@ pub fn openssl_private_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     } else {
         OPENSSL_PKCS1_PADDING
     };
-    
+
     let mut decrypter = Decrypter::new(&pkey).map_err(|e| e.to_string())?;
     let p = match padding {
         OPENSSL_PKCS1_PADDING => openssl::rsa::Padding::PKCS1,
@@ -258,14 +258,16 @@ pub fn openssl_private_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
         _ => openssl::rsa::Padding::PKCS1,
     };
     decrypter.set_rsa_padding(p).map_err(|e| e.to_string())?;
-    
+
     let buffer_len = decrypter.decrypt_len(data).map_err(|e| e.to_string())?;
     let mut decrypted = vec![0u8; buffer_len];
-    let decrypted_len = decrypter.decrypt(data, &mut decrypted).map_err(|e| e.to_string())?;
+    let decrypted_len = decrypter
+        .decrypt(data, &mut decrypted)
+        .map_err(|e| e.to_string())?;
     decrypted.truncate(decrypted_len);
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(decrypted)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -273,7 +275,7 @@ pub fn openssl_pkey_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let pkey = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -291,7 +293,7 @@ pub fn openssl_pkey_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let passphrase = if args.len() > 2 {
         match &vm.arena.get(args[2]).value {
             Val::String(s) => Some(s.clone()),
@@ -300,15 +302,16 @@ pub fn openssl_pkey_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     } else {
         None
     };
-    
+
     let pem = if let Some(pass) = passphrase {
-        pkey.private_key_to_pem_pkcs8_passphrase(openssl::symm::Cipher::aes_256_cbc(), &pass).map_err(|e| e.to_string())?
+        pkey.private_key_to_pem_pkcs8_passphrase(openssl::symm::Cipher::aes_256_cbc(), &pass)
+            .map_err(|e| e.to_string())?
     } else {
         pkey.private_key_to_pem_pkcs8().map_err(|e| e.to_string())?
     };
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -345,9 +348,11 @@ pub fn openssl_cipher_iv_length(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     if let Some(cipher) = map_cipher(cipher_name) {
-        return Ok(vm.arena.alloc(Val::Int(cipher.iv_len().unwrap_or(0) as i64)));
+        return Ok(vm
+            .arena
+            .alloc(Val::Int(cipher.iv_len().unwrap_or(0) as i64)));
     }
     Ok(vm.arena.alloc(Val::Bool(false)))
 }
@@ -360,7 +365,7 @@ pub fn openssl_cipher_key_length(vm: &mut VM, args: &[Handle]) -> Result<Handle,
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     if let Some(cipher) = map_cipher(cipher_name) {
         Ok(vm.arena.alloc(Val::Int(cipher.key_len() as i64)))
     } else {
@@ -372,19 +377,19 @@ pub fn openssl_digest(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let algo_bytes = match &vm.arena.get(args[1]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let algo = String::from_utf8_lossy(algo_bytes);
-    
+
     let binary = if args.len() > 2 {
         match &vm.arena.get(args[2]).value {
             Val::Bool(b) => *b,
@@ -393,13 +398,17 @@ pub fn openssl_digest(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         false
     };
-    
+
     if let Some(md) = map_digest(algo_bytes) {
         let hash = openssl::hash::hash(md, data).map_err(|e| e.to_string())?;
         if binary {
             Ok(vm.arena.alloc(Val::String(Rc::new(hash.to_vec()))))
         } else {
-            let hex = hash.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join("");
+            let hex = hash
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<String>>()
+                .join("");
             Ok(vm.arena.alloc(Val::String(Rc::new(hex.into_bytes()))))
         }
     } else {
@@ -411,22 +420,22 @@ pub fn openssl_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let cipher_name = match &vm.arena.get(args[1]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let passphrase = match &vm.arena.get(args[2]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let options = if args.len() > 3 {
         match &vm.arena.get(args[3]).value {
             Val::Int(i) => *i,
@@ -435,7 +444,7 @@ pub fn openssl_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         0
     };
-    
+
     let iv = if args.len() > 4 {
         match &vm.arena.get(args[4]).value {
             Val::String(s) => s,
@@ -449,13 +458,13 @@ pub fn openssl_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         // PHP's openssl_encrypt handles key derivation if passphrase is shorter than key length
         // For now, we assume passphrase is the key
         let key = passphrase;
-        
+
         match encrypt(cipher, key, Some(iv), data) {
             Ok(encrypted) => {
                 if (options & OPENSSL_RAW_DATA) != 0 {
                     Ok(vm.arena.alloc(Val::String(Rc::new(encrypted))))
                 } else {
-                    use base64::{Engine as _, engine::general_purpose};
+                    use base64::{engine::general_purpose, Engine as _};
                     let b64 = general_purpose::STANDARD.encode(encrypted);
                     Ok(vm.arena.alloc(Val::String(Rc::new(b64.into_bytes()))))
                 }
@@ -471,22 +480,22 @@ pub fn openssl_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let cipher_name = match &vm.arena.get(args[1]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let passphrase = match &vm.arena.get(args[2]).value {
         Val::String(s) => s,
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let options = if args.len() > 3 {
         match &vm.arena.get(args[3]).value {
             Val::Int(i) => *i,
@@ -495,7 +504,7 @@ pub fn openssl_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         0
     };
-    
+
     let iv = if args.len() > 4 {
         match &vm.arena.get(args[4]).value {
             Val::String(s) => s,
@@ -508,7 +517,7 @@ pub fn openssl_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let decoded_data = if (options & OPENSSL_RAW_DATA) != 0 {
         data.to_vec()
     } else {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::{engine::general_purpose, Engine as _};
         match general_purpose::STANDARD.decode(data.as_slice()) {
             Ok(d) => d,
             Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
@@ -517,7 +526,7 @@ pub fn openssl_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     if let Some(cipher) = map_cipher(cipher_name) {
         let key = passphrase;
-        
+
         match decrypt(cipher, key, Some(iv), &decoded_data) {
             Ok(decrypted) => Ok(vm.arena.alloc(Val::String(Rc::new(decrypted)))),
             Err(_) => Ok(vm.arena.alloc(Val::Bool(false))),
@@ -553,7 +562,9 @@ pub fn openssl_private_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
 
     let rsa = pkey.rsa().map_err(|e| e.to_string())?;
     let mut buf = vec![0; rsa.size() as usize];
-    let len = rsa.private_encrypt(&data, &mut buf, padding).map_err(|e| e.to_string())?;
+    let len = rsa
+        .private_encrypt(&data, &mut buf, padding)
+        .map_err(|e| e.to_string())?;
     buf.truncate(len);
 
     set_ref_value(vm, args[1], Val::String(Rc::new(buf)));
@@ -587,7 +598,9 @@ pub fn openssl_public_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
         Ok(pkey) => pkey,
         Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    let rsa = pkey.rsa().map_err(|e: openssl::error::ErrorStack| e.to_string())?;
+    let rsa = pkey
+        .rsa()
+        .map_err(|e: openssl::error::ErrorStack| e.to_string())?;
     let mut buf = vec![0; rsa.size() as usize];
     let len = rsa
         .public_decrypt(&data, &mut buf, padding)
@@ -603,7 +616,7 @@ pub fn openssl_pkey_new(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
     // Simplified: just generate a new RSA key if no args
     let rsa = openssl::rsa::Rsa::generate(2048).map_err(|e| e.to_string())?;
     let pkey = PKey::from_rsa(rsa).map_err(|e| e.to_string())?;
-    
+
     let class_name = vm.context.interner.intern(b"OpenSSLAsymmetricKey");
     let obj = ObjectData {
         class: class_name,
@@ -611,7 +624,7 @@ pub fn openssl_pkey_new(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
         internal: Some(Rc::new(pkey)),
         dynamic_properties: HashSet::new(),
     };
-    
+
     Ok(vm.arena.alloc(Val::ObjPayload(obj)))
 }
 
@@ -644,7 +657,7 @@ pub fn openssl_pkey_derive(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
             return Ok(vm.arena.alloc(Val::Bool(false)));
         }
     };
-    
+
     Ok(vm.arena.alloc(Val::String(Rc::new(secret))))
 }
 
@@ -652,7 +665,7 @@ pub fn openssl_pkey_get_details(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let (bits, id, public_pem) = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -674,7 +687,7 @@ pub fn openssl_pkey_get_details(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let key_type = match id {
         openssl::pkey::Id::RSA => OPENSSL_KEYTYPE_RSA,
         openssl::pkey::Id::DSA => OPENSSL_KEYTYPE_DSA,
@@ -686,13 +699,13 @@ pub fn openssl_pkey_get_details(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     let mut details = ArrayData::new();
     let bits_val = vm.arena.alloc(Val::Int(bits));
     details.insert(ArrayKey::Str(Rc::new(b"bits".to_vec())), bits_val);
-    
+
     let type_val = vm.arena.alloc(Val::Int(key_type));
     details.insert(ArrayKey::Str(Rc::new(b"type".to_vec())), type_val);
 
     let key_val = vm.arena.alloc(Val::String(Rc::new(public_pem)));
     details.insert(ArrayKey::Str(Rc::new(b"key".to_vec())), key_val);
-    
+
     Ok(vm.arena.alloc(Val::Array(Rc::new(details))))
 }
 
@@ -700,17 +713,17 @@ pub fn openssl_x509_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let cert_data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let x509 = match X509::from_pem(&cert_data) {
         Ok(x) => Ok(x),
         Err(_) => X509::from_der(&cert_data),
     };
-    
+
     match x509 {
         Ok(cert) => {
             let class_name = vm.context.interner.intern(b"OpenSSLCertificate");
@@ -733,7 +746,7 @@ pub fn openssl_x509_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let pem = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -751,9 +764,9 @@ pub fn openssl_x509_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -761,7 +774,7 @@ pub fn openssl_x509_fingerprint(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let hash_algo = if args.len() > 1 {
         match &vm.arena.get(args[1]).value {
             Val::String(s) => std::str::from_utf8(s).unwrap_or("sha1").to_string(),
@@ -770,7 +783,7 @@ pub fn openssl_x509_fingerprint(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
     } else {
         "sha1".to_string()
     };
-    
+
     let raw = if args.len() > 2 {
         match &vm.arena.get(args[2]).value {
             Val::Bool(b) => *b,
@@ -786,7 +799,8 @@ pub fn openssl_x509_fingerprint(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
             Val::ObjPayload(obj) => {
                 if let Some(internal) = &obj.internal {
                     if let Some(cert) = internal.downcast_ref::<X509>() {
-                        let md = map_digest(hash_algo.as_bytes()).ok_or_else(|| format!("Unknown hash algorithm: {}", hash_algo))?;
+                        let md = map_digest(hash_algo.as_bytes())
+                            .ok_or_else(|| format!("Unknown hash algorithm: {}", hash_algo))?;
                         cert.digest(md).map_err(|e| e.to_string())?.to_vec()
                     } else {
                         return Ok(vm.arena.alloc(Val::Bool(false)));
@@ -798,11 +812,15 @@ pub fn openssl_x509_fingerprint(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     if raw {
         Ok(vm.arena.alloc(Val::String(Rc::new(fingerprint))))
     } else {
-        let hex = fingerprint.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join("");
+        let hex = fingerprint
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<String>>()
+            .join("");
         Ok(vm.arena.alloc(Val::String(Rc::new(hex.into_bytes()))))
     }
 }
@@ -811,7 +829,7 @@ pub fn openssl_x509_parse(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let cert_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -827,17 +845,19 @@ pub fn openssl_x509_parse(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
                 }
             }
             Val::String(s) => {
-                let cert = X509::from_pem(s).or_else(|_| X509::from_der(s)).map_err(|e| e.to_string())?;
+                let cert = X509::from_pem(s)
+                    .or_else(|_| X509::from_der(s))
+                    .map_err(|e| e.to_string())?;
                 Rc::new(cert) as Rc<dyn Any>
             }
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let cert = cert_rc.downcast_ref::<X509>().unwrap();
-    
+
     let mut array = ArrayData::new();
-    
+
     // subject
     let subject = cert.subject_name();
     let mut subject_arr = ArrayData::new();
@@ -845,14 +865,14 @@ pub fn openssl_x509_parse(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         let key = entry.object().to_string();
         let val = entry.data().as_slice();
         let val_handle = vm.arena.alloc(Val::String(Rc::new(val.to_vec())));
-        subject_arr.insert(
-            ArrayKey::Str(Rc::new(key.into_bytes())),
-            val_handle
-        );
+        subject_arr.insert(ArrayKey::Str(Rc::new(key.into_bytes())), val_handle);
     }
     let subject_arr_handle = vm.arena.alloc(Val::Array(Rc::new(subject_arr)));
-    array.insert(ArrayKey::Str(Rc::new(b"subject".to_vec())), subject_arr_handle);
-    
+    array.insert(
+        ArrayKey::Str(Rc::new(b"subject".to_vec())),
+        subject_arr_handle,
+    );
+
     // issuer
     let issuer = cert.issuer_name();
     let mut issuer_arr = ArrayData::new();
@@ -860,33 +880,48 @@ pub fn openssl_x509_parse(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
         let key = entry.object().to_string();
         let val = entry.data().as_slice();
         let val_handle = vm.arena.alloc(Val::String(Rc::new(val.to_vec())));
-        issuer_arr.insert(
-            ArrayKey::Str(Rc::new(key.into_bytes())),
-            val_handle
-        );
+        issuer_arr.insert(ArrayKey::Str(Rc::new(key.into_bytes())), val_handle);
     }
     let issuer_arr_handle = vm.arena.alloc(Val::Array(Rc::new(issuer_arr)));
-    array.insert(ArrayKey::Str(Rc::new(b"issuer".to_vec())), issuer_arr_handle);
-    
+    array.insert(
+        ArrayKey::Str(Rc::new(b"issuer".to_vec())),
+        issuer_arr_handle,
+    );
+
     // version
     let version_handle = vm.arena.alloc(Val::Int(cert.version() as i64));
     array.insert(ArrayKey::Str(Rc::new(b"version".to_vec())), version_handle);
-    
+
     // serialNumber
-    let serial = cert.serial_number().to_bn().map_err(|e| e.to_string())?.to_dec_str().map_err(|e| e.to_string())?;
-    let serial_handle = vm.arena.alloc(Val::String(Rc::new(serial.as_bytes().to_vec())));
-    array.insert(ArrayKey::Str(Rc::new(b"serialNumber".to_vec())), serial_handle);
-    
+    let serial = cert
+        .serial_number()
+        .to_bn()
+        .map_err(|e| e.to_string())?
+        .to_dec_str()
+        .map_err(|e| e.to_string())?;
+    let serial_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(serial.as_bytes().to_vec())));
+    array.insert(
+        ArrayKey::Str(Rc::new(b"serialNumber".to_vec())),
+        serial_handle,
+    );
+
     // validFrom
     let valid_from = cert.not_before().to_string();
-    let valid_from_handle = vm.arena.alloc(Val::String(Rc::new(valid_from.into_bytes())));
-    array.insert(ArrayKey::Str(Rc::new(b"validFrom".to_vec())), valid_from_handle);
-    
+    let valid_from_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(valid_from.into_bytes())));
+    array.insert(
+        ArrayKey::Str(Rc::new(b"validFrom".to_vec())),
+        valid_from_handle,
+    );
+
     // validTo
     let valid_to = cert.not_after().to_string();
     let valid_to_handle = vm.arena.alloc(Val::String(Rc::new(valid_to.into_bytes())));
     array.insert(ArrayKey::Str(Rc::new(b"validTo".to_vec())), valid_to_handle);
-    
+
     Ok(vm.arena.alloc(Val::Array(Rc::new(array))))
 }
 
@@ -894,7 +929,7 @@ pub fn openssl_x509_check_private_key(vm: &mut VM, args: &[Handle]) -> Result<Ha
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let cert_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -910,15 +945,17 @@ pub fn openssl_x509_check_private_key(vm: &mut VM, args: &[Handle]) -> Result<Ha
                 }
             }
             Val::String(s) => {
-                let cert = X509::from_pem(s).or_else(|_| X509::from_der(s)).map_err(|e| e.to_string())?;
+                let cert = X509::from_pem(s)
+                    .or_else(|_| X509::from_der(s))
+                    .map_err(|e| e.to_string())?;
                 Rc::new(cert) as Rc<dyn Any>
             }
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let cert = cert_rc.downcast_ref::<X509>().unwrap();
-    
+
     let pkey = {
         let val = &vm.arena.get(args[1]).value;
         match val {
@@ -936,10 +973,10 @@ pub fn openssl_x509_check_private_key(vm: &mut VM, args: &[Handle]) -> Result<Ha
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let cert_pubkey = cert.public_key().map_err(|e| e.to_string())?;
     let result = cert_pubkey.public_eq(&pkey);
-    
+
     Ok(vm.arena.alloc(Val::Bool(result)))
 }
 
@@ -947,7 +984,7 @@ pub fn openssl_csr_new(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let pkey = {
         let val = &vm.arena.get(args[1]).value;
         match val {
@@ -965,10 +1002,10 @@ pub fn openssl_csr_new(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let mut req_builder = X509Req::builder().map_err(|e| e.to_string())?;
     req_builder.set_pubkey(&pkey).map_err(|e| e.to_string())?;
-    
+
     // Set subject name from dn (args[0])
     let mut name_builder = openssl::x509::X509Name::builder().map_err(|e| e.to_string())?;
     if let Val::Array(arr) = &vm.arena.get(args[0]).value {
@@ -981,23 +1018,32 @@ pub fn openssl_csr_new(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 Val::String(s) => String::from_utf8_lossy(s).to_string(),
                 _ => continue,
             };
-            name_builder.append_entry_by_text(&key_str, &val_str).map_err(|e| e.to_string())?;
+            name_builder
+                .append_entry_by_text(&key_str, &val_str)
+                .map_err(|e| e.to_string())?;
         }
     }
     let name = name_builder.build();
-    req_builder.set_subject_name(&name).map_err(|e| e.to_string())?;
-    
-    req_builder.sign(&pkey, openssl::hash::MessageDigest::sha256()).map_err(|e| e.to_string())?;
+    req_builder
+        .set_subject_name(&name)
+        .map_err(|e| e.to_string())?;
+
+    req_builder
+        .sign(&pkey, openssl::hash::MessageDigest::sha256())
+        .map_err(|e| e.to_string())?;
     let req = req_builder.build();
-    
-    let class_name = vm.context.interner.intern(b"OpenSSLCertificateSigningRequest");
+
+    let class_name = vm
+        .context
+        .interner
+        .intern(b"OpenSSLCertificateSigningRequest");
     let obj = ObjectData {
         class: class_name,
         properties: IndexMap::new(),
         internal: Some(Rc::new(req)),
         dynamic_properties: HashSet::new(),
     };
-    
+
     Ok(vm.arena.alloc(Val::ObjPayload(obj)))
 }
 
@@ -1005,7 +1051,7 @@ pub fn openssl_csr_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let pem = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -1023,9 +1069,9 @@ pub fn openssl_csr_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(pem)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -1033,7 +1079,7 @@ pub fn openssl_csr_get_subject(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let csr_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -1049,27 +1095,26 @@ pub fn openssl_csr_get_subject(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
                 }
             }
             Val::String(s) => {
-                let csr = X509Req::from_pem(s).or_else(|_| X509Req::from_der(s)).map_err(|e| e.to_string())?;
+                let csr = X509Req::from_pem(s)
+                    .or_else(|_| X509Req::from_der(s))
+                    .map_err(|e| e.to_string())?;
                 Rc::new(csr) as Rc<dyn Any>
             }
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let csr = csr_rc.downcast_ref::<X509Req>().unwrap();
-    
+
     let mut array = ArrayData::new();
     let subject = csr.subject_name();
     for entry in subject.entries() {
         let key = entry.object().to_string();
         let val = entry.data().as_slice();
         let val_handle = vm.arena.alloc(Val::String(Rc::new(val.to_vec())));
-        array.insert(
-            ArrayKey::Str(Rc::new(key.into_bytes())),
-            val_handle
-        );
+        array.insert(ArrayKey::Str(Rc::new(key.into_bytes())), val_handle);
     }
-    
+
     Ok(vm.arena.alloc(Val::Array(Rc::new(array))))
 }
 
@@ -1092,7 +1137,7 @@ pub fn openssl_csr_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     let mut x509_builder = openssl::x509::X509::builder().map_err(|e| e.to_string())?;
     x509_builder.set_version(2).map_err(|e| e.to_string())?;
-    
+
     let serial = if args.len() > 5 {
         match &vm.arena.get(args[5]).value {
             Val::Int(i) => *i,
@@ -1103,25 +1148,41 @@ pub fn openssl_csr_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
     };
     let serial_bn = openssl::bn::BigNum::from_u32(serial as u32).map_err(|e| e.to_string())?;
     let serial_asn1 = openssl::asn1::Asn1Integer::from_bn(&serial_bn).map_err(|e| e.to_string())?;
-    x509_builder.set_serial_number(&serial_asn1).map_err(|e| e.to_string())?;
-    
-    x509_builder.set_subject_name(csr.subject_name()).map_err(|e| e.to_string())?;
+    x509_builder
+        .set_serial_number(&serial_asn1)
+        .map_err(|e| e.to_string())?;
+
+    x509_builder
+        .set_subject_name(csr.subject_name())
+        .map_err(|e| e.to_string())?;
     if let Some(ca) = ca_cert {
-        x509_builder.set_issuer_name(ca.subject_name()).map_err(|e| e.to_string())?;
+        x509_builder
+            .set_issuer_name(ca.subject_name())
+            .map_err(|e| e.to_string())?;
     } else {
-        x509_builder.set_issuer_name(csr.subject_name()).map_err(|e| e.to_string())?;
+        x509_builder
+            .set_issuer_name(csr.subject_name())
+            .map_err(|e| e.to_string())?;
     }
-    
+
     let not_before = openssl::asn1::Asn1Time::days_from_now(0).map_err(|e| e.to_string())?;
     let not_after = openssl::asn1::Asn1Time::days_from_now(days).map_err(|e| e.to_string())?;
-    x509_builder.set_not_before(&not_before).map_err(|e| e.to_string())?;
-    x509_builder.set_not_after(&not_after).map_err(|e| e.to_string())?;
-    
-    x509_builder.set_pubkey(&*csr.public_key().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    
-    x509_builder.sign(&priv_key, openssl::hash::MessageDigest::sha256()).map_err(|e| e.to_string())?;
+    x509_builder
+        .set_not_before(&not_before)
+        .map_err(|e| e.to_string())?;
+    x509_builder
+        .set_not_after(&not_after)
+        .map_err(|e| e.to_string())?;
+
+    x509_builder
+        .set_pubkey(&*csr.public_key().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    x509_builder
+        .sign(&priv_key, openssl::hash::MessageDigest::sha256())
+        .map_err(|e| e.to_string())?;
     let cert = x509_builder.build();
-    
+
     let class_name = vm.context.interner.intern(b"OpenSSLCertificate");
     let obj = ObjectData {
         class: class_name,
@@ -1129,7 +1190,7 @@ pub fn openssl_csr_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         internal: Some(Rc::new(cert)),
         dynamic_properties: HashSet::new(),
     };
-    
+
     Ok(vm.arena.alloc(Val::ObjPayload(obj)))
 }
 
@@ -1137,7 +1198,7 @@ pub fn openssl_csr_get_public_key(vm: &mut VM, args: &[Handle]) -> Result<Handle
     if args.is_empty() {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let csr_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -1153,16 +1214,18 @@ pub fn openssl_csr_get_public_key(vm: &mut VM, args: &[Handle]) -> Result<Handle
                 }
             }
             Val::String(s) => {
-                let csr = X509Req::from_pem(s).or_else(|_| X509Req::from_der(s)).map_err(|e| e.to_string())?;
+                let csr = X509Req::from_pem(s)
+                    .or_else(|_| X509Req::from_der(s))
+                    .map_err(|e| e.to_string())?;
                 Rc::new(csr) as Rc<dyn Any>
             }
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let csr = csr_rc.downcast_ref::<X509Req>().unwrap();
     let pkey = csr.public_key().map_err(|e| e.to_string())?;
-    
+
     let class_name = vm.context.interner.intern(b"OpenSSLAsymmetricKey");
     let obj = ObjectData {
         class: class_name,
@@ -1170,7 +1233,7 @@ pub fn openssl_csr_get_public_key(vm: &mut VM, args: &[Handle]) -> Result<Handle
         internal: Some(Rc::new(pkey)),
         dynamic_properties: HashSet::new(),
     };
-    
+
     Ok(vm.arena.alloc(Val::ObjPayload(obj)))
 }
 
@@ -1240,47 +1303,45 @@ pub fn openssl_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pkey = match get_private_key(vm, args[2]) {
         Ok(pkey) => pkey,
         Err(_) => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let algo = if args.len() > 3 {
         match &vm.arena.get(args[3]).value {
             Val::String(s) => String::from_utf8_lossy(s).to_string(),
-            Val::Int(i) => {
-                match *i {
-                    1 => "sha1".to_string(),
-                    2 => "md5".to_string(),
-                    3 => "md4".to_string(),
-                    4 => "sha224".to_string(),
-                    5 => "sha256".to_string(),
-                    6 => "sha384".to_string(),
-                    7 => "sha512".to_string(),
-                    8 => "ripemd160".to_string(),
-                    _ => "sha1".to_string(),
-                }
-            }
+            Val::Int(i) => match *i {
+                1 => "sha1".to_string(),
+                2 => "md5".to_string(),
+                3 => "md4".to_string(),
+                4 => "sha224".to_string(),
+                5 => "sha256".to_string(),
+                6 => "sha384".to_string(),
+                7 => "sha512".to_string(),
+                8 => "ripemd160".to_string(),
+                _ => "sha1".to_string(),
+            },
             _ => "sha1".to_string(),
         }
     } else {
         "sha1".to_string()
     };
-    
+
     let md = map_digest(algo.as_bytes()).unwrap_or_else(|| openssl::hash::MessageDigest::sha1());
-    
+
     let mut signer = Signer::new(md, &pkey).map_err(|e| e.to_string())?;
     signer.update(&data).map_err(|e| e.to_string())?;
     let signature = signer.sign_to_vec().map_err(|e| e.to_string())?;
-    
+
     set_ref_value(vm, args[1], Val::String(Rc::new(signature)));
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -1288,50 +1349,48 @@ pub fn openssl_verify(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 3 {
         return Ok(vm.arena.alloc(Val::Int(-1)));
     }
-    
+
     let data = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Int(-1))),
     };
-    
+
     let signature = match &vm.arena.get(args[1]).value {
         Val::String(s) => s.clone(),
         _ => return Ok(vm.arena.alloc(Val::Int(-1))),
     };
-    
+
     let pkey = match get_public_key(vm, args[2]) {
         Ok(pkey) => pkey,
         Err(_) => return Ok(vm.arena.alloc(Val::Int(-1))),
     };
-    
+
     let algo = if args.len() > 3 {
         match &vm.arena.get(args[3]).value {
             Val::String(s) => String::from_utf8_lossy(s).to_string(),
-            Val::Int(i) => {
-                match *i {
-                    1 => "sha1".to_string(),
-                    2 => "md5".to_string(),
-                    3 => "md4".to_string(),
-                    4 => "sha224".to_string(),
-                    5 => "sha256".to_string(),
-                    6 => "sha384".to_string(),
-                    7 => "sha512".to_string(),
-                    8 => "ripemd160".to_string(),
-                    _ => "sha1".to_string(),
-                }
-            }
+            Val::Int(i) => match *i {
+                1 => "sha1".to_string(),
+                2 => "md5".to_string(),
+                3 => "md4".to_string(),
+                4 => "sha224".to_string(),
+                5 => "sha256".to_string(),
+                6 => "sha384".to_string(),
+                7 => "sha512".to_string(),
+                8 => "ripemd160".to_string(),
+                _ => "sha1".to_string(),
+            },
             _ => "sha1".to_string(),
         }
     } else {
         "sha1".to_string()
     };
-    
+
     let md = map_digest(algo.as_bytes()).unwrap_or_else(|| openssl::hash::MessageDigest::sha1());
-    
+
     let mut verifier = Verifier::new(md, &pkey).map_err(|e| e.to_string())?;
     verifier.update(&data).map_err(|e| e.to_string())?;
     let result = verifier.verify(&signature).map_err(|e| e.to_string())?;
-    
+
     if result {
         Ok(vm.arena.alloc(Val::Int(1)))
     } else {
@@ -1400,9 +1459,9 @@ pub fn openssl_pkcs7_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
     let mut certs = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
     certs.push(cert).map_err(|e| e.to_string())?;
-    
+
     let pkcs7 = Pkcs7::encrypt(&certs, &input_data, cipher, flags).map_err(|e| e.to_string())?;
-    
+
     let pem = pkcs7.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(&out_file, pem).map_err(|e| e.to_string())?;
 
@@ -1461,10 +1520,14 @@ pub fn openssl_pkcs7_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     };
 
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
-    let pkcs7 = Pkcs7::from_pem(&input_data).or_else(|_| Pkcs7::from_der(&input_data)).map_err(|e| e.to_string())?;
-    
-    let out_data = pkcs7.decrypt(&pkey, &cert, Pkcs7Flags::empty()).map_err(|e| e.to_string())?;
-    
+    let pkcs7 = Pkcs7::from_pem(&input_data)
+        .or_else(|_| Pkcs7::from_der(&input_data))
+        .map_err(|e| e.to_string())?;
+
+    let out_data = pkcs7
+        .decrypt(&pkey, &cert, Pkcs7Flags::empty())
+        .map_err(|e| e.to_string())?;
+
     std::fs::write(&out_file, out_data).map_err(|e| e.to_string())?;
 
     Ok(vm.arena.alloc(Val::Bool(true)))
@@ -1532,9 +1595,10 @@ pub fn openssl_pkcs7_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
 
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
     let empty_stack = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
-    
-    let pkcs7 = Pkcs7::sign(&cert, &pkey, &empty_stack, &input_data, flags).map_err(|e| e.to_string())?;
-    
+
+    let pkcs7 =
+        Pkcs7::sign(&cert, &pkey, &empty_stack, &input_data, flags).map_err(|e| e.to_string())?;
+
     let pem = pkcs7.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(&out_file, pem).map_err(|e| e.to_string())?;
 
@@ -1557,14 +1621,18 @@ pub fn openssl_pkcs7_verify(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     };
 
     let data = std::fs::read(&filename).map_err(|e| e.to_string())?;
-    let pkcs7 = Pkcs7::from_pem(&data).or_else(|_| Pkcs7::from_der(&data)).map_err(|e| e.to_string())?;
+    let pkcs7 = Pkcs7::from_pem(&data)
+        .or_else(|_| Pkcs7::from_der(&data))
+        .map_err(|e| e.to_string())?;
 
     let empty_stack = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
-    let store = openssl::x509::store::X509StoreBuilder::new().map_err(|e| e.to_string())?.build();
-    
+    let store = openssl::x509::store::X509StoreBuilder::new()
+        .map_err(|e| e.to_string())?
+        .build();
+
     let mut out_data = Vec::new();
     let res = pkcs7.verify(&empty_stack, &store, None, Some(&mut out_data), flags);
-    
+
     match res {
         Ok(_) => {
             if args.len() > 6 {
@@ -1640,9 +1708,10 @@ pub fn openssl_cms_encrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
     let mut certs = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
     certs.push(cert).map_err(|e| e.to_string())?;
-    
-    let cms = CmsContentInfo::encrypt(&certs, &input_data, cipher, flags).map_err(|e| e.to_string())?;
-    
+
+    let cms =
+        CmsContentInfo::encrypt(&certs, &input_data, cipher, flags).map_err(|e| e.to_string())?;
+
     let pem = cms.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(&out_file, pem).map_err(|e| e.to_string())?;
 
@@ -1701,10 +1770,12 @@ pub fn openssl_cms_decrypt(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     };
 
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
-    let cms = CmsContentInfo::from_pem(&input_data).or_else(|_| CmsContentInfo::from_der(&input_data)).map_err(|e| e.to_string())?;
-    
+    let cms = CmsContentInfo::from_pem(&input_data)
+        .or_else(|_| CmsContentInfo::from_der(&input_data))
+        .map_err(|e| e.to_string())?;
+
     let out_data = cms.decrypt(&pkey, &cert).map_err(|e| e.to_string())?;
-    
+
     std::fs::write(&out_file, out_data).map_err(|e| e.to_string())?;
 
     Ok(vm.arena.alloc(Val::Bool(true)))
@@ -1772,9 +1843,16 @@ pub fn openssl_cms_sign(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     let input_data = std::fs::read(&in_file).map_err(|e| e.to_string())?;
     let empty_stack = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
-    
-    let cms = CmsContentInfo::sign(Some(&cert), Some(&pkey), Some(&empty_stack), Some(&input_data), flags).map_err(|e| e.to_string())?;
-    
+
+    let cms = CmsContentInfo::sign(
+        Some(&cert),
+        Some(&pkey),
+        Some(&empty_stack),
+        Some(&input_data),
+        flags,
+    )
+    .map_err(|e| e.to_string())?;
+
     let pem = cms.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(&out_file, pem).map_err(|e| e.to_string())?;
 
@@ -1797,14 +1875,24 @@ pub fn openssl_cms_verify(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     };
 
     let data = std::fs::read(&filename).map_err(|e| e.to_string())?;
-    let mut cms = CmsContentInfo::from_pem(&data).or_else(|_| CmsContentInfo::from_der(&data)).map_err(|e| e.to_string())?;
+    let mut cms = CmsContentInfo::from_pem(&data)
+        .or_else(|_| CmsContentInfo::from_der(&data))
+        .map_err(|e| e.to_string())?;
 
     let empty_stack = openssl::stack::Stack::<X509>::new().map_err(|e| e.to_string())?;
-    let store = openssl::x509::store::X509StoreBuilder::new().map_err(|e| e.to_string())?.build();
-    
+    let store = openssl::x509::store::X509StoreBuilder::new()
+        .map_err(|e| e.to_string())?
+        .build();
+
     let mut out_data = Vec::new();
-    let res = cms.verify(Some(&empty_stack), Some(&store), None, Some(&mut out_data), flags);
-    
+    let res = cms.verify(
+        Some(&empty_stack),
+        Some(&store),
+        None,
+        Some(&mut out_data),
+        flags,
+    );
+
     match res {
         Ok(_) => {
             if args.len() > 6 {
@@ -1839,7 +1927,10 @@ fn pkey_to_array(array: &mut ArrayData, pkey: &PKey<Private>, vm: &mut VM) -> Re
         internal: Some(Rc::new(pkey.clone())),
         dynamic_properties: HashSet::new(),
     };
-    array.insert(ArrayKey::Str(Rc::new(b"pkey".to_vec())), vm.arena.alloc(Val::ObjPayload(obj)));
+    array.insert(
+        ArrayKey::Str(Rc::new(b"pkey".to_vec())),
+        vm.arena.alloc(Val::ObjPayload(obj)),
+    );
     Ok(())
 }
 
@@ -1856,7 +1947,9 @@ pub fn openssl_pkcs12_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     };
 
     let builder = openssl::pkcs12::Pkcs12::builder();
-    let pkcs12 = builder.build(&pass, "PHP OpenSSL", &pkey, &cert).map_err(|e| e.to_string())?;
+    let pkcs12 = builder
+        .build(&pass, "PHP OpenSSL", &pkey, &cert)
+        .map_err(|e| e.to_string())?;
     let der = pkcs12.to_der().map_err(|e| e.to_string())?;
 
     // Set the output reference (args[1])
@@ -1884,7 +1977,7 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
 
     // Set the certs reference (args[1])
     let mut certs_array = ArrayData::new();
-    
+
     let cert_class = vm.context.interner.intern(b"OpenSSLCertificate");
     let cert_obj = ObjectData {
         class: cert_class,
@@ -1892,10 +1985,13 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         internal: Some(Rc::new(parsed.cert.clone())),
         dynamic_properties: HashSet::new(),
     };
-    certs_array.insert(ArrayKey::Str(Rc::new(b"cert".to_vec())), vm.arena.alloc(Val::ObjPayload(cert_obj)));
-    
+    certs_array.insert(
+        ArrayKey::Str(Rc::new(b"cert".to_vec())),
+        vm.arena.alloc(Val::ObjPayload(cert_obj)),
+    );
+
     pkey_to_array(&mut certs_array, &parsed.pkey, vm)?;
-    
+
     if let Some(chain) = parsed.chain {
         let mut chain_array = ArrayData::new();
         for (i, c) in chain.into_iter().enumerate() {
@@ -1905,9 +2001,15 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
                 internal: Some(Rc::new(c)),
                 dynamic_properties: HashSet::new(),
             };
-            chain_array.insert(ArrayKey::Int(i as i64), vm.arena.alloc(Val::ObjPayload(c_obj)));
+            chain_array.insert(
+                ArrayKey::Int(i as i64),
+                vm.arena.alloc(Val::ObjPayload(c_obj)),
+            );
         }
-        certs_array.insert(ArrayKey::Str(Rc::new(b"extracerts".to_vec())), vm.arena.alloc(Val::Array(Rc::new(chain_array))));
+        certs_array.insert(
+            ArrayKey::Str(Rc::new(b"extracerts".to_vec())),
+            vm.arena.alloc(Val::Array(Rc::new(chain_array))),
+        );
     }
 
     set_ref_value(vm, args[1], Val::Array(Rc::new(certs_array)));
@@ -2001,7 +2103,9 @@ fn get_csr(vm: &VM, handle: Handle) -> Result<Rc<X509Req>, String> {
 pub fn openssl_error_string(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let err = openssl::error::Error::get();
     if let Some(err) = err {
-        Ok(vm.arena.alloc(Val::String(Rc::new(err.to_string().into_bytes()))))
+        Ok(vm
+            .arena
+            .alloc(Val::String(Rc::new(err.to_string().into_bytes()))))
     } else {
         Ok(vm.arena.alloc(Val::Bool(false)))
     }
@@ -2037,10 +2141,16 @@ pub fn openssl_pbkdf2(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Err("digest_name must be a string".into()),
     };
 
-    let digest = map_digest(digest_name).ok_or_else(|| format!("Unknown digest algorithm: {}", String::from_utf8_lossy(digest_name)))?;
+    let digest = map_digest(digest_name).ok_or_else(|| {
+        format!(
+            "Unknown digest algorithm: {}",
+            String::from_utf8_lossy(digest_name)
+        )
+    })?;
 
     let mut key = vec![0u8; key_length];
-    openssl::pkcs5::pbkdf2_hmac(password, salt, iterations, digest, &mut key).map_err(|e| e.to_string())?;
+    openssl::pkcs5::pbkdf2_hmac(password, salt, iterations, digest, &mut key)
+        .map_err(|e| e.to_string())?;
 
     Ok(vm.arena.alloc(Val::String(Rc::new(key))))
 }
@@ -2050,7 +2160,10 @@ pub fn openssl_get_curve_names(vm: &mut VM, _args: &[Handle]) -> Result<Handle, 
     let curves = vec!["prime256v1", "secp384r1"];
     let mut array = ArrayData::new();
     for curve in curves {
-        array.push(vm.arena.alloc(Val::String(Rc::new(curve.as_bytes().to_vec()))));
+        array.push(
+            vm.arena
+                .alloc(Val::String(Rc::new(curve.as_bytes().to_vec()))),
+        );
     }
     Ok(vm.arena.alloc(Val::Array(Rc::new(array))))
 }
@@ -2058,8 +2171,18 @@ pub fn openssl_get_curve_names(vm: &mut VM, _args: &[Handle]) -> Result<Handle, 
 pub fn openssl_get_md_methods(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut methods = ArrayData::new();
     let md_list = vec![
-        "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512", "ripemd160",
-        "sha3-224", "sha3-256", "sha384", "sha512"
+        "md4",
+        "md5",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
+        "ripemd160",
+        "sha3-224",
+        "sha3-256",
+        "sha384",
+        "sha512",
     ];
     for md in md_list {
         let val = vm.arena.alloc(Val::String(Rc::new(md.as_bytes().to_vec())));
@@ -2071,21 +2194,62 @@ pub fn openssl_get_md_methods(vm: &mut VM, _args: &[Handle]) -> Result<Handle, S
 pub fn openssl_get_cipher_methods(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut methods = ArrayData::new();
     let cipher_list = vec![
-        "aes-128-cbc", "aes-128-ecb", "aes-128-cfb", "aes-128-cfb1", "aes-128-cfb8", "aes-128-ctr", "aes-128-ofb", "aes-128-gcm",
-        "aes-192-cbc", "aes-192-ecb", "aes-192-cfb", "aes-192-ctr", "aes-192-ofb", "aes-192-gcm",
-        "aes-256-cbc", "aes-256-ecb", "aes-256-cfb", "aes-256-ctr", "aes-256-ofb", "aes-256-gcm",
-        "aes-128-xts", "aes-256-xts",
-        "des-cbc", "des-ecb", "des-cfb", "des-ofb",
-        "des-ede-cbc", "des-ede-ecb", "des-ede-cfb", "des-ede-ofb",
-        "des-ede3-cbc", "des-ede3-ecb", "des-ede3-cfb", "des-ede3-ofb",
-        "bf-cbc", "bf-ecb", "bf-cfb", "bf-ofb",
-        "cast5-cbc", "cast5-ecb", "cast5-cfb", "cast5-ofb",
-        "idea-cbc", "idea-ecb", "idea-cfb", "idea-ofb",
-        "rc2-cbc", "rc2-ecb", "rc2-cfb", "rc2-ofb",
-        "rc4"
+        "aes-128-cbc",
+        "aes-128-ecb",
+        "aes-128-cfb",
+        "aes-128-cfb1",
+        "aes-128-cfb8",
+        "aes-128-ctr",
+        "aes-128-ofb",
+        "aes-128-gcm",
+        "aes-192-cbc",
+        "aes-192-ecb",
+        "aes-192-cfb",
+        "aes-192-ctr",
+        "aes-192-ofb",
+        "aes-192-gcm",
+        "aes-256-cbc",
+        "aes-256-ecb",
+        "aes-256-cfb",
+        "aes-256-ctr",
+        "aes-256-ofb",
+        "aes-256-gcm",
+        "aes-128-xts",
+        "aes-256-xts",
+        "des-cbc",
+        "des-ecb",
+        "des-cfb",
+        "des-ofb",
+        "des-ede-cbc",
+        "des-ede-ecb",
+        "des-ede-cfb",
+        "des-ede-ofb",
+        "des-ede3-cbc",
+        "des-ede3-ecb",
+        "des-ede3-cfb",
+        "des-ede3-ofb",
+        "bf-cbc",
+        "bf-ecb",
+        "bf-cfb",
+        "bf-ofb",
+        "cast5-cbc",
+        "cast5-ecb",
+        "cast5-cfb",
+        "cast5-ofb",
+        "idea-cbc",
+        "idea-ecb",
+        "idea-cfb",
+        "idea-ofb",
+        "rc2-cbc",
+        "rc2-ecb",
+        "rc2-cfb",
+        "rc2-ofb",
+        "rc4",
     ];
     for cipher in cipher_list {
-        let val = vm.arena.alloc(Val::String(Rc::new(cipher.as_bytes().to_vec())));
+        let val = vm
+            .arena
+            .alloc(Val::String(Rc::new(cipher.as_bytes().to_vec())));
         methods.push(val);
     }
     Ok(vm.arena.alloc(Val::Array(Rc::new(methods))))
@@ -2095,7 +2259,7 @@ pub fn openssl_x509_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handl
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let cert_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -2113,16 +2277,16 @@ pub fn openssl_x509_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handl
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let cert = cert_rc.downcast_ref::<X509>().unwrap();
     let filename = match &vm.arena.get(args[1]).value {
         Val::String(s) => String::from_utf8_lossy(s).to_string(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pem = cert.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(filename, pem).map_err(|e| e.to_string())?;
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -2130,7 +2294,7 @@ pub fn openssl_pkey_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handl
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let pkey = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -2148,15 +2312,15 @@ pub fn openssl_pkey_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handl
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let filename = match &vm.arena.get(args[1]).value {
         Val::String(s) => String::from_utf8_lossy(s).to_string(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pem = pkey.private_key_to_pem_pkcs8().map_err(|e| e.to_string())?;
     std::fs::write(filename, pem).map_err(|e| e.to_string())?;
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -2164,7 +2328,7 @@ pub fn openssl_csr_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handle
     if args.len() < 2 {
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
-    
+
     let csr_rc = {
         let val = &vm.arena.get(args[0]).value;
         match val {
@@ -2182,16 +2346,16 @@ pub fn openssl_csr_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Handle
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),
         }
     };
-    
+
     let csr = csr_rc.downcast_ref::<X509Req>().unwrap();
     let filename = match &vm.arena.get(args[1]).value {
         Val::String(s) => String::from_utf8_lossy(s).to_string(),
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
-    
+
     let pem = csr.to_pem().map_err(|e| e.to_string())?;
     std::fs::write(filename, pem).map_err(|e| e.to_string())?;
-    
+
     Ok(vm.arena.alloc(Val::Bool(true)))
 }
 
@@ -2212,7 +2376,9 @@ pub fn openssl_pkcs12_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Han
     };
 
     let builder = openssl::pkcs12::Pkcs12::builder();
-    let pkcs12 = builder.build(&pass, "PHP OpenSSL", &pkey, &cert).map_err(|e| e.to_string())?;
+    let pkcs12 = builder
+        .build(&pass, "PHP OpenSSL", &pkey, &cert)
+        .map_err(|e| e.to_string())?;
     let der = pkcs12.to_der().map_err(|e| e.to_string())?;
 
     std::fs::write(filename, der).map_err(|e| e.to_string())?;
@@ -2250,7 +2416,9 @@ pub fn openssl_x509_verify(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
                 }
             }
             Val::String(s) => {
-                let pkey = PKey::public_key_from_pem(s).or_else(|_| PKey::public_key_from_der(s)).map_err(|e| e.to_string())?;
+                let pkey = PKey::public_key_from_pem(s)
+                    .or_else(|_| PKey::public_key_from_der(s))
+                    .map_err(|e| e.to_string())?;
                 cert.verify(&pkey).map_err(|e| e.to_string())?
             }
             _ => return Ok(vm.arena.alloc(Val::Bool(false))),

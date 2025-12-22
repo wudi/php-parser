@@ -1,11 +1,11 @@
-use php_vm::vm::engine::{VM, OutputWriter, VmError};
-use php_vm::runtime::context::EngineContext;
-use php_vm::compiler::emitter::Emitter;
+use bumpalo::Bump;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
-use bumpalo::Bump;
-use std::sync::{Arc, Mutex};
+use php_vm::compiler::emitter::Emitter;
+use php_vm::runtime::context::EngineContext;
+use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 struct TestOutputWriter {
     buffer: Arc<Mutex<Vec<u8>>>,
@@ -22,7 +22,9 @@ fn run_php(code: &str) -> String {
     let engine = Arc::new(EngineContext::new());
     let mut vm = VM::new(engine);
     let output = Arc::new(Mutex::new(Vec::new()));
-    vm.set_output_writer(Box::new(TestOutputWriter { buffer: output.clone() }));
+    vm.set_output_writer(Box::new(TestOutputWriter {
+        buffer: output.clone(),
+    }));
 
     let source_code = if code.starts_with("<?php") {
         code.to_string()

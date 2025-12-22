@@ -14,14 +14,14 @@ fn create_test_vm() -> VM {
 }
 
 fn call_hash(vm: &mut VM, algo: &str, data: &[u8], binary: bool) -> Result<Vec<u8>, String> {
-    let algo_handle = vm.arena.alloc(Val::String(Rc::new(algo.as_bytes().to_vec())));
+    let algo_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(algo.as_bytes().to_vec())));
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
     let binary_handle = vm.arena.alloc(Val::Bool(binary));
 
-    let result_handle = php_vm::builtins::hash::php_hash(
-        vm,
-        &[algo_handle, data_handle, binary_handle],
-    )?;
+    let result_handle =
+        php_vm::builtins::hash::php_hash(vm, &[algo_handle, data_handle, binary_handle])?;
 
     match &vm.arena.get(result_handle).value {
         Val::String(s) => Ok(s.as_ref().clone()),
@@ -232,8 +232,16 @@ fn test_php_compatibility() {
 
     let test_cases = vec![
         ("md5", "Hello World", "b10a8db164e0754105b7a99be72e3fe5"),
-        ("sha1", "Hello World", "0a4d55a8d778e5022fab701977c5d840bbc486d0"),
-        ("sha256", "Hello World", "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"),
+        (
+            "sha1",
+            "Hello World",
+            "0a4d55a8d778e5022fab701977c5d840bbc486d0",
+        ),
+        (
+            "sha256",
+            "Hello World",
+            "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+        ),
     ];
 
     for (algo, input, expected) in test_cases {
@@ -260,9 +268,7 @@ fn test_unknown_algorithm_error() {
     let result = php_vm::builtins::hash::php_hash(&mut vm, &[algo_handle, data_handle]);
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("Unknown hashing algorithm"));
+    assert!(result.unwrap_err().contains("Unknown hashing algorithm"));
 }
 
 #[test]

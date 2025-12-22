@@ -22,9 +22,7 @@ impl HashAlgorithm for Md5Algorithm {
     }
 
     fn new_hasher(&self) -> Box<dyn HashState> {
-        Box::new(Md5State {
-            inner: Md5::new(),
-        })
+        Box::new(Md5State { inner: Md5::new() })
     }
 }
 

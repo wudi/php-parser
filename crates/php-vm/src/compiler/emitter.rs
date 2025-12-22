@@ -142,7 +142,7 @@ impl<'src> Emitter<'src> {
         for stmt in stmts {
             self.emit_stmt(stmt);
         }
-        
+
         // Implicit return:
         // - Functions/methods: return null if no explicit return
         // - Top-level scripts: NO implicit return (PHP returns 1 for include, or the last statement result)
@@ -505,8 +505,10 @@ impl<'src> Emitter<'src> {
                                     }
 
                                     // Unset nested dimension
-                                    self.chunk.code.push(OpCode::UnsetNestedDim(keys.len() as u8)); // [obj, modified_array]
-                                    
+                                    self.chunk
+                                        .code
+                                        .push(OpCode::UnsetNestedDim(keys.len() as u8)); // [obj, modified_array]
+
                                     // Assign back to property
                                     self.chunk.code.push(OpCode::AssignProp(prop_sym)); // []
                                     self.chunk.code.push(OpCode::Pop); // discard result
@@ -583,7 +585,7 @@ impl<'src> Emitter<'src> {
                 if break_level > 0 && break_level <= loop_depth {
                     // Calculate which loop to target (from the end of the stack)
                     let target_loop_idx = loop_depth - break_level;
-                    
+
                     let idx = self.chunk.code.len();
                     // Check if we're inside try-finally blocks
                     if !self.try_finally_stack.is_empty() {
@@ -593,7 +595,7 @@ impl<'src> Emitter<'src> {
                         // Normal jump
                         self.chunk.code.push(OpCode::Jmp(0)); // Patch later
                     }
-                    
+
                     // Register the jump with the target loop
                     self.loop_stack[target_loop_idx].break_jumps.push(idx);
                 }
@@ -617,7 +619,7 @@ impl<'src> Emitter<'src> {
                 if continue_level > 0 && continue_level <= loop_depth {
                     // Calculate which loop to target (from the end of the stack)
                     let target_loop_idx = loop_depth - continue_level;
-                    
+
                     let idx = self.chunk.code.len();
                     // Check if we're inside try-finally blocks
                     if !self.try_finally_stack.is_empty() {
@@ -627,7 +629,7 @@ impl<'src> Emitter<'src> {
                         // Normal jump
                         self.chunk.code.push(OpCode::Jmp(0)); // Patch later
                     }
-                    
+
                     // Register the jump with the target loop
                     self.loop_stack[target_loop_idx].continue_jumps.push(idx);
                 }
@@ -1134,7 +1136,7 @@ impl<'src> Emitter<'src> {
                 ..
             } => {
                 let try_start = self.chunk.code.len() as u32;
-                
+
                 // If there's a finally block, we need to track it BEFORE emitting the try body
                 // so that break/continue inside the try body know they're inside a finally context
                 let has_finally = finally.is_some();
@@ -1150,7 +1152,7 @@ impl<'src> Emitter<'src> {
                 } else {
                     None
                 };
-                
+
                 for stmt in *body {
                     self.emit_stmt(stmt);
                 }
@@ -1206,7 +1208,7 @@ impl<'src> Emitter<'src> {
                 if let Some(finally_body) = finally {
                     let finally_start = self.chunk.code.len() as u32;
                     let catch_table_idx = self.chunk.catch_table.len();
-                    
+
                     // Update the placeholder in try_finally_stack
                     if let Some(idx) = try_finally_placeholder_idx {
                         self.try_finally_stack[idx].catch_table_idx = catch_table_idx;
@@ -1241,7 +1243,7 @@ impl<'src> Emitter<'src> {
                             entry.finally_end = Some(finally_end);
                         }
                     }
-                    
+
                     // Add a finally-only entry for the try block
                     // This ensures finally executes even on uncaught exceptions
                     self.chunk.catch_table.push(CatchEntry {
@@ -2601,7 +2603,7 @@ impl<'src> Emitter<'src> {
                     // list($a, $b, $c) = expr
                     // Emit the right-hand side expression (should be an array)
                     self.emit_expr(expr);
-                    
+
                     // Extract each element and assign to variables
                     for (i, item) in items.iter().enumerate() {
                         let value = item.value;
@@ -3217,18 +3219,18 @@ impl<'src> Emitter<'src> {
                     // Build a compile-time constant array template
                     use crate::core::value::ConstArrayKey;
                     use indexmap::IndexMap;
-                    
+
                     let mut const_array = IndexMap::new();
                     let mut next_index = 0i64;
-                    
+
                     for item in *items {
                         if item.unpack {
                             // Array unpacking not supported in constant expressions
                             continue;
                         }
-                        
+
                         let val = self.eval_constant_expr(item.value);
-                        
+
                         if let Some(key_expr) = item.key {
                             let key_val = self.eval_constant_expr(key_expr);
                             let key = match key_val {
@@ -3261,7 +3263,7 @@ impl<'src> Emitter<'src> {
                             next_index += 1;
                         }
                     }
-                    
+
                     Val::ConstArray(Rc::new(const_array))
                 }
             }

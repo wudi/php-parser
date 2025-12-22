@@ -10,14 +10,15 @@ fn create_test_vm() -> VM {
 
 fn call_bc_op(
     vm: &mut VM,
-    func: fn(&mut VM, &[php_vm::core::value::Handle]) -> Result<php_vm::core::value::Handle, String>,
+    func: fn(
+        &mut VM,
+        &[php_vm::core::value::Handle],
+    ) -> Result<php_vm::core::value::Handle, String>,
     left: &str,
     right: &str,
     scale: Option<i64>,
 ) -> Result<String, String> {
-    let left_handle = vm
-        .arena
-        .alloc(Val::String(left.as_bytes().to_vec().into()));
+    let left_handle = vm.arena.alloc(Val::String(left.as_bytes().to_vec().into()));
     let right_handle = vm
         .arena
         .alloc(Val::String(right.as_bytes().to_vec().into()));
@@ -98,24 +99,10 @@ fn test_bcdiv() {
     let result = call_bc_op(&mut vm, php_vm::builtins::bcmath::bcdiv, "6", "3", None).unwrap();
     assert_eq!(result, "2");
 
-    let result = call_bc_op(
-        &mut vm,
-        php_vm::builtins::bcmath::bcdiv,
-        "10",
-        "3",
-        None,
-    )
-    .unwrap();
+    let result = call_bc_op(&mut vm, php_vm::builtins::bcmath::bcdiv, "10", "3", None).unwrap();
     assert_eq!(result, "3");
 
-    let result = call_bc_op(
-        &mut vm,
-        php_vm::builtins::bcmath::bcdiv,
-        "1",
-        "3",
-        None,
-    )
-    .unwrap();
+    let result = call_bc_op(&mut vm, php_vm::builtins::bcmath::bcdiv, "1", "3", None).unwrap();
     assert_eq!(result, "0");
 }
 
@@ -123,23 +110,9 @@ fn test_bcdiv() {
 fn test_bcdiv_with_scale() {
     let mut vm = create_test_vm();
 
-    let result = call_bc_op(
-        &mut vm,
-        php_vm::builtins::bcmath::bcdiv,
-        "10",
-        "3",
-        Some(2),
-    )
-    .unwrap();
+    let result = call_bc_op(&mut vm, php_vm::builtins::bcmath::bcdiv, "10", "3", Some(2)).unwrap();
     assert_eq!(result, "3.33");
 
-    let result = call_bc_op(
-        &mut vm,
-        php_vm::builtins::bcmath::bcdiv,
-        "1",
-        "3",
-        Some(4),
-    )
-    .unwrap();
+    let result = call_bc_op(&mut vm, php_vm::builtins::bcmath::bcdiv, "1", "3", Some(4)).unwrap();
     assert_eq!(result, "0.3333");
 }

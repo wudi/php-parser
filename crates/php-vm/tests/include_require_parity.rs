@@ -64,8 +64,12 @@ impl ErrorHandler for CollectingErrorHandler {
     }
 }
 
-fn run_php_file(path: &std::path::Path, error_handler: Option<CollectingErrorHandler>) -> Result<String, VmError> {
-    let source = fs::read(path).map_err(|e| VmError::RuntimeError(format!("Failed to read file: {}", e)))?;
+fn run_php_file(
+    path: &std::path::Path,
+    error_handler: Option<CollectingErrorHandler>,
+) -> Result<String, VmError> {
+    let source =
+        fs::read(path).map_err(|e| VmError::RuntimeError(format!("Failed to read file: {}", e)))?;
     let context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(context);
 
@@ -91,7 +95,7 @@ fn run_php_file(path: &std::path::Path, error_handler: Option<CollectingErrorHan
     vm.output_writer = Box::new(RefCellOutputWriter {
         writer: output_writer,
     });
-    
+
     if let Some(handler) = error_handler {
         vm.error_handler = Box::new(handler);
     }
@@ -121,20 +125,29 @@ echo $result === false ? "bool(false)\n" : "unexpected\n";
     let result = run_php_file(&main_path, Some(error_handler.clone()));
 
     // Should succeed (not fatal error)
-    assert!(result.is_ok(), "include of missing file should not be fatal");
+    assert!(
+        result.is_ok(),
+        "include of missing file should not be fatal"
+    );
 
     // Should have a warning
     let errors = error_handler.get_errors();
     assert!(
-        errors.iter().any(|(level, msg)| matches!(level, ErrorLevel::Warning) 
-            && msg.contains("Failed to open stream")),
+        errors
+            .iter()
+            .any(|(level, msg)| matches!(level, ErrorLevel::Warning)
+                && msg.contains("Failed to open stream")),
         "Should emit warning about failed stream, got: {:?}",
         errors
     );
-    
+
     // Should output "bool(false)"
     let output = result.unwrap();
-    assert!(output.contains("bool(false)"), "Include of missing file should return false, got: {}", output);
+    assert!(
+        output.contains("bool(false)"),
+        "Include of missing file should return false, got: {}",
+        output
+    );
 }
 
 #[test]
@@ -157,7 +170,7 @@ var_dump($result);
 
     // Should fail (fatal error)
     assert!(result.is_err(), "require of missing file should be fatal");
-    
+
     let err_msg = result.unwrap_err().to_string();
     assert!(
         err_msg.contains("Require failed") || err_msg.contains("require"),
@@ -191,10 +204,14 @@ include_once "{}";
     .unwrap();
 
     let output = run_php_file(&main_path, None).unwrap();
-    
+
     // Should only see "included" once, not three times
     let count = output.matches("included").count();
-    assert_eq!(count, 1, "include_once should only include file once, got output: {}", output);
+    assert_eq!(
+        count, 1,
+        "include_once should only include file once, got output: {}",
+        output
+    );
 }
 
 #[test]
@@ -222,9 +239,13 @@ require_once "{}";
     .unwrap();
 
     let output = run_php_file(&main_path, None).unwrap();
-    
+
     let count = output.matches("required").count();
-    assert_eq!(count, 1, "require_once should only require file once, got output: {}", output);
+    assert_eq!(
+        count, 1,
+        "require_once should only require file once, got output: {}",
+        output
+    );
 }
 
 #[test]
@@ -249,10 +270,14 @@ echo "result=" . $result . "\n";
     .unwrap();
 
     let output = run_php_file(&main_path, None).unwrap();
-    
+
     // Should output "hi" and then "result=1"
     assert!(output.contains("hi"), "Should execute included file");
-    assert!(output.contains("result=1"), "Include should return 1 by default, got: {}", output);
+    assert!(
+        output.contains("result=1"),
+        "Include should return 1 by default, got: {}",
+        output
+    );
 }
 
 #[test]
@@ -277,8 +302,12 @@ echo "result=" . $result . "\n";
     .unwrap();
 
     let output = run_php_file(&main_path, None).unwrap();
-    
-    assert!(output.contains("result=42"), "Include should return explicit return value, got: {}", output);
+
+    assert!(
+        output.contains("result=42"),
+        "Include should return explicit return value, got: {}",
+        output
+    );
 }
 
 #[test]
@@ -306,8 +335,16 @@ echo "second=" . ($second === true ? "true" : "false") . "\n";
     .unwrap();
 
     let output = run_php_file(&main_path, None).unwrap();
-    
+
     // First include_once should return 99 (explicit return), second should return true (already included)
-    assert!(output.contains("first=99"), "First include_once should return explicit value, got: {}", output);
-    assert!(output.contains("second=true"), "Second include_once should return true, got: {}", output);
+    assert!(
+        output.contains("first=99"),
+        "First include_once should return explicit value, got: {}",
+        output
+    );
+    assert!(
+        output.contains("second=true"),
+        "Second include_once should return true, got: {}",
+        output
+    );
 }

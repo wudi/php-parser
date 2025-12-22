@@ -97,6 +97,13 @@ pub enum Visibility {
     Private,
 }
 
+/// Key type for compile-time constant arrays
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConstArrayKey {
+    Int(i64),
+    Str(Rc<Vec<u8>>),
+}
+
 #[derive(Debug, Clone)]
 pub enum Val {
     Null,
@@ -110,13 +117,6 @@ pub enum Val {
     ObjPayload(ObjectData),
     Resource(Rc<dyn Any>), // Changed to Rc to support Clone
     AppendPlaceholder,     // Internal use for $a[]
-}
-
-/// Key type for compile-time constant arrays
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ConstArrayKey {
-    Int(i64),
-    Str(Rc<Vec<u8>>),
 }
 
 impl PartialEq for Val {
@@ -150,6 +150,40 @@ impl Val {
             Val::Object(_) | Val::ObjPayload(_) => "object",
             Val::Resource(_) => "resource",
             Val::AppendPlaceholder => "append_placeholder",
+        }
+    }
+
+    /// Convert to string following PHP's zend_make_printable_zval semantics
+    /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - zend_make_printable_zval
+    pub fn to_php_string_bytes(&self) -> Vec<u8> {
+        match self {
+            Val::Null => Vec::new(),
+            Val::Bool(b) => {
+                if *b {
+                    b"1".to_vec()
+                } else {
+                    Vec::new()
+                }
+            }
+            Val::Int(i) => i.to_string().into_bytes(),
+            Val::Float(f) => {
+                // PHP's float to string conversion has specific rules
+                // It removes trailing zeros if integer part is not zero, or if precision makes it integer
+                // For 0.0, it's "0"
+                // For 1.0, it's "1"
+                // For 1.23, it's "1.23"
+                // Using format! ensures trailing zeros are removed if possible for whole numbers
+                if f.fract() == 0.0 {
+                    format!("{:.0}", f).into_bytes()
+                } else {
+                    format!("{}", f).into_bytes()
+                }
+            }
+            Val::String(s) => s.to_vec(),
+            Val::Array(_) | Val::ConstArray(_) => b"Array".to_vec(),
+            Val::Object(_) | Val::ObjPayload(_) => b"Object".to_vec(),
+            Val::Resource(_) => b"Resource".to_vec(),
+            Val::AppendPlaceholder => Vec::new(),
         }
     }
 

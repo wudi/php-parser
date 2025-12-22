@@ -47,7 +47,7 @@ impl Extension for JsonExtension {
 
         // Register JSON error constants
         use crate::core::value::Val;
-        
+
         registry.register_constant(b"JSON_ERROR_NONE", Val::Int(0));
         registry.register_constant(b"JSON_ERROR_DEPTH", Val::Int(1));
         registry.register_constant(b"JSON_ERROR_STATE_MISMATCH", Val::Int(2));

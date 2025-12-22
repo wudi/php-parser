@@ -39,17 +39,18 @@ fn compile_and_run(source: &str) -> Result<String, String> {
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);
-    
+
     // Capture output
     let output = Rc::new(RefCell::new(Vec::new()));
     let output_clone = output.clone();
-    vm.set_output_writer(Box::new(
-        php_vm::vm::engine::CapturingOutputWriter::new(move |bytes| {
+    vm.set_output_writer(Box::new(php_vm::vm::engine::CapturingOutputWriter::new(
+        move |bytes| {
             output_clone.borrow_mut().extend_from_slice(bytes);
-        }),
-    ));
+        },
+    )));
 
-    vm.run(Rc::new(chunk)).map_err(|e| format!("Runtime error: {:?}", e))?;
+    vm.run(Rc::new(chunk))
+        .map_err(|e| format!("Runtime error: {:?}", e))?;
 
     let result = output.borrow().clone();
     Ok(String::from_utf8_lossy(&result).to_string())

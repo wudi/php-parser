@@ -141,9 +141,7 @@ impl VM {
         // PHP 8.1+: Disallow writing to entire $GLOBALS array
         // Reference: https://www.php.net/manual/en/reserved.variables.globals.php
         if self.is_globals_symbol(sym) {
-            return Err(VmError::RuntimeError(
-                "Cannot re-assign $GLOBALS".into()
-            ));
+            return Err(VmError::RuntimeError("Cannot re-assign $GLOBALS".into()));
         }
 
         // Bind superglobal if needed
@@ -205,9 +203,7 @@ impl VM {
     pub(crate) fn unset_variable(&mut self, sym: Symbol) -> Result<(), VmError> {
         // PHP 8.1+: Disallow unsetting $GLOBALS
         if self.is_globals_symbol(sym) {
-            return Err(VmError::RuntimeError(
-                "Cannot unset $GLOBALS".into()
-            ));
+            return Err(VmError::RuntimeError("Cannot unset $GLOBALS".into()));
         }
 
         let frame = self

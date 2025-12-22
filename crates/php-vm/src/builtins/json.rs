@@ -113,10 +113,10 @@ impl JsonEncodeOptions {
 /// JSON decoding options (bitwise flags)
 #[derive(Default, Clone, Copy)]
 pub struct JsonDecodeOptions {
-    pub object_as_array: bool,    // JSON_OBJECT_AS_ARRAY (1)
-    pub bigint_as_string: bool,   // JSON_BIGINT_AS_STRING (2)
-    pub throw_on_error: bool,     // JSON_THROW_ON_ERROR (4194304)
-    pub invalid_utf8_ignore: bool, // JSON_INVALID_UTF8_IGNORE (1048576)
+    pub object_as_array: bool,         // JSON_OBJECT_AS_ARRAY (1)
+    pub bigint_as_string: bool,        // JSON_BIGINT_AS_STRING (2)
+    pub throw_on_error: bool,          // JSON_THROW_ON_ERROR (4194304)
+    pub invalid_utf8_ignore: bool,     // JSON_INVALID_UTF8_IGNORE (1048576)
     pub invalid_utf8_substitute: bool, // JSON_INVALID_UTF8_SUBSTITUTE (2097152)
 }
 
@@ -344,9 +344,9 @@ impl<'a> EncodeContext<'a> {
             // Encode key as string
             let key_str = match key {
                 ArrayKey::Int(i) => i.to_string(),
-                ArrayKey::Str(s) => {
-                    std::str::from_utf8(s).map_err(|_| JsonError::Utf8)?.to_string()
-                }
+                ArrayKey::Str(s) => std::str::from_utf8(s)
+                    .map_err(|_| JsonError::Utf8)?
+                    .to_string(),
             };
 
             result.push('"');
@@ -778,7 +778,7 @@ mod tests {
         let mut vm = create_test_vm();
         let int_handle = vm.arena.alloc(Val::Int(-42));
         let result = php_json_encode(&mut vm, &[int_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "-42");
         } else {
@@ -791,7 +791,7 @@ mod tests {
         let mut vm = create_test_vm();
         let zero_handle = vm.arena.alloc(Val::Int(0));
         let result = php_json_encode(&mut vm, &[zero_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "0");
         } else {
@@ -804,7 +804,7 @@ mod tests {
         let mut vm = create_test_vm();
         let float_handle = vm.arena.alloc(Val::Float(3.14));
         let result = php_json_encode(&mut vm, &[float_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "3.14");
         } else {
@@ -817,9 +817,9 @@ mod tests {
         let mut vm = create_test_vm();
         let float_handle = vm.arena.alloc(Val::Float(1.0));
         let flags_handle = vm.arena.alloc(Val::Int(1024)); // JSON_PRESERVE_ZERO_FRACTION
-        
+
         let result = php_json_encode(&mut vm, &[float_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "1.0");
         } else {
@@ -831,9 +831,9 @@ mod tests {
     fn test_encode_inf_error() {
         let mut vm = create_test_vm();
         let inf_handle = vm.arena.alloc(Val::Float(f64::INFINITY));
-        
+
         let result = php_json_encode(&mut vm, &[inf_handle]).unwrap();
-        
+
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
         assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
@@ -843,9 +843,9 @@ mod tests {
     fn test_encode_nan_error() {
         let mut vm = create_test_vm();
         let nan_handle = vm.arena.alloc(Val::Float(f64::NAN));
-        
+
         let result = php_json_encode(&mut vm, &[nan_handle]).unwrap();
-        
+
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
         assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
@@ -859,9 +859,9 @@ mod tests {
     fn test_encode_empty_string() {
         let mut vm = create_test_vm();
         let str_handle = vm.arena.alloc(Val::String(b"".to_vec().into()));
-        
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""""#);
         } else {
@@ -872,10 +872,12 @@ mod tests {
     #[test]
     fn test_encode_string_with_quotes() {
         let mut vm = create_test_vm();
-        let str_handle = vm.arena.alloc(Val::String(b"hello \"world\"".to_vec().into()));
-        
+        let str_handle = vm
+            .arena
+            .alloc(Val::String(b"hello \"world\"".to_vec().into()));
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""hello \"world\"""#);
         } else {
@@ -886,10 +888,12 @@ mod tests {
     #[test]
     fn test_encode_string_with_backslash() {
         let mut vm = create_test_vm();
-        let str_handle = vm.arena.alloc(Val::String(b"path\\to\\file".to_vec().into()));
-        
+        let str_handle = vm
+            .arena
+            .alloc(Val::String(b"path\\to\\file".to_vec().into()));
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""path\\to\\file""#);
         } else {
@@ -901,9 +905,9 @@ mod tests {
     fn test_encode_string_with_newline() {
         let mut vm = create_test_vm();
         let str_handle = vm.arena.alloc(Val::String(b"line1\nline2".to_vec().into()));
-        
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""line1\nline2""#);
         } else {
@@ -915,9 +919,9 @@ mod tests {
     fn test_encode_string_with_tab() {
         let mut vm = create_test_vm();
         let str_handle = vm.arena.alloc(Val::String(b"col1\tcol2".to_vec().into()));
-        
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""col1\tcol2""#);
         } else {
@@ -928,11 +932,13 @@ mod tests {
     #[test]
     fn test_encode_string_unescaped_slashes() {
         let mut vm = create_test_vm();
-        let str_handle = vm.arena.alloc(Val::String(b"http://example.com/".to_vec().into()));
+        let str_handle = vm
+            .arena
+            .alloc(Val::String(b"http://example.com/".to_vec().into()));
         let flags_handle = vm.arena.alloc(Val::Int(64)); // JSON_UNESCAPED_SLASHES
-        
+
         let result = php_json_encode(&mut vm, &[str_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#""http://example.com/""#);
         } else {
@@ -949,9 +955,9 @@ mod tests {
         let mut vm = create_test_vm();
         let arr = ArrayData::new();
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "[]");
         } else {
@@ -965,9 +971,9 @@ mod tests {
         let mut arr = ArrayData::new();
         arr.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(42)));
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "[42]");
         } else {
@@ -980,13 +986,16 @@ mod tests {
         let mut vm = create_test_vm();
         let mut arr = ArrayData::new();
         arr.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(42)));
-        arr.insert(ArrayKey::Int(1), vm.arena.alloc(Val::String(b"hello".to_vec().into())));
+        arr.insert(
+            ArrayKey::Int(1),
+            vm.arena.alloc(Val::String(b"hello".to_vec().into())),
+        );
         arr.insert(ArrayKey::Int(2), vm.arena.alloc(Val::Bool(true)));
         arr.insert(ArrayKey::Int(3), vm.arena.alloc(Val::Null));
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#"[42,"hello",true,null]"#);
         } else {
@@ -998,12 +1007,18 @@ mod tests {
     fn test_encode_associative_array() {
         let mut vm = create_test_vm();
         let mut arr = ArrayData::new();
-        arr.insert(ArrayKey::Str(b"name".to_vec().into()), vm.arena.alloc(Val::String(b"John".to_vec().into())));
-        arr.insert(ArrayKey::Str(b"age".to_vec().into()), vm.arena.alloc(Val::Int(30)));
+        arr.insert(
+            ArrayKey::Str(b"name".to_vec().into()),
+            vm.arena.alloc(Val::String(b"John".to_vec().into())),
+        );
+        arr.insert(
+            ArrayKey::Str(b"age".to_vec().into()),
+            vm.arena.alloc(Val::Int(30)),
+        );
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Order might vary, check both possibilities
@@ -1020,9 +1035,9 @@ mod tests {
         arr.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(1)));
         arr.insert(ArrayKey::Int(2), vm.arena.alloc(Val::Int(3))); // Skip key 1
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             // Non-sequential keys should produce object
             assert_eq!(std::str::from_utf8(s).unwrap(), r#"{"0":1,"2":3}"#);
@@ -1038,10 +1053,10 @@ mod tests {
         arr.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(1)));
         arr.insert(ArrayKey::Int(1), vm.arena.alloc(Val::Int(2)));
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let flags_handle = vm.arena.alloc(Val::Int(16)); // JSON_FORCE_OBJECT
         let result = php_json_encode(&mut vm, &[arr_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#"{"0":1,"1":2}"#);
         } else {
@@ -1052,19 +1067,22 @@ mod tests {
     #[test]
     fn test_encode_nested_array() {
         let mut vm = create_test_vm();
-        
+
         let mut inner = ArrayData::new();
         inner.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(1)));
         inner.insert(ArrayKey::Int(1), vm.arena.alloc(Val::Int(2)));
         let inner_handle = vm.arena.alloc(Val::Array(inner.into()));
-        
+
         let mut outer = ArrayData::new();
-        outer.insert(ArrayKey::Int(0), vm.arena.alloc(Val::String(b"outer".to_vec().into())));
+        outer.insert(
+            ArrayKey::Int(0),
+            vm.arena.alloc(Val::String(b"outer".to_vec().into())),
+        );
         outer.insert(ArrayKey::Int(1), inner_handle);
         let outer_handle = vm.arena.alloc(Val::Array(outer.into()));
-        
+
         let result = php_json_encode(&mut vm, &[outer_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), r#"["outer",[1,2]]"#);
         } else {
@@ -1083,10 +1101,10 @@ mod tests {
         arr.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(1)));
         arr.insert(ArrayKey::Int(1), vm.arena.alloc(Val::Int(2)));
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let flags_handle = vm.arena.alloc(Val::Int(128)); // JSON_PRETTY_PRINT
         let result = php_json_encode(&mut vm, &[arr_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let expected = "[\n    1,\n    2\n]";
             assert_eq!(std::str::from_utf8(s).unwrap(), expected);
@@ -1099,13 +1117,19 @@ mod tests {
     fn test_encode_pretty_print_object() {
         let mut vm = create_test_vm();
         let mut arr = ArrayData::new();
-        arr.insert(ArrayKey::Str(b"a".to_vec().into()), vm.arena.alloc(Val::Int(1)));
-        arr.insert(ArrayKey::Str(b"b".to_vec().into()), vm.arena.alloc(Val::Int(2)));
+        arr.insert(
+            ArrayKey::Str(b"a".to_vec().into()),
+            vm.arena.alloc(Val::Int(1)),
+        );
+        arr.insert(
+            ArrayKey::Str(b"b".to_vec().into()),
+            vm.arena.alloc(Val::Int(2)),
+        );
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let flags_handle = vm.arena.alloc(Val::Int(128)); // JSON_PRETTY_PRINT
         let result = php_json_encode(&mut vm, &[arr_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Should have newlines and indentation
@@ -1119,18 +1143,21 @@ mod tests {
     #[test]
     fn test_encode_pretty_print_nested() {
         let mut vm = create_test_vm();
-        
+
         let mut inner = ArrayData::new();
-        inner.insert(ArrayKey::Str(b"x".to_vec().into()), vm.arena.alloc(Val::Int(1)));
+        inner.insert(
+            ArrayKey::Str(b"x".to_vec().into()),
+            vm.arena.alloc(Val::Int(1)),
+        );
         let inner_handle = vm.arena.alloc(Val::Array(inner.into()));
-        
+
         let mut outer = ArrayData::new();
         outer.insert(ArrayKey::Str(b"obj".to_vec().into()), inner_handle);
         let outer_handle = vm.arena.alloc(Val::Array(outer.into()));
-        
+
         let flags_handle = vm.arena.alloc(Val::Int(128)); // JSON_PRETTY_PRINT
         let result = php_json_encode(&mut vm, &[outer_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Should have double indentation for nested object
@@ -1148,10 +1175,10 @@ mod tests {
     fn test_json_last_error_none() {
         let mut vm = create_test_vm();
         let null_handle = vm.arena.alloc(Val::Null);
-        
+
         // Successful encode
         php_json_encode(&mut vm, &[null_handle]).unwrap();
-        
+
         // Check last error
         let result = php_json_last_error(&mut vm, &[]).unwrap();
         if let Val::Int(code) = vm.arena.get(result).value {
@@ -1164,22 +1191,22 @@ mod tests {
     #[test]
     fn test_json_last_error_depth() {
         let mut vm = create_test_vm();
-        
+
         // Create deep nesting
         let mut inner = ArrayData::new();
         inner.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(1)));
         let inner_handle = vm.arena.alloc(Val::Array(inner.into()));
-        
+
         let mut outer = ArrayData::new();
         outer.insert(ArrayKey::Int(0), inner_handle);
         let outer_handle = vm.arena.alloc(Val::Array(outer.into()));
-        
+
         let flags_handle = vm.arena.alloc(Val::Int(0));
         let depth_handle = vm.arena.alloc(Val::Int(1));
-        
+
         // Trigger depth error
         php_json_encode(&mut vm, &[outer_handle, flags_handle, depth_handle]).unwrap();
-        
+
         // Check last error code
         let result = php_json_last_error(&mut vm, &[]).unwrap();
         if let Val::Int(code) = vm.arena.get(result).value {
@@ -1193,10 +1220,10 @@ mod tests {
     fn test_json_last_error_msg() {
         let mut vm = create_test_vm();
         let inf_handle = vm.arena.alloc(Val::Float(f64::INFINITY));
-        
+
         // Trigger INF error
         php_json_encode(&mut vm, &[inf_handle]).unwrap();
-        
+
         // Check error message
         let result = php_json_last_error_msg(&mut vm, &[]).unwrap();
         if let Val::String(msg) = &vm.arena.get(result).value {
@@ -1210,16 +1237,16 @@ mod tests {
     #[test]
     fn test_json_last_error_reset_on_success() {
         let mut vm = create_test_vm();
-        
+
         // First, trigger an error
         let inf_handle = vm.arena.alloc(Val::Float(f64::INFINITY));
         php_json_encode(&mut vm, &[inf_handle]).unwrap();
         assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
-        
+
         // Now encode successfully
         let null_handle = vm.arena.alloc(Val::Null);
         php_json_encode(&mut vm, &[null_handle]).unwrap();
-        
+
         // Error should be reset
         assert_eq!(vm.context.json_last_error, JsonError::None);
     }
@@ -1231,7 +1258,7 @@ mod tests {
     #[test]
     fn test_encode_deeply_nested_arrays() {
         let mut vm = create_test_vm();
-        
+
         // Create 5 levels of nesting
         let mut current = vm.arena.alloc(Val::Int(42));
         for _ in 0..5 {
@@ -1239,9 +1266,9 @@ mod tests {
             arr.insert(ArrayKey::Int(0), current);
             current = vm.arena.alloc(Val::Array(arr.into()));
         }
-        
+
         let result = php_json_encode(&mut vm, &[current]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "[[[[[42]]]]]");
         } else {
@@ -1257,9 +1284,9 @@ mod tests {
         arr.insert(ArrayKey::Int(1), vm.arena.alloc(Val::Null));
         arr.insert(ArrayKey::Int(2), vm.arena.alloc(Val::Null));
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "[null,null,null]");
         } else {
@@ -1270,10 +1297,12 @@ mod tests {
     #[test]
     fn test_encode_string_with_unicode() {
         let mut vm = create_test_vm();
-        let str_handle = vm.arena.alloc(Val::String("Hello 世界".as_bytes().to_vec().into()));
-        
+        let str_handle = vm
+            .arena
+            .alloc(Val::String("Hello 世界".as_bytes().to_vec().into()));
+
         let result = php_json_encode(&mut vm, &[str_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Should be escaped by default
@@ -1286,11 +1315,13 @@ mod tests {
     #[test]
     fn test_encode_string_unescaped_unicode() {
         let mut vm = create_test_vm();
-        let str_handle = vm.arena.alloc(Val::String("Hello 世界".as_bytes().to_vec().into()));
+        let str_handle = vm
+            .arena
+            .alloc(Val::String("Hello 世界".as_bytes().to_vec().into()));
         let flags_handle = vm.arena.alloc(Val::Int(256)); // JSON_UNESCAPED_UNICODE
-        
+
         let result = php_json_encode(&mut vm, &[str_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             assert_eq!(json, r#""Hello 世界""#);
@@ -1303,9 +1334,9 @@ mod tests {
     fn test_encode_resource_unsupported() {
         let mut vm = create_test_vm();
         let resource_handle = vm.arena.alloc(Val::Resource(std::rc::Rc::new(42)));
-        
+
         let result = php_json_encode(&mut vm, &[resource_handle]).unwrap();
-        
+
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
         assert_eq!(vm.context.json_last_error, JsonError::UnsupportedType);
@@ -1315,14 +1346,17 @@ mod tests {
     fn test_encode_multiple_flags_combined() {
         let mut vm = create_test_vm();
         let mut arr = ArrayData::new();
-        arr.insert(ArrayKey::Str(b"url".to_vec().into()), 
-                  vm.arena.alloc(Val::String(b"http://example.com/".to_vec().into())));
+        arr.insert(
+            ArrayKey::Str(b"url".to_vec().into()),
+            vm.arena
+                .alloc(Val::String(b"http://example.com/".to_vec().into())),
+        );
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         // Combine PRETTY_PRINT (128) + UNESCAPED_SLASHES (64)
         let flags_handle = vm.arena.alloc(Val::Int(128 | 64));
         let result = php_json_encode(&mut vm, &[arr_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Should have both pretty print AND unescaped slashes
@@ -1337,9 +1371,9 @@ mod tests {
     fn test_encode_large_int() {
         let mut vm = create_test_vm();
         let large_int = vm.arena.alloc(Val::Int(9007199254740991)); // 2^53 - 1 (JS MAX_SAFE_INTEGER)
-        
+
         let result = php_json_encode(&mut vm, &[large_int]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             assert_eq!(std::str::from_utf8(s).unwrap(), "9007199254740991");
         } else {
@@ -1351,9 +1385,9 @@ mod tests {
     fn test_encode_negative_zero_float() {
         let mut vm = create_test_vm();
         let neg_zero = vm.arena.alloc(Val::Float(-0.0));
-        
+
         let result = php_json_encode(&mut vm, &[neg_zero]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             // -0.0 should be encoded as "0" or "-0" depending on Rust's fmt
             let json = std::str::from_utf8(s).unwrap();
@@ -1368,9 +1402,9 @@ mod tests {
         let mut vm = create_test_vm();
         let str_handle = vm.arena.alloc(Val::String(b"<script>".to_vec().into()));
         let flags_handle = vm.arena.alloc(Val::Int(1)); // JSON_HEX_TAG
-        
+
         let result = php_json_encode(&mut vm, &[str_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // < and > should be escaped as \u003C and \u003E
@@ -1386,9 +1420,9 @@ mod tests {
         let mut vm = create_test_vm();
         let str_handle = vm.arena.alloc(Val::String(b"Tom & Jerry".to_vec().into()));
         let flags_handle = vm.arena.alloc(Val::Int(2)); // JSON_HEX_AMP
-        
+
         let result = php_json_encode(&mut vm, &[str_handle, flags_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // & should be escaped as \u0026
@@ -1401,7 +1435,7 @@ mod tests {
     #[test]
     fn test_encode_default_depth_512() {
         let mut vm = create_test_vm();
-        
+
         // Create an array nested exactly 512 levels deep
         // This should succeed with default depth
         let mut current = vm.arena.alloc(Val::Int(1));
@@ -1410,9 +1444,9 @@ mod tests {
             arr.insert(ArrayKey::Int(0), current);
             current = vm.arena.alloc(Val::Array(arr.into()));
         }
-        
+
         let result = php_json_encode(&mut vm, &[current]).unwrap();
-        
+
         // Should succeed (not return false)
         assert!(matches!(vm.arena.get(result).value, Val::String(_)));
         assert_eq!(vm.context.json_last_error, JsonError::None);
@@ -1421,33 +1455,33 @@ mod tests {
     #[test]
     fn test_encode_circular_reference_detection() {
         let mut vm = create_test_vm();
-        
+
         // Create a circular reference scenario:
         // We can't actually create a true circular reference with Rc<ArrayData>
         // because Rc is immutable. However, we can test that the visited set
         // works correctly by using the same handle multiple times in nested structures.
-        
+
         // The recursion detection works by tracking Handle values we've seen.
         // If we encounter the same handle again while encoding, it's a cycle.
-        
+
         // Since we can't mutate Rc<ArrayData> after creation, we'll create
         // a deeply nested structure that references itself indirectly.
         // For a true circular reference test, we'd need a different approach
         // or wait for object support where we can modify object properties.
-        
+
         // Instead, let's test that deeply nested structures with the same
         // handle referenced multiple times works correctly (not an error).
         let inner = vm.arena.alloc(Val::Int(42));
-        
+
         let mut arr = ArrayData::new();
         arr.insert(ArrayKey::Int(0), inner);
         let arr_handle = vm.arena.alloc(Val::Array(arr.into()));
-        
+
         // This should succeed - referencing the same value multiple times is OK
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
         assert!(matches!(vm.arena.get(result).value, Val::String(_)));
         assert_eq!(vm.context.json_last_error, JsonError::None);
-        
+
         // Note: True circular reference testing will be added when we have
         // objects with mutable properties that can reference themselves
     }
@@ -1455,22 +1489,22 @@ mod tests {
     #[test]
     fn test_encode_sibling_arrays_not_circular() {
         let mut vm = create_test_vm();
-        
+
         // Create a shared inner array
         let mut inner = ArrayData::new();
         inner.insert(ArrayKey::Int(0), vm.arena.alloc(Val::Int(42)));
         let inner_handle = vm.arena.alloc(Val::Array(inner.into()));
-        
+
         // Create an outer array that references the inner array twice
         // This is NOT circular - just shared reference
         let mut outer = ArrayData::new();
         outer.insert(ArrayKey::Int(0), inner_handle);
         outer.insert(ArrayKey::Int(1), inner_handle);
         let outer_handle = vm.arena.alloc(Val::Array(outer.into()));
-        
+
         // Should succeed - same object referenced twice is OK, just not circular
         let result = php_json_encode(&mut vm, &[outer_handle]).unwrap();
-        
+
         if let Val::String(s) = &vm.arena.get(result).value {
             let json = std::str::from_utf8(s).unwrap();
             // Should encode the same inner array twice
@@ -1478,14 +1512,14 @@ mod tests {
         } else {
             panic!("Expected string result");
         }
-        
+
         assert_eq!(vm.context.json_last_error, JsonError::None);
     }
 
     #[test]
     fn test_encode_multiple_params_validation() {
         let mut vm = create_test_vm();
-        
+
         // Test with no parameters - should error
         let result = php_json_encode(&mut vm, &[]);
         assert!(result.is_err());
@@ -1495,7 +1529,7 @@ mod tests {
     #[test]
     fn test_json_last_error_validation() {
         let mut vm = create_test_vm();
-        
+
         // json_last_error() should not accept parameters
         let dummy = vm.arena.alloc(Val::Int(1));
         let result = php_json_last_error(&mut vm, &[dummy]);
@@ -1506,7 +1540,7 @@ mod tests {
     #[test]
     fn test_json_last_error_msg_validation() {
         let mut vm = create_test_vm();
-        
+
         // json_last_error_msg() should not accept parameters
         let dummy = vm.arena.alloc(Val::Int(1));
         let result = php_json_last_error_msg(&mut vm, &[dummy]);
@@ -1519,15 +1553,36 @@ mod tests {
         // Verify all error messages are properly defined
         assert_eq!(JsonError::None.message(), "No error");
         assert_eq!(JsonError::Depth.message(), "Maximum stack depth exceeded");
-        assert_eq!(JsonError::StateMismatch.message(), "State mismatch (invalid or malformed JSON)");
-        assert_eq!(JsonError::CtrlChar.message(), "Control character error, possibly incorrectly encoded");
+        assert_eq!(
+            JsonError::StateMismatch.message(),
+            "State mismatch (invalid or malformed JSON)"
+        );
+        assert_eq!(
+            JsonError::CtrlChar.message(),
+            "Control character error, possibly incorrectly encoded"
+        );
         assert_eq!(JsonError::Syntax.message(), "Syntax error");
-        assert_eq!(JsonError::Utf8.message(), "Malformed UTF-8 characters, possibly incorrectly encoded");
+        assert_eq!(
+            JsonError::Utf8.message(),
+            "Malformed UTF-8 characters, possibly incorrectly encoded"
+        );
         assert_eq!(JsonError::Recursion.message(), "Recursion detected");
-        assert_eq!(JsonError::InfOrNan.message(), "Inf and NaN cannot be JSON encoded");
-        assert_eq!(JsonError::UnsupportedType.message(), "Type is not supported");
-        assert_eq!(JsonError::InvalidPropertyName.message(), "The decoded property name is invalid");
-        assert_eq!(JsonError::Utf16.message(), "Single unpaired UTF-16 surrogate in unicode escape");
+        assert_eq!(
+            JsonError::InfOrNan.message(),
+            "Inf and NaN cannot be JSON encoded"
+        );
+        assert_eq!(
+            JsonError::UnsupportedType.message(),
+            "Type is not supported"
+        );
+        assert_eq!(
+            JsonError::InvalidPropertyName.message(),
+            "The decoded property name is invalid"
+        );
+        assert_eq!(
+            JsonError::Utf16.message(),
+            "Single unpaired UTF-16 surrogate in unicode escape"
+        );
     }
 
     #[test]

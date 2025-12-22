@@ -1,7 +1,7 @@
 use crate::builtins::spl;
 use crate::builtins::{
-    array, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
-    output_control, pcre, string, url, variable, bcmath,
+    array, bcmath, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
+    output_control, pcre, string, url, variable,
 };
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
@@ -84,10 +84,90 @@ impl EngineContext {
             string::php_str_repeat as NativeHandler,
         );
         functions.insert(b"substr".to_vec(), string::php_substr as NativeHandler);
+        functions.insert(
+            b"substr_replace".to_vec(),
+            string::php_substr_replace as NativeHandler,
+        );
         functions.insert(b"strpos".to_vec(), string::php_strpos as NativeHandler);
+        functions.insert(b"strtr".to_vec(), string::php_strtr as NativeHandler);
+        functions.insert(b"trim".to_vec(), string::php_trim as NativeHandler);
+        functions.insert(b"ltrim".to_vec(), string::php_ltrim as NativeHandler);
+        functions.insert(b"rtrim".to_vec(), string::php_rtrim as NativeHandler);
+        functions.insert(b"chr".to_vec(), string::php_chr as NativeHandler);
+        functions.insert(b"ord".to_vec(), string::php_ord as NativeHandler);
+        functions.insert(b"bin2hex".to_vec(), string::php_bin2hex as NativeHandler);
+        functions.insert(b"hex2bin".to_vec(), string::php_hex2bin as NativeHandler);
+        functions.insert(
+            b"addslashes".to_vec(),
+            string::php_addslashes as NativeHandler,
+        );
+        functions.insert(
+            b"stripslashes".to_vec(),
+            string::php_stripslashes as NativeHandler,
+        );
+        functions.insert(
+            b"addcslashes".to_vec(),
+            string::php_addcslashes as NativeHandler,
+        );
+        functions.insert(
+            b"stripcslashes".to_vec(),
+            string::php_stripcslashes as NativeHandler,
+        );
+        functions.insert(b"str_pad".to_vec(), string::php_str_pad as NativeHandler);
+        functions.insert(
+            b"str_rot13".to_vec(),
+            string::php_str_rot13 as NativeHandler,
+        );
+        functions.insert(
+            b"str_shuffle".to_vec(),
+            string::php_str_shuffle as NativeHandler,
+        );
+        functions.insert(
+            b"str_split".to_vec(),
+            string::php_str_split as NativeHandler,
+        );
+        functions.insert(b"strrev".to_vec(), string::php_strrev as NativeHandler);
+        functions.insert(b"strcmp".to_vec(), string::php_strcmp as NativeHandler);
+        functions.insert(
+            b"strcasecmp".to_vec(),
+            string::php_strcasecmp as NativeHandler,
+        );
+        functions.insert(b"strncmp".to_vec(), string::php_strncmp as NativeHandler);
+        functions.insert(
+            b"strncasecmp".to_vec(),
+            string::php_strncasecmp as NativeHandler,
+        );
+        functions.insert(b"strstr".to_vec(), string::php_strstr as NativeHandler);
+        functions.insert(b"stristr".to_vec(), string::php_stristr as NativeHandler);
+        functions.insert(
+            b"substr_count".to_vec(),
+            string::php_substr_count as NativeHandler,
+        );
+        functions.insert(b"ucfirst".to_vec(), string::php_ucfirst as NativeHandler);
+        functions.insert(b"lcfirst".to_vec(), string::php_lcfirst as NativeHandler);
+        functions.insert(b"ucwords".to_vec(), string::php_ucwords as NativeHandler);
+        functions.insert(b"wordwrap".to_vec(), string::php_wordwrap as NativeHandler);
+        functions.insert(b"strtok".to_vec(), string::php_strtok as NativeHandler);
+
+        functions.insert(
+            b"str_contains".to_vec(),
+            string::php_str_contains as NativeHandler,
+        );
+        functions.insert(
+            b"str_starts_with".to_vec(),
+            string::php_str_starts_with as NativeHandler,
+        );
+        functions.insert(
+            b"str_ends_with".to_vec(),
+            string::php_str_ends_with as NativeHandler,
+        );
         functions.insert(
             b"str_replace".to_vec(),
             string::php_str_replace as NativeHandler,
+        );
+        functions.insert(
+            b"str_ireplace".to_vec(),
+            string::php_str_ireplace as NativeHandler,
         );
         functions.insert(
             b"strtolower".to_vec(),
@@ -198,7 +278,10 @@ impl EngineContext {
             b"http_build_query".to_vec(),
             url::php_http_build_query as NativeHandler,
         );
-        functions.insert(b"get_headers".to_vec(), url::php_get_headers as NativeHandler);
+        functions.insert(
+            b"get_headers".to_vec(),
+            url::php_get_headers as NativeHandler,
+        );
         functions.insert(
             b"get_meta_tags".to_vec(),
             url::php_get_meta_tags as NativeHandler,
@@ -525,9 +608,18 @@ impl EngineContext {
         functions.insert(b"date".to_vec(), datetime::php_date as NativeHandler);
         functions.insert(b"gmdate".to_vec(), datetime::php_gmdate as NativeHandler);
         functions.insert(b"time".to_vec(), datetime::php_time as NativeHandler);
-        functions.insert(b"date_create".to_vec(), datetime::php_date_create as NativeHandler);
-        functions.insert(b"date_create_immutable".to_vec(), datetime::php_date_create_immutable as NativeHandler);
-        functions.insert(b"date_format".to_vec(), datetime::php_date_format as NativeHandler);
+        functions.insert(
+            b"date_create".to_vec(),
+            datetime::php_date_create as NativeHandler,
+        );
+        functions.insert(
+            b"date_create_immutable".to_vec(),
+            datetime::php_date_create_immutable as NativeHandler,
+        );
+        functions.insert(
+            b"date_format".to_vec(),
+            datetime::php_date_format as NativeHandler,
+        );
         functions.insert(
             b"microtime".to_vec(),
             datetime::php_microtime as NativeHandler,
@@ -579,10 +671,22 @@ impl EngineContext {
             b"date_parse_from_format".to_vec(),
             datetime::php_date_parse_from_format as NativeHandler,
         );
-        functions.insert(b"date_add".to_vec(), datetime::php_date_add as NativeHandler);
-        functions.insert(b"date_sub".to_vec(), datetime::php_date_sub as NativeHandler);
-        functions.insert(b"date_diff".to_vec(), datetime::php_date_diff as NativeHandler);
-        functions.insert(b"date_modify".to_vec(), datetime::php_date_modify as NativeHandler);
+        functions.insert(
+            b"date_add".to_vec(),
+            datetime::php_date_add as NativeHandler,
+        );
+        functions.insert(
+            b"date_sub".to_vec(),
+            datetime::php_date_sub as NativeHandler,
+        );
+        functions.insert(
+            b"date_diff".to_vec(),
+            datetime::php_date_diff as NativeHandler,
+        );
+        functions.insert(
+            b"date_modify".to_vec(),
+            datetime::php_date_modify as NativeHandler,
+        );
         functions.insert(
             b"date_create_from_format".to_vec(),
             datetime::php_datetime_create_from_format as NativeHandler,
@@ -595,7 +699,10 @@ impl EngineContext {
             b"date_interval_format".to_vec(),
             datetime::php_dateinterval_format as NativeHandler,
         );
-        functions.insert(b"timezone_open".to_vec(), datetime::php_timezone_open as NativeHandler);
+        functions.insert(
+            b"timezone_open".to_vec(),
+            datetime::php_timezone_open as NativeHandler,
+        );
 
         // Output Control functions
         functions.insert(
@@ -701,6 +808,15 @@ impl EngineContext {
             .register_extension(Box::new(OpenSSLExtension))
             .expect("Failed to register OpenSSL extension");
 
+        // Register core string functions with by-ref info
+        registry.register_function_with_by_ref(b"str_replace", string::php_str_replace, vec![3]);
+        registry.register_function_with_by_ref(b"str_ireplace", string::php_str_ireplace, vec![3]);
+
+        // Register core string constants
+        registry.register_constant(b"STR_PAD_LEFT", Val::Int(0));
+        registry.register_constant(b"STR_PAD_RIGHT", Val::Int(1));
+        registry.register_constant(b"STR_PAD_BOTH", Val::Int(2));
+
         Self {
             registry,
             functions,
@@ -739,9 +855,12 @@ pub struct RequestContext {
     pub pdo_statements:
         HashMap<u64, Rc<std::cell::RefCell<Box<dyn crate::builtins::pdo::driver::PdoStatement>>>>,
     pub zip_archives: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
-    pub zip_resources: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
+    pub zip_resources:
+        HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
     pub zip_entries: HashMap<u64, (u64, usize)>,
     pub timezone: String,
+    pub strtok_string: Option<Vec<u8>>,
+    pub strtok_pos: usize,
 }
 
 impl RequestContext {
@@ -773,6 +892,8 @@ impl RequestContext {
             zip_resources: HashMap::new(),          // Initialize Zip resources
             zip_entries: HashMap::new(),            // Initialize Zip entries
             timezone: "UTC".to_string(),            // Default timezone
+            strtok_string: None,
+            strtok_pos: 0,
         };
         ctx.register_builtin_classes();
         ctx.materialize_extension_classes();
@@ -1510,11 +1631,17 @@ impl RequestContext {
         let date_object_error_sym = self.interner.intern(b"DateObjectError");
         let date_range_error_sym = self.interner.intern(b"DateRangeError");
         let date_exception_sym = self.interner.intern(b"DateException");
-        let date_invalid_operation_exception_sym = self.interner.intern(b"DateInvalidOperationException");
-        let date_invalid_timezone_exception_sym = self.interner.intern(b"DateInvalidTimeZoneException");
-        let date_malformed_interval_string_exception_sym = self.interner.intern(b"DateMalformedIntervalStringException");
-        let date_malformed_period_string_exception_sym = self.interner.intern(b"DateMalformedPeriodStringException");
-        let date_malformed_string_exception_sym = self.interner.intern(b"DateMalformedStringException");
+        let date_invalid_operation_exception_sym =
+            self.interner.intern(b"DateInvalidOperationException");
+        let date_invalid_timezone_exception_sym =
+            self.interner.intern(b"DateInvalidTimeZoneException");
+        let date_malformed_interval_string_exception_sym = self
+            .interner
+            .intern(b"DateMalformedIntervalStringException");
+        let date_malformed_period_string_exception_sym =
+            self.interner.intern(b"DateMalformedPeriodStringException");
+        let date_malformed_string_exception_sym =
+            self.interner.intern(b"DateMalformedStringException");
 
         // DateTimeInterface
         self.classes.insert(
@@ -1552,11 +1679,46 @@ impl RequestContext {
             },
         );
 
-        register_native_method(self, datetimezone_sym, b"__construct", datetime::php_datetimezone_construct, Visibility::Public, false);
-        register_native_method(self, datetimezone_sym, b"getName", datetime::php_datetimezone_get_name, Visibility::Public, false);
-        register_native_method(self, datetimezone_sym, b"getOffset", datetime::php_datetimezone_get_offset, Visibility::Public, false);
-        register_native_method(self, datetimezone_sym, b"getLocation", datetime::php_datetimezone_get_location, Visibility::Public, false);
-        register_native_method(self, datetimezone_sym, b"listIdentifiers", datetime::php_datetimezone_list_identifiers, Visibility::Public, true);
+        register_native_method(
+            self,
+            datetimezone_sym,
+            b"__construct",
+            datetime::php_datetimezone_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetimezone_sym,
+            b"getName",
+            datetime::php_datetimezone_get_name,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetimezone_sym,
+            b"getOffset",
+            datetime::php_datetimezone_get_offset,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetimezone_sym,
+            b"getLocation",
+            datetime::php_datetimezone_get_location,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetimezone_sym,
+            b"listIdentifiers",
+            datetime::php_datetimezone_list_identifiers,
+            Visibility::Public,
+            true,
+        );
 
         // DateTime
         self.classes.insert(
@@ -1576,17 +1738,94 @@ impl RequestContext {
             },
         );
 
-        register_native_method(self, datetime_sym, b"__construct", datetime::php_datetime_construct, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"format", datetime::php_datetime_format, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"getTimestamp", datetime::php_datetime_get_timestamp, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"setTimestamp", datetime::php_datetime_set_timestamp, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"getTimezone", datetime::php_datetime_get_timezone, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"setTimezone", datetime::php_datetime_set_timezone, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"add", datetime::php_datetime_add, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"sub", datetime::php_datetime_sub, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"diff", datetime::php_datetime_diff, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"modify", datetime::php_datetime_modify, Visibility::Public, false);
-        register_native_method(self, datetime_sym, b"createFromFormat", datetime::php_datetime_create_from_format, Visibility::Public, true);
+        register_native_method(
+            self,
+            datetime_sym,
+            b"__construct",
+            datetime::php_datetime_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"format",
+            datetime::php_datetime_format,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"getTimestamp",
+            datetime::php_datetime_get_timestamp,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"setTimestamp",
+            datetime::php_datetime_set_timestamp,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"getTimezone",
+            datetime::php_datetime_get_timezone,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"setTimezone",
+            datetime::php_datetime_set_timezone,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"add",
+            datetime::php_datetime_add,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"sub",
+            datetime::php_datetime_sub,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"diff",
+            datetime::php_datetime_diff,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"modify",
+            datetime::php_datetime_modify,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_sym,
+            b"createFromFormat",
+            datetime::php_datetime_create_from_format,
+            Visibility::Public,
+            true,
+        );
 
         // DateTimeImmutable
         self.classes.insert(
@@ -1606,11 +1845,46 @@ impl RequestContext {
             },
         );
 
-        register_native_method(self, datetime_immutable_sym, b"__construct", datetime::php_datetime_construct, Visibility::Public, false);
-        register_native_method(self, datetime_immutable_sym, b"format", datetime::php_datetime_format, Visibility::Public, false);
-        register_native_method(self, datetime_immutable_sym, b"getTimestamp", datetime::php_datetime_get_timestamp, Visibility::Public, false);
-        register_native_method(self, datetime_immutable_sym, b"getTimezone", datetime::php_datetime_get_timezone, Visibility::Public, false);
-        register_native_method(self, datetime_immutable_sym, b"createFromFormat", datetime::php_datetime_create_from_format, Visibility::Public, true);
+        register_native_method(
+            self,
+            datetime_immutable_sym,
+            b"__construct",
+            datetime::php_datetime_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_immutable_sym,
+            b"format",
+            datetime::php_datetime_format,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_immutable_sym,
+            b"getTimestamp",
+            datetime::php_datetime_get_timestamp,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_immutable_sym,
+            b"getTimezone",
+            datetime::php_datetime_get_timezone,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            datetime_immutable_sym,
+            b"createFromFormat",
+            datetime::php_datetime_create_from_format,
+            Visibility::Public,
+            true,
+        );
 
         // DateInterval
         self.classes.insert(
@@ -1630,8 +1904,22 @@ impl RequestContext {
             },
         );
 
-        register_native_method(self, dateinterval_sym, b"__construct", datetime::php_dateinterval_construct, Visibility::Public, false);
-        register_native_method(self, dateinterval_sym, b"format", datetime::php_dateinterval_format, Visibility::Public, false);
+        register_native_method(
+            self,
+            dateinterval_sym,
+            b"__construct",
+            datetime::php_dateinterval_construct,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateinterval_sym,
+            b"format",
+            datetime::php_dateinterval_format,
+            Visibility::Public,
+            false,
+        );
 
         let traversable_sym = self.interner.intern(b"Traversable");
         let iterator_sym = self.interner.intern(b"Iterator");
@@ -1654,21 +1942,95 @@ impl RequestContext {
             },
         );
 
-        register_native_method(self, dateperiod_sym, b"__construct", datetime::php_dateperiod_construct, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"getStartDate", datetime::php_dateperiod_get_start_date, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"getEndDate", datetime::php_dateperiod_get_end_date, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"getInterval", datetime::php_dateperiod_get_interval, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"getRecurrences", datetime::php_dateperiod_get_recurrences, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"current", datetime::php_dateperiod_current, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"key", datetime::php_dateperiod_key, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"next", datetime::php_dateperiod_next, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"rewind", datetime::php_dateperiod_rewind, Visibility::Public, false);
-        register_native_method(self, dateperiod_sym, b"valid", datetime::php_dateperiod_valid, Visibility::Public, false);
-
-        self.classes.get_mut(&dateperiod_sym).unwrap().constants.insert(
-            self.interner.intern(b"EXCLUDE_START_DATE"),
-            (Val::Int(1), Visibility::Public),
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"__construct",
+            datetime::php_dateperiod_construct,
+            Visibility::Public,
+            false,
         );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"getStartDate",
+            datetime::php_dateperiod_get_start_date,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"getEndDate",
+            datetime::php_dateperiod_get_end_date,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"getInterval",
+            datetime::php_dateperiod_get_interval,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"getRecurrences",
+            datetime::php_dateperiod_get_recurrences,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"current",
+            datetime::php_dateperiod_current,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"key",
+            datetime::php_dateperiod_key,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"next",
+            datetime::php_dateperiod_next,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"rewind",
+            datetime::php_dateperiod_rewind,
+            Visibility::Public,
+            false,
+        );
+        register_native_method(
+            self,
+            dateperiod_sym,
+            b"valid",
+            datetime::php_dateperiod_valid,
+            Visibility::Public,
+            false,
+        );
+
+        self.classes
+            .get_mut(&dateperiod_sym)
+            .unwrap()
+            .constants
+            .insert(
+                self.interner.intern(b"EXCLUDE_START_DATE"),
+                (Val::Int(1), Visibility::Public),
+            );
 
         // Date Exceptions
         let error_sym = self.interner.intern(b"Error");
@@ -2271,24 +2633,75 @@ impl RequestContext {
         self.insert_builtin_constant(b"PHP_QUERY_RFC3986", Val::Int(url::PHP_QUERY_RFC3986));
 
         // Date constants
-        self.insert_builtin_constant(b"DATE_ATOM", Val::String(Rc::new(datetime::DATE_ATOM.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_COOKIE", Val::String(Rc::new(datetime::DATE_COOKIE.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_ISO8601", Val::String(Rc::new(datetime::DATE_ISO8601.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_ISO8601_EXPANDED", Val::String(Rc::new(datetime::DATE_ISO8601_EXPANDED.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC822", Val::String(Rc::new(datetime::DATE_RFC822.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC850", Val::String(Rc::new(datetime::DATE_RFC850.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC1036", Val::String(Rc::new(datetime::DATE_RFC1036.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC1123", Val::String(Rc::new(datetime::DATE_RFC1123.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC7231", Val::String(Rc::new(datetime::DATE_RFC7231.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC2822", Val::String(Rc::new(datetime::DATE_RFC2822.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC3339", Val::String(Rc::new(datetime::DATE_RFC3339.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RFC3339_EXTENDED", Val::String(Rc::new(datetime::DATE_RFC3339_EXTENDED.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_RSS", Val::String(Rc::new(datetime::DATE_RSS.as_bytes().to_vec())));
-        self.insert_builtin_constant(b"DATE_W3C", Val::String(Rc::new(datetime::DATE_W3C.as_bytes().to_vec())));
+        self.insert_builtin_constant(
+            b"DATE_ATOM",
+            Val::String(Rc::new(datetime::DATE_ATOM.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_COOKIE",
+            Val::String(Rc::new(datetime::DATE_COOKIE.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_ISO8601",
+            Val::String(Rc::new(datetime::DATE_ISO8601.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_ISO8601_EXPANDED",
+            Val::String(Rc::new(datetime::DATE_ISO8601_EXPANDED.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC822",
+            Val::String(Rc::new(datetime::DATE_RFC822.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC850",
+            Val::String(Rc::new(datetime::DATE_RFC850.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC1036",
+            Val::String(Rc::new(datetime::DATE_RFC1036.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC1123",
+            Val::String(Rc::new(datetime::DATE_RFC1123.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC7231",
+            Val::String(Rc::new(datetime::DATE_RFC7231.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC2822",
+            Val::String(Rc::new(datetime::DATE_RFC2822.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC3339",
+            Val::String(Rc::new(datetime::DATE_RFC3339.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RFC3339_EXTENDED",
+            Val::String(Rc::new(datetime::DATE_RFC3339_EXTENDED.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_RSS",
+            Val::String(Rc::new(datetime::DATE_RSS.as_bytes().to_vec())),
+        );
+        self.insert_builtin_constant(
+            b"DATE_W3C",
+            Val::String(Rc::new(datetime::DATE_W3C.as_bytes().to_vec())),
+        );
 
-        self.insert_builtin_constant(b"SUNFUNCS_RET_TIMESTAMP", Val::Int(datetime::SUNFUNCS_RET_TIMESTAMP));
-        self.insert_builtin_constant(b"SUNFUNCS_RET_STRING", Val::Int(datetime::SUNFUNCS_RET_STRING));
-        self.insert_builtin_constant(b"SUNFUNCS_RET_DOUBLE", Val::Int(datetime::SUNFUNCS_RET_DOUBLE));
+        self.insert_builtin_constant(
+            b"SUNFUNCS_RET_TIMESTAMP",
+            Val::Int(datetime::SUNFUNCS_RET_TIMESTAMP),
+        );
+        self.insert_builtin_constant(
+            b"SUNFUNCS_RET_STRING",
+            Val::Int(datetime::SUNFUNCS_RET_STRING),
+        );
+        self.insert_builtin_constant(
+            b"SUNFUNCS_RET_DOUBLE",
+            Val::Int(datetime::SUNFUNCS_RET_DOUBLE),
+        );
 
         // Error reporting constants
         self.insert_builtin_constant(b"E_ERROR", Val::Int(1));

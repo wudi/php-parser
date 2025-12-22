@@ -419,13 +419,7 @@ impl VM {
                 self.find_method(class_name, method_sym)
             {
                 self.check_method_visibility(defining_class, visibility, Some(method_sym))?;
-                self.push_method_frame(
-                    method,
-                    Some(obj_handle),
-                    defining_class,
-                    class_name,
-                    args,
-                );
+                self.push_method_frame(method, Some(obj_handle), defining_class, class_name, args);
                 Ok(())
             } else {
                 let class_str = String::from_utf8_lossy(

@@ -1,8 +1,8 @@
 use crate::builtins::zlib;
+use crate::core::value::Val;
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
-use crate::core::value::Val;
 
 pub struct ZlibExtension;
 
@@ -49,7 +49,7 @@ impl Extension for ZlibExtension {
 
         // Register classes
         use crate::runtime::registry::NativeClassDef;
-        
+
         registry.register_class(NativeClassDef {
             name: b"DeflateContext".to_vec(),
             parent: None,
@@ -74,23 +74,26 @@ impl Extension for ZlibExtension {
         registry.register_constant(b"ZLIB_ENCODING_RAW", Val::Int(-1));
         registry.register_constant(b"ZLIB_ENCODING_DEFLATE", Val::Int(15));
         registry.register_constant(b"ZLIB_ENCODING_GZIP", Val::Int(31));
-        
+
         registry.register_constant(b"ZLIB_FILTERED", Val::Int(1));
         registry.register_constant(b"ZLIB_HUFFMAN_ONLY", Val::Int(2));
         registry.register_constant(b"ZLIB_FIXED", Val::Int(4));
         registry.register_constant(b"ZLIB_RLE", Val::Int(3));
         registry.register_constant(b"ZLIB_DEFAULT_STRATEGY", Val::Int(0));
         registry.register_constant(b"ZLIB_BLOCK", Val::Int(5));
-        
+
         registry.register_constant(b"ZLIB_NO_FLUSH", Val::Int(0));
         registry.register_constant(b"ZLIB_PARTIAL_FLUSH", Val::Int(1));
         registry.register_constant(b"ZLIB_SYNC_FLUSH", Val::Int(2));
         registry.register_constant(b"ZLIB_FULL_FLUSH", Val::Int(3));
         registry.register_constant(b"ZLIB_FINISH", Val::Int(4));
-        
-        registry.register_constant(b"ZLIB_VERSION", Val::String(std::rc::Rc::new(b"1.2.11".to_vec())));
+
+        registry.register_constant(
+            b"ZLIB_VERSION",
+            Val::String(std::rc::Rc::new(b"1.2.11".to_vec())),
+        );
         registry.register_constant(b"ZLIB_VERNUM", Val::Int(0x12b0));
-        
+
         registry.register_constant(b"ZLIB_OK", Val::Int(0));
         registry.register_constant(b"ZLIB_STREAM_END", Val::Int(1));
         registry.register_constant(b"ZLIB_NEED_DICT", Val::Int(2));

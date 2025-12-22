@@ -62,7 +62,7 @@ pub enum OpCode {
     JmpZEx(u32),
     JmpNzEx(u32),
     Coalesce(u32),
-    JmpFinally(u32),  // Jump to target after executing finally blocks at current IP
+    JmpFinally(u32), // Jump to target after executing finally blocks at current IP
 
     // Functions
     Call(u8), // Call function with N args
@@ -129,14 +129,14 @@ pub enum OpCode {
     FetchStaticProp(Symbol, Symbol),                // (class_name, prop_name) -> [Val]
     AssignStaticProp(Symbol, Symbol),               // (class_name, prop_name) [Val] -> [Val]
     CallStaticMethod(Symbol, Symbol, u8), // (class_name, method_name, arg_count) -> [RetVal]
-    CallStaticMethodDynamic(u8), // [ClassName, MethodName, Arg1...ArgN] -> [RetVal]
+    CallStaticMethodDynamic(u8),          // [ClassName, MethodName, Arg1...ArgN] -> [RetVal]
     New(Symbol, u8),                      // Create instance, call constructor with N args
     NewDynamic(u8),     // [ClassName] -> Create instance, call constructor with N args
     FetchProp(Symbol),  // [Obj] -> [Val]
     FetchPropDynamic,   // [Obj, Name] -> [Val]
     AssignProp(Symbol), // [Obj, Val] -> [Val]
     CallMethod(Symbol, u8), // [Obj, Arg1...ArgN] -> [RetVal]
-    CallMethodDynamic(u8),  // [Obj, MethodName, Arg1...ArgN] -> [RetVal]
+    CallMethodDynamic(u8), // [Obj, MethodName, Arg1...ArgN] -> [RetVal]
     UnsetObj,
     UnsetStaticProp,
     InstanceOf,

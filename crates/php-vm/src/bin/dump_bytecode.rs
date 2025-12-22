@@ -46,8 +46,16 @@ fn main() -> anyhow::Result<()> {
 
     println!("\n=== Catch Table ===");
     for (i, entry) in chunk.catch_table.iter().enumerate() {
-        println!("{}: start={} end={} target={} catch_type={:?} finally_target={:?} finally_end={:?}",
-            i, entry.start, entry.end, entry.target, entry.catch_type, entry.finally_target, entry.finally_end);
+        println!(
+            "{}: start={} end={} target={} catch_type={:?} finally_target={:?} finally_end={:?}",
+            i,
+            entry.start,
+            entry.end,
+            entry.target,
+            entry.catch_type,
+            entry.finally_target,
+            entry.finally_end
+        );
     }
 
     Ok(())

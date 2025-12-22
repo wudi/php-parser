@@ -22,9 +22,7 @@ impl HashAlgorithm for Sha1Algorithm {
     }
 
     fn new_hasher(&self) -> Box<dyn HashState> {
-        Box::new(Sha1State {
-            inner: Sha1::new(),
-        })
+        Box::new(Sha1State { inner: Sha1::new() })
     }
 }
 

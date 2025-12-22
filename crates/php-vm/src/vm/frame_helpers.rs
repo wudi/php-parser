@@ -4,9 +4,9 @@
 //! ensuring consistency and reducing code duplication.
 
 use crate::compiler::chunk::UserFunc;
+use crate::core::value::{Handle, Symbol};
 use crate::vm::engine::VM;
 use crate::vm::frame::{ArgList, CallFrame};
-use crate::core::value::{Handle, Symbol};
 use std::rc::Rc;
 
 impl VM {
@@ -82,22 +82,22 @@ mod tests {
     fn test_frame_depth() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         assert_eq!(vm.frame_depth(), 0);
         assert!(vm.is_global_scope()); // 0 frames = global scope
-        
+
         let chunk = Rc::new(CodeChunk::default());
         let frame = CallFrame::new(chunk);
         vm.push_frame(frame);
-        
+
         assert_eq!(vm.frame_depth(), 1);
         assert!(vm.is_global_scope()); // 1 frame = still global scope per implementation
-        
+
         // Add another frame to exit global scope
         let chunk2 = Rc::new(CodeChunk::default());
         let frame2 = CallFrame::new(chunk2);
         vm.push_frame(frame2);
-        
+
         assert_eq!(vm.frame_depth(), 2);
         assert!(!vm.is_global_scope()); // 2+ frames = not global scope
     }
@@ -106,16 +106,16 @@ mod tests {
     fn test_current_scopes() {
         let engine = Arc::new(EngineContext::new());
         let mut vm = VM::new(engine);
-        
+
         let chunk = Rc::new(CodeChunk::default());
         let class_sym = Symbol(1);
         let called_sym = Symbol(2);
-        
+
         let mut frame = CallFrame::new(chunk);
         frame.class_scope = Some(class_sym);
         frame.called_scope = Some(called_sym);
         vm.push_frame(frame);
-        
+
         assert_eq!(vm.current_class_scope(), Some(class_sym));
         assert_eq!(vm.current_called_scope(), Some(called_sym));
     }

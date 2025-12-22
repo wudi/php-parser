@@ -15,7 +15,8 @@ fn test_gzcompress_gzuncompress() {
     let data = b"Hello world! Hello world! Hello world!";
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
 
-    let compressed_handle = php_vm::builtins::zlib::php_gzcompress(&mut vm, &[data_handle]).unwrap();
+    let compressed_handle =
+        php_vm::builtins::zlib::php_gzcompress(&mut vm, &[data_handle]).unwrap();
     let compressed = match &vm.arena.get(compressed_handle).value {
         Val::String(s) => s.clone(),
         _ => panic!("gzcompress did not return a string"),
@@ -23,7 +24,8 @@ fn test_gzcompress_gzuncompress() {
 
     assert!(compressed.len() < data.len());
 
-    let decompressed_handle = php_vm::builtins::zlib::php_gzuncompress(&mut vm, &[compressed_handle]).unwrap();
+    let decompressed_handle =
+        php_vm::builtins::zlib::php_gzuncompress(&mut vm, &[compressed_handle]).unwrap();
     let decompressed = match &vm.arena.get(decompressed_handle).value {
         Val::String(s) => s.clone(),
         _ => panic!("gzuncompress did not return a string"),
@@ -46,7 +48,8 @@ fn test_gzdeflate_gzinflate() {
 
     assert!(compressed.len() < data.len());
 
-    let decompressed_handle = php_vm::builtins::zlib::php_gzinflate(&mut vm, &[compressed_handle]).unwrap();
+    let decompressed_handle =
+        php_vm::builtins::zlib::php_gzinflate(&mut vm, &[compressed_handle]).unwrap();
     let decompressed = match &vm.arena.get(decompressed_handle).value {
         Val::String(s) => s.clone(),
         _ => panic!("gzinflate did not return a string"),
@@ -69,7 +72,8 @@ fn test_gzencode_gzdecode() {
 
     assert!(compressed.len() < data.len());
 
-    let decompressed_handle = php_vm::builtins::zlib::php_gzdecode(&mut vm, &[compressed_handle]).unwrap();
+    let decompressed_handle =
+        php_vm::builtins::zlib::php_gzdecode(&mut vm, &[compressed_handle]).unwrap();
     let decompressed = match &vm.arena.get(decompressed_handle).value {
         Val::String(s) => s.clone(),
         _ => panic!("gzdecode did not return a string"),
@@ -85,10 +89,15 @@ fn test_zlib_encode_decode() {
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
     let encoding_handle = vm.arena.alloc(Val::Int(15)); // ZLIB_ENCODING_DEFLATE
 
-    let compressed_handle = php_vm::builtins::zlib::php_zlib_encode(&mut vm, &[data_handle, encoding_handle]).unwrap();
-    assert!(matches!(&vm.arena.get(compressed_handle).value, Val::String(_)));
+    let compressed_handle =
+        php_vm::builtins::zlib::php_zlib_encode(&mut vm, &[data_handle, encoding_handle]).unwrap();
+    assert!(matches!(
+        &vm.arena.get(compressed_handle).value,
+        Val::String(_)
+    ));
 
-    let decompressed_handle = php_vm::builtins::zlib::php_zlib_decode(&mut vm, &[compressed_handle]).unwrap();
+    let decompressed_handle =
+        php_vm::builtins::zlib::php_zlib_decode(&mut vm, &[compressed_handle]).unwrap();
     let decompressed = match &vm.arena.get(decompressed_handle).value {
         Val::String(s) => s.clone(),
         _ => panic!("zlib_decode did not return a string"),
@@ -102,18 +111,22 @@ fn test_incremental_deflate_inflate() {
     let mut vm = create_test_vm();
     let data1 = b"Hello ";
     let data2 = b"world!";
-    
+
     let encoding_handle = vm.arena.alloc(Val::Int(15)); // ZLIB_ENCODING_DEFLATE
     let ctx_handle = php_vm::builtins::zlib::php_deflate_init(&mut vm, &[encoding_handle]).unwrap();
-    
+
     let data1_handle = vm.arena.alloc(Val::String(Rc::new(data1.to_vec())));
     let flush_none = vm.arena.alloc(Val::Int(0));
-    let part1_handle = php_vm::builtins::zlib::php_deflate_add(&mut vm, &[ctx_handle, data1_handle, flush_none]).unwrap();
-    
+    let part1_handle =
+        php_vm::builtins::zlib::php_deflate_add(&mut vm, &[ctx_handle, data1_handle, flush_none])
+            .unwrap();
+
     let data2_handle = vm.arena.alloc(Val::String(Rc::new(data2.to_vec())));
     let flush_finish = vm.arena.alloc(Val::Int(4));
-    let part2_handle = php_vm::builtins::zlib::php_deflate_add(&mut vm, &[ctx_handle, data2_handle, flush_finish]).unwrap(); // ZLIB_FINISH
-    
+    let part2_handle =
+        php_vm::builtins::zlib::php_deflate_add(&mut vm, &[ctx_handle, data2_handle, flush_finish])
+            .unwrap(); // ZLIB_FINISH
+
     let mut compressed = match &vm.arena.get(part1_handle).value {
         Val::String(s) => s.as_ref().clone(),
         _ => panic!("deflate_add part 1 failed"),
@@ -125,16 +138,21 @@ fn test_incremental_deflate_inflate() {
     compressed.extend_from_slice(&part2);
 
     // Inflate
-    let ictx_handle = php_vm::builtins::zlib::php_inflate_init(&mut vm, &[encoding_handle]).unwrap();
+    let ictx_handle =
+        php_vm::builtins::zlib::php_inflate_init(&mut vm, &[encoding_handle]).unwrap();
     let compressed_handle = vm.arena.alloc(Val::String(Rc::new(compressed)));
     let flush_finish_inflate = vm.arena.alloc(Val::Int(4));
-    let decompressed_handle = php_vm::builtins::zlib::php_inflate_add(&mut vm, &[ictx_handle, compressed_handle, flush_finish_inflate]).unwrap();
-    
+    let decompressed_handle = php_vm::builtins::zlib::php_inflate_add(
+        &mut vm,
+        &[ictx_handle, compressed_handle, flush_finish_inflate],
+    )
+    .unwrap();
+
     let decompressed = match &vm.arena.get(decompressed_handle).value {
         Val::String(s) => s.as_ref().clone(),
         _ => panic!("inflate_add failed"),
     };
-    
+
     assert_eq!(decompressed, b"Hello world!");
 }
 
@@ -145,14 +163,18 @@ fn test_zlib_file_ops() {
     let data = b"Hello, Zlib file operations!";
 
     // gzopen for writing
-    let filename_handle = vm.arena.alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
+    let filename_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
     let mode_w_handle = vm.arena.alloc(Val::String(Rc::new(b"wb".to_vec())));
-    let gz_w_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
+    let gz_w_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
     assert!(matches!(vm.arena.get(gz_w_handle).value, Val::Resource(_)));
 
     // gzwrite
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
-    let written_handle = php_vm::builtins::zlib::php_gzwrite(&mut vm, &[gz_w_handle, data_handle]).unwrap();
+    let written_handle =
+        php_vm::builtins::zlib::php_gzwrite(&mut vm, &[gz_w_handle, data_handle]).unwrap();
     if let Val::Int(n) = vm.arena.get(written_handle).value {
         assert_eq!(n as usize, data.len());
     } else {
@@ -164,12 +186,14 @@ fn test_zlib_file_ops() {
 
     // gzopen for reading
     let mode_r_handle = vm.arena.alloc(Val::String(Rc::new(b"rb".to_vec())));
-    let gz_r_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
+    let gz_r_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
     assert!(matches!(vm.arena.get(gz_r_handle).value, Val::Resource(_)));
 
     // gzread
     let len_handle = vm.arena.alloc(Val::Int(100));
-    let read_handle = php_vm::builtins::zlib::php_gzread(&mut vm, &[gz_r_handle, len_handle]).unwrap();
+    let read_handle =
+        php_vm::builtins::zlib::php_gzread(&mut vm, &[gz_r_handle, len_handle]).unwrap();
     if let Val::String(s) = &vm.arena.get(read_handle).value {
         assert_eq!(s.as_ref(), data);
     } else {
@@ -185,7 +209,8 @@ fn test_zlib_file_ops() {
     assert_eq!(vm.arena.get(tell_handle).value, Val::Int(0));
 
     // gzread again
-    let read_handle2 = php_vm::builtins::zlib::php_gzread(&mut vm, &[gz_r_handle, len_handle]).unwrap();
+    let read_handle2 =
+        php_vm::builtins::zlib::php_gzread(&mut vm, &[gz_r_handle, len_handle]).unwrap();
     if let Val::String(s) = &vm.arena.get(read_handle2).value {
         assert_eq!(s.as_ref(), data);
     } else {
@@ -211,8 +236,10 @@ fn test_zlib_max_length() {
     // Decompress with max_length
     let max_len = 11; // "Hello world"
     let max_len_handle = vm.arena.alloc(Val::Int(max_len as i64));
-    let decompressed_handle = php_vm::builtins::zlib::php_gzinflate(&mut vm, &[compressed_handle, max_len_handle]).unwrap();
-    
+    let decompressed_handle =
+        php_vm::builtins::zlib::php_gzinflate(&mut vm, &[compressed_handle, max_len_handle])
+            .unwrap();
+
     if let Val::String(s) = &vm.arena.get(decompressed_handle).value {
         assert_eq!(s.len(), max_len);
         assert_eq!(s.as_ref(), b"Hello world");
@@ -228,17 +255,21 @@ fn test_gzgetc_gzpassthru() {
     let data = b"ABC";
 
     // Write data
-    let filename_handle = vm.arena.alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
+    let filename_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
     let mode_w_handle = vm.arena.alloc(Val::String(Rc::new(b"wb".to_vec())));
-    let gz_w_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
+    let gz_w_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
     php_vm::builtins::zlib::php_gzwrite(&mut vm, &[gz_w_handle, data_handle]).unwrap();
     php_vm::builtins::zlib::php_gzclose(&mut vm, &[gz_w_handle]).unwrap();
 
     // Test gzgetc
     let mode_r_handle = vm.arena.alloc(Val::String(Rc::new(b"rb".to_vec())));
-    let gz_r_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
-    
+    let gz_r_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
+
     let c1_handle = php_vm::builtins::zlib::php_gzgetc(&mut vm, &[gz_r_handle]).unwrap();
     if let Val::String(s) = &vm.arena.get(c1_handle).value {
         assert_eq!(s.as_ref(), b"A");
@@ -263,17 +294,21 @@ fn test_gzgets_gzfile() {
     let data = b"Line 1\nLine 2\nLine 3";
 
     // Write data
-    let filename_handle = vm.arena.alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
+    let filename_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(filename.as_bytes().to_vec())));
     let mode_w_handle = vm.arena.alloc(Val::String(Rc::new(b"wb".to_vec())));
-    let gz_w_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
+    let gz_w_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_w_handle]).unwrap();
     let data_handle = vm.arena.alloc(Val::String(Rc::new(data.to_vec())));
     php_vm::builtins::zlib::php_gzwrite(&mut vm, &[gz_w_handle, data_handle]).unwrap();
     php_vm::builtins::zlib::php_gzclose(&mut vm, &[gz_w_handle]).unwrap();
 
     // Test gzgets
     let mode_r_handle = vm.arena.alloc(Val::String(Rc::new(b"rb".to_vec())));
-    let gz_r_handle = php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
-    
+    let gz_r_handle =
+        php_vm::builtins::zlib::php_gzopen(&mut vm, &[filename_handle, mode_r_handle]).unwrap();
+
     let line1_handle = php_vm::builtins::zlib::php_gzgets(&mut vm, &[gz_r_handle]).unwrap();
     if let Val::String(s) = &vm.arena.get(line1_handle).value {
         assert_eq!(s.as_ref(), b"Line 1\n");

@@ -1,4 +1,4 @@
-use crate::core::value::{ArrayKey, Handle, Val, Symbol};
+use crate::core::value::{ArrayKey, Handle, Symbol, Val};
 use crate::vm::engine::VM;
 use base64::{engine::general_purpose, Engine as _};
 
@@ -21,7 +21,12 @@ pub fn php_urlencode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("urlencode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "urlencode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let mut result = Vec::with_capacity(s.len());
@@ -47,7 +52,12 @@ pub fn php_urldecode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("urldecode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "urldecode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let mut result = Vec::with_capacity(s.len());
@@ -85,7 +95,12 @@ pub fn php_rawurlencode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("rawurlencode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "rawurlencode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let mut result = Vec::with_capacity(s.len());
@@ -110,7 +125,12 @@ pub fn php_rawurldecode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("rawurldecode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "rawurldecode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let mut result = Vec::with_capacity(s.len());
@@ -144,7 +164,12 @@ pub fn php_base64_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("base64_encode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "base64_encode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let encoded = general_purpose::STANDARD.encode(s.as_ref());
@@ -158,7 +183,12 @@ pub fn php_base64_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
 
     let s = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("base64_decode() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "base64_decode() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let strict = if args.len() >= 2 {
@@ -172,12 +202,18 @@ pub fn php_base64_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     let input = if strict {
         s.as_ref().to_vec()
     } else {
-        s.as_ref().iter().filter(|&&b| {
-            (b >= b'A' && b <= b'Z') ||
-            (b >= b'a' && b <= b'z') ||
-            (b >= b'0' && b <= b'9') ||
-            b == b'+' || b == b'/' || b == b'='
-        }).cloned().collect()
+        s.as_ref()
+            .iter()
+            .filter(|&&b| {
+                (b >= b'A' && b <= b'Z')
+                    || (b >= b'a' && b <= b'z')
+                    || (b >= b'0' && b <= b'9')
+                    || b == b'+'
+                    || b == b'/'
+                    || b == b'='
+            })
+            .cloned()
+            .collect()
     };
 
     match general_purpose::STANDARD.decode(&input) {
@@ -216,7 +252,12 @@ pub fn php_parse_url(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let url_str = match &vm.arena.get(args[0]).value {
         Val::String(s) => s,
-        v => return Err(format!("parse_url() expects parameter 1 to be string, {} given", v.type_name())),
+        v => {
+            return Err(format!(
+                "parse_url() expects parameter 1 to be string, {} given",
+                v.type_name()
+            ))
+        }
     };
 
     let component = if args.len() >= 2 {
@@ -240,35 +281,64 @@ pub fn php_parse_url(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             PHP_URL_PATH => parsed.path.map(|s| Val::String(s.into())),
             PHP_URL_QUERY => parsed.query.map(|s| Val::String(s.into())),
             PHP_URL_FRAGMENT => parsed.fragment.map(|s| Val::String(s.into())),
-            _ => return Err(format!("parse_url(): Invalid URL component identifier {}", c)),
+            _ => {
+                return Err(format!(
+                    "parse_url(): Invalid URL component identifier {}",
+                    c
+                ))
+            }
         };
         return Ok(vm.arena.alloc(val.unwrap_or(Val::Null)));
     }
 
     let mut arr = crate::core::value::ArrayData::new();
     if let Some(scheme) = parsed.scheme {
-        arr.insert(ArrayKey::Str(b"scheme".to_vec().into()), vm.arena.alloc(Val::String(scheme.into())));
+        arr.insert(
+            ArrayKey::Str(b"scheme".to_vec().into()),
+            vm.arena.alloc(Val::String(scheme.into())),
+        );
     }
     if let Some(host) = parsed.host {
-        arr.insert(ArrayKey::Str(b"host".to_vec().into()), vm.arena.alloc(Val::String(host.into())));
+        arr.insert(
+            ArrayKey::Str(b"host".to_vec().into()),
+            vm.arena.alloc(Val::String(host.into())),
+        );
     }
     if let Some(port) = parsed.port {
-        arr.insert(ArrayKey::Str(b"port".to_vec().into()), vm.arena.alloc(Val::Int(port)));
+        arr.insert(
+            ArrayKey::Str(b"port".to_vec().into()),
+            vm.arena.alloc(Val::Int(port)),
+        );
     }
     if let Some(user) = parsed.user {
-        arr.insert(ArrayKey::Str(b"user".to_vec().into()), vm.arena.alloc(Val::String(user.into())));
+        arr.insert(
+            ArrayKey::Str(b"user".to_vec().into()),
+            vm.arena.alloc(Val::String(user.into())),
+        );
     }
     if let Some(pass) = parsed.pass {
-        arr.insert(ArrayKey::Str(b"pass".to_vec().into()), vm.arena.alloc(Val::String(pass.into())));
+        arr.insert(
+            ArrayKey::Str(b"pass".to_vec().into()),
+            vm.arena.alloc(Val::String(pass.into())),
+        );
     }
     if let Some(path) = parsed.path {
-        arr.insert(ArrayKey::Str(b"path".to_vec().into()), vm.arena.alloc(Val::String(path.into())));
+        arr.insert(
+            ArrayKey::Str(b"path".to_vec().into()),
+            vm.arena.alloc(Val::String(path.into())),
+        );
     }
     if let Some(query) = parsed.query {
-        arr.insert(ArrayKey::Str(b"query".to_vec().into()), vm.arena.alloc(Val::String(query.into())));
+        arr.insert(
+            ArrayKey::Str(b"query".to_vec().into()),
+            vm.arena.alloc(Val::String(query.into())),
+        );
     }
     if let Some(fragment) = parsed.fragment {
-        arr.insert(ArrayKey::Str(b"fragment".to_vec().into()), vm.arena.alloc(Val::String(fragment.into())));
+        arr.insert(
+            ArrayKey::Str(b"fragment".to_vec().into()),
+            vm.arena.alloc(Val::String(fragment.into())),
+        );
     }
 
     Ok(vm.arena.alloc(Val::Array(arr.into())))
@@ -293,7 +363,10 @@ fn parse_url_internal(url: &[u8]) -> ParsedUrl {
     // Scheme
     if let Some(colon_pos) = remaining.iter().position(|&b| b == b':') {
         let scheme = &remaining[..colon_pos];
-        if scheme.iter().all(|&b| b.is_ascii_alphanumeric() || b == b'+' || b == b'-' || b == b'.') {
+        if scheme
+            .iter()
+            .all(|&b| b.is_ascii_alphanumeric() || b == b'+' || b == b'-' || b == b'.')
+        {
             res.scheme = Some(scheme.to_vec());
             remaining = &remaining[colon_pos + 1..];
         }
@@ -302,7 +375,10 @@ fn parse_url_internal(url: &[u8]) -> ParsedUrl {
     // Authority
     if remaining.starts_with(b"//") {
         remaining = &remaining[2..];
-        let authority_end = remaining.iter().position(|&b| b == b'/' || b == b'?' || b == b'#').unwrap_or(remaining.len());
+        let authority_end = remaining
+            .iter()
+            .position(|&b| b == b'/' || b == b'?' || b == b'#')
+            .unwrap_or(remaining.len());
         let authority = &remaining[..authority_end];
         remaining = &remaining[authority_end..];
 
@@ -387,7 +463,15 @@ pub fn php_http_build_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     };
 
     let mut result = Vec::new();
-    build_query_recursive(vm, data, &mut result, &numeric_prefix, &arg_separator, encoding_type, None)?;
+    build_query_recursive(
+        vm,
+        data,
+        &mut result,
+        &numeric_prefix,
+        &arg_separator,
+        encoding_type,
+        None,
+    )?;
 
     Ok(vm.arena.alloc(Val::String(result.into())))
 }
@@ -404,7 +488,8 @@ fn build_query_recursive(
     let val = vm.arena.get(data).value.clone();
     match &val {
         Val::Array(arr) => {
-            let items: Vec<(ArrayKey, Handle)> = arr.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            let items: Vec<(ArrayKey, Handle)> =
+                arr.map.iter().map(|(k, v)| (k.clone(), *v)).collect();
             for (key, val_handle) in items {
                 let mut new_prefix = Vec::new();
                 if let Some(p) = prefix {
@@ -428,7 +513,15 @@ fn build_query_recursive(
                 let inner_val = vm.arena.get(val_handle).value.clone();
                 match &inner_val {
                     Val::Array(_) | Val::Object(_) => {
-                        build_query_recursive(vm, val_handle, result, numeric_prefix, arg_separator, encoding_type, Some(&new_prefix))?;
+                        build_query_recursive(
+                            vm,
+                            val_handle,
+                            result,
+                            numeric_prefix,
+                            arg_separator,
+                            encoding_type,
+                            Some(&new_prefix),
+                        )?;
                     }
                     _ => {
                         if !result.is_empty() {
@@ -436,7 +529,9 @@ fn build_query_recursive(
                         }
                         result.extend_from_slice(&urlencode_internal(&new_prefix, encoding_type));
                         result.push(b'=');
-                        let val_bytes = vm.value_to_string_bytes(val_handle).map_err(|e| e.to_string())?;
+                        let val_bytes = vm
+                            .value_to_string_bytes(val_handle)
+                            .map_err(|e| e.to_string())?;
                         result.extend_from_slice(&urlencode_internal(&val_bytes, encoding_type));
                     }
                 }
@@ -445,12 +540,19 @@ fn build_query_recursive(
         Val::Object(obj_handle) => {
             let obj_payload = match &vm.arena.get(*obj_handle).value {
                 Val::ObjPayload(p) => p.clone(),
-                _ => return Err("Internal error: Object handle does not point to ObjPayload".into()),
+                _ => {
+                    return Err("Internal error: Object handle does not point to ObjPayload".into())
+                }
             };
-            
+
             for (sym, &val_handle) in obj_payload.properties.iter() {
-                let key_bytes = vm.context.interner.lookup(Symbol(sym.0)).expect("Interned symbol not found").to_vec();
-                
+                let key_bytes = vm
+                    .context
+                    .interner
+                    .lookup(Symbol(sym.0))
+                    .expect("Interned symbol not found")
+                    .to_vec();
+
                 let mut new_prefix = Vec::new();
                 if let Some(p) = prefix {
                     new_prefix.extend_from_slice(p);
@@ -464,7 +566,15 @@ fn build_query_recursive(
                 let inner_val = vm.arena.get(val_handle).value.clone();
                 match &inner_val {
                     Val::Array(_) | Val::Object(_) => {
-                        build_query_recursive(vm, val_handle, result, numeric_prefix, arg_separator, encoding_type, Some(&new_prefix))?;
+                        build_query_recursive(
+                            vm,
+                            val_handle,
+                            result,
+                            numeric_prefix,
+                            arg_separator,
+                            encoding_type,
+                            Some(&new_prefix),
+                        )?;
                     }
                     _ => {
                         if !result.is_empty() {
@@ -472,7 +582,9 @@ fn build_query_recursive(
                         }
                         result.extend_from_slice(&urlencode_internal(&new_prefix, encoding_type));
                         result.push(b'=');
-                        let val_bytes = vm.value_to_string_bytes(val_handle).map_err(|e| e.to_string())?;
+                        let val_bytes = vm
+                            .value_to_string_bytes(val_handle)
+                            .map_err(|e| e.to_string())?;
                         result.extend_from_slice(&urlencode_internal(&val_bytes, encoding_type));
                     }
                 }
