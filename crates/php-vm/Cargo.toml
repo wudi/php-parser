@@ -39,6 +39,10 @@ flate2 = "1.0"
 # Zip extension dependencies
 zip = "2.2.2"
 
+# OpenSSL extension dependencies
+openssl = "0.10.75"
+base64 = "0.21"
+
 
 [[bin]]
 name = "php"

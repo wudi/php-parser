@@ -649,6 +649,12 @@ impl EngineContext {
             .register_extension(Box::new(ZipExtension))
             .expect("Failed to register Zip extension");
 
+        // Register OpenSSL extension
+        use crate::runtime::openssl_extension::OpenSSLExtension;
+        registry
+            .register_extension(Box::new(OpenSSLExtension))
+            .expect("Failed to register OpenSSL extension");
+
         Self {
             registry,
             functions,
