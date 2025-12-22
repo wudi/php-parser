@@ -2299,17 +2299,8 @@ impl<'src> Emitter<'src> {
                         self.chunk.code.push(OpCode::FetchProp(sym));
                     } else {
                         // Dynamic property fetch $this->$prop
-                        // We need to emit the property name expression (variable)
-                        // But here 'property' IS the variable expression.
-                        // We should emit it?
-                        // But emit_expr(property) would emit LoadVar($prop).
-                        // Then we need FetchPropDynamic.
-
-                        // For now, let's just debug print
-                        eprintln!(
-                            "Property starts with $: {:?}",
-                            String::from_utf8_lossy(name)
-                        );
+                        self.emit_expr(property);
+                        self.chunk.code.push(OpCode::FetchPropDynamic);
                     }
                 } else {
                     eprintln!("Property is not Variable: {:?}", property);
@@ -2325,17 +2316,35 @@ impl<'src> Emitter<'src> {
                 ..
             } => {
                 self.emit_expr(target);
-                for arg in *args {
-                    self.emit_expr(arg.value);
-                }
                 if let Expr::Variable { span, .. } = method {
                     let name = self.get_text(*span);
                     if !name.starts_with(b"$") {
+                        for arg in *args {
+                            self.emit_expr(arg.value);
+                        }
                         let sym = self.interner.intern(name);
                         self.chunk
                             .code
                             .push(OpCode::CallMethod(sym, args.len() as u8));
+                    } else {
+                        // Dynamic method call: $obj->$method()
+                        self.emit_expr(method);
+                        for arg in *args {
+                            self.emit_expr(arg.value);
+                        }
+                        self.chunk
+                            .code
+                            .push(OpCode::CallMethodDynamic(args.len() as u8));
                     }
+                } else {
+                    // Dynamic method call with expression: $obj->{$expr}()
+                    self.emit_expr(method);
+                    for arg in *args {
+                        self.emit_expr(arg.value);
+                    }
+                    self.chunk
+                        .code
+                        .push(OpCode::CallMethodDynamic(args.len() as u8));
                 }
             }
             Expr::StaticCall {
@@ -2344,14 +2353,11 @@ impl<'src> Emitter<'src> {
                 args,
                 ..
             } => {
+                let mut class_emitted = false;
                 if let Expr::Variable { span, .. } = class {
                     let class_name = self.get_text(*span);
                     if !class_name.starts_with(b"$") {
                         let class_sym = self.interner.intern(class_name);
-
-                        for arg in *args {
-                            self.emit_expr(arg.value);
-                        }
 
                         if let Expr::Variable {
                             span: method_span, ..
@@ -2359,15 +2365,45 @@ impl<'src> Emitter<'src> {
                         {
                             let method_name = self.get_text(*method_span);
                             if !method_name.starts_with(b"$") {
+                                for arg in *args {
+                                    self.emit_expr(arg.value);
+                                }
                                 let method_sym = self.interner.intern(method_name);
                                 self.chunk.code.push(OpCode::CallStaticMethod(
                                     class_sym,
                                     method_sym,
                                     args.len() as u8,
                                 ));
+                                class_emitted = true;
                             }
                         }
+
+                        if !class_emitted {
+                            // Class is static, but method is dynamic: Class::$method()
+                            let idx = self.add_constant(Val::String(class_name.to_vec().into()));
+                            self.chunk.code.push(OpCode::Const(idx as u16));
+                            self.emit_expr(method);
+                            for arg in *args {
+                                self.emit_expr(arg.value);
+                            }
+                            self.chunk
+                                .code
+                                .push(OpCode::CallStaticMethodDynamic(args.len() as u8));
+                            class_emitted = true;
+                        }
                     }
+                }
+
+                if !class_emitted {
+                    // Dynamic static call: $class::$method()
+                    self.emit_expr(class);
+                    self.emit_expr(method);
+                    for arg in *args {
+                        self.emit_expr(arg.value);
+                    }
+                    self.chunk
+                        .code
+                        .push(OpCode::CallStaticMethodDynamic(args.len() as u8));
                 }
             }
             Expr::ClassConstFetch {
@@ -2560,6 +2596,35 @@ impl<'src> Emitter<'src> {
                             }
                         }
                     }
+                }
+                Expr::Array { items, .. } => {
+                    // list($a, $b, $c) = expr
+                    // Emit the right-hand side expression (should be an array)
+                    self.emit_expr(expr);
+                    
+                    // Extract each element and assign to variables
+                    for (i, item) in items.iter().enumerate() {
+                        let value = item.value;
+                        if let Expr::Variable { span, .. } = value {
+                            let name = self.get_text(*span);
+                            if name.starts_with(b"$") {
+                                // Duplicate the array on stack for next iteration
+                                self.chunk.code.push(OpCode::Dup);
+                                // Push the index
+                                let idx_val = Val::Int(i as i64);
+                                let idx_const = self.add_constant(idx_val);
+                                self.chunk.code.push(OpCode::Const(idx_const as u16));
+                                // Fetch array[i] (pops index and duplicated array, pushes value, leaves original array)
+                                self.chunk.code.push(OpCode::FetchDim);
+                                // Store to variable (pops value)
+                                let var_name = &name[1..];
+                                let sym = self.interner.intern(var_name);
+                                self.chunk.code.push(OpCode::StoreVar(sym));
+                            }
+                        }
+                    }
+                    // Leave the original array on the stack as the assignment result
+                    // (statement-level Pop will remove it if needed)
                 }
                 _ => {}
             },

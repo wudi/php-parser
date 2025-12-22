@@ -178,7 +178,8 @@ impl VM {
                 return Ok(());
             }
 
-            self.bind_params_to_frame(&mut frame, &func.params)?;
+            // Don't bind params here - let Recv/RecvInit opcodes handle it
+            // self.bind_params_to_frame(&mut frame, &func.params)?;
             self.push_frame(frame);
             Ok(())
         } else {
@@ -237,6 +238,33 @@ impl VM {
 
             // Try __invoke magic method
             let invoke_sym = self.context.interner.intern(b"__invoke");
+
+            // Check for native __invoke first
+            if let Some(native_entry) = self.find_native_method(obj_data.class, invoke_sym) {
+                self.check_method_visibility(
+                    native_entry.declaring_class,
+                    native_entry.visibility,
+                    Some(invoke_sym),
+                )?;
+
+                // Set this in current frame temporarily for native method to access
+                let saved_this = self.frames.last().and_then(|f| f.this);
+                if let Some(frame) = self.frames.last_mut() {
+                    frame.this = Some(obj_handle);
+                }
+
+                // Call native handler
+                let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+
+                // Restore previous this
+                if let Some(frame) = self.frames.last_mut() {
+                    frame.this = saved_this;
+                }
+
+                self.operand_stack.push(result);
+                return Ok(());
+            }
+
             if let Some((method, visibility, _, defining_class)) =
                 self.find_method(obj_data.class, invoke_sym)
             {
@@ -319,6 +347,18 @@ impl VM {
         let class_sym = self.context.interner.intern(class_name_bytes);
         let class_sym = self.resolve_class_name(class_sym)?;
 
+        // Check for native method first
+        if let Some(native_entry) = self.find_native_method(class_sym, method_sym) {
+            self.check_method_visibility(
+                native_entry.declaring_class,
+                native_entry.visibility,
+                Some(method_sym),
+            )?;
+            let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+            self.operand_stack.push(result);
+            return Ok(());
+        }
+
         if let Some((method, visibility, _, defining_class)) =
             self.find_method(class_sym, method_sym)
         {
@@ -347,21 +387,49 @@ impl VM {
     ) -> Result<(), VmError> {
         let payload_val = self.arena.get(payload_handle);
         if let Val::ObjPayload(obj_data) = &payload_val.value {
+            let class_name = obj_data.class;
+
+            // Check for native method first
+            if let Some(native_entry) = self.find_native_method(class_name, method_sym) {
+                self.check_method_visibility(
+                    native_entry.declaring_class,
+                    native_entry.visibility,
+                    Some(method_sym),
+                )?;
+
+                // Set this in current frame temporarily for native method to access
+                let saved_this = self.frames.last().and_then(|f| f.this);
+                if let Some(frame) = self.frames.last_mut() {
+                    frame.this = Some(obj_handle);
+                }
+
+                // Call native handler
+                let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+
+                // Restore previous this
+                if let Some(frame) = self.frames.last_mut() {
+                    frame.this = saved_this;
+                }
+
+                self.operand_stack.push(result);
+                return Ok(());
+            }
+
             if let Some((method, visibility, _, defining_class)) =
-                self.find_method(obj_data.class, method_sym)
+                self.find_method(class_name, method_sym)
             {
                 self.check_method_visibility(defining_class, visibility, Some(method_sym))?;
                 self.push_method_frame(
                     method,
                     Some(obj_handle),
                     defining_class,
-                    obj_data.class,
+                    class_name,
                     args,
                 );
                 Ok(())
             } else {
                 let class_str = String::from_utf8_lossy(
-                    self.context.interner.lookup(obj_data.class).unwrap_or(b"?"),
+                    self.context.interner.lookup(class_name).unwrap_or(b"?"),
                 );
                 let method_str = String::from_utf8_lossy(method_name_bytes);
                 Err(VmError::RuntimeError(format!(

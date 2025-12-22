@@ -2106,14 +2106,25 @@ impl VM {
         callable_handle: Handle,
         args: ArgList,
     ) -> Result<Handle, VmError> {
+        let initial_depth = self.frames.len();
+        let stack_before = self.operand_stack.len();
+
         self.invoke_callable_value(callable_handle, args)?;
-        let depth = self.frames.len();
-        if depth > 0 {
-            self.run_loop(depth - 1)?;
+
+        if self.frames.len() > initial_depth {
+            self.run_loop(initial_depth)?;
+            // After running user function, result is in last_return_value
+            Ok(self
+                .last_return_value
+                .unwrap_or_else(|| self.arena.alloc(Val::Null)))
+        } else if self.operand_stack.len() > stack_before {
+            // Native function call - result is on stack, pop and return it
+            // Don't set last_return_value since we're not completing a frame
+            Ok(self.operand_stack.pop().unwrap())
+        } else {
+            // No result was produced
+            Ok(self.arena.alloc(Val::Null))
         }
-        Ok(self
-            .last_return_value
-            .unwrap_or_else(|| self.arena.alloc(Val::Null)))
     }
 
     pub(crate) fn convert_to_string(&mut self, handle: Handle) -> Result<Vec<u8>, VmError> {
@@ -6007,152 +6018,16 @@ impl VM {
                 }
             }
             OpCode::CallMethod(method_name, arg_count) => {
-                let obj_handle = self
+                self.exec_call_method(method_name, arg_count, false)?;
+            }
+            OpCode::CallMethodDynamic(arg_count) => {
+                let method_name_handle = self
                     .operand_stack
                     .peek_at(arg_count as usize)
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
-                let class_name = if let Val::Object(h) = self.arena.get(obj_handle).value {
-                    if let Val::ObjPayload(data) = &self.arena.get(h).value {
-                        data.class
-                    } else {
-                        return Err(VmError::RuntimeError("Invalid object payload".into()));
-                    }
-                } else {
-                    return Err(VmError::RuntimeError(
-                        "Call to member function on non-object".into(),
-                    ));
-                };
-
-                // Check for native method first
-                let native_method = self.find_native_method(class_name, method_name);
-                if let Some(native_entry) = native_method {
-                    self.check_method_visibility(
-                        native_entry.declaring_class,
-                        native_entry.visibility,
-                        Some(method_name),
-                    )?;
-
-                    // Collect args and pop object
-                    let args = self.collect_call_args(arg_count)?;
-                    let obj_handle = self.operand_stack.pop().unwrap();
-
-                    // Set this in current frame temporarily for native method to access
-                    let saved_this = self.frames.last().and_then(|f| f.this);
-                    if let Some(frame) = self.frames.last_mut() {
-                        frame.this = Some(obj_handle);
-                    }
-
-                    // Call native handler
-                    let result =
-                        (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
-
-                    // Restore previous this
-                    if let Some(frame) = self.frames.last_mut() {
-                        frame.this = saved_this;
-                    }
-
-                    self.operand_stack.push(result);
-                } else {
-                    let mut method_lookup = self.find_method(class_name, method_name);
-
-                    if method_lookup.is_none() {
-                        // Fallback: Check if we are in a scope that has this method as private.
-                        // This handles calling private methods of parent class from parent scope on child object.
-                        if let Some(scope) = self.get_current_class() {
-                            if let Some((func, vis, is_static, decl_class)) =
-                                self.find_method(scope, method_name)
-                            {
-                                if vis == Visibility::Private && decl_class == scope {
-                                    method_lookup = Some((func, vis, is_static, decl_class));
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
-                        self.check_method_visibility(defined_class, visibility, Some(method_name))?;
-
-                        let args = self.collect_call_args(arg_count)?;
-
-                        let obj_handle = self.operand_stack.pop().unwrap();
-
-                        let mut frame = CallFrame::new(user_func.chunk.clone());
-                        frame.func = Some(user_func.clone());
-                        if !is_static {
-                            frame.this = Some(obj_handle);
-                        }
-                        frame.class_scope = Some(defined_class);
-                        frame.called_scope = Some(class_name);
-                        frame.args = args;
-
-                        self.push_frame(frame);
-                    } else {
-                        // Method not found. Check for __call.
-                        let call_magic = self.context.interner.intern(b"__call");
-                        if let Some((magic_func, _, _, magic_class)) =
-                            self.find_method(class_name, call_magic)
-                        {
-                            // Found __call.
-
-                            // Pop args
-                            let args = self.collect_call_args(arg_count)?;
-
-                            let obj_handle = self.operand_stack.pop().unwrap();
-
-                            // Create array from args
-                            let mut array_map = IndexMap::new();
-                            for (i, arg) in args.into_iter().enumerate() {
-                                array_map.insert(ArrayKey::Int(i as i64), arg);
-                            }
-                            let args_array_handle = self.arena.alloc(Val::Array(
-                                crate::core::value::ArrayData::from(array_map).into(),
-                            ));
-
-                            // Create method name string
-                            let method_name_str = self
-                                .context
-                                .interner
-                                .lookup(method_name)
-                                .expect("Method name should be interned")
-                                .to_vec();
-                            let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
-
-                            // Prepare frame for __call
-                            let mut frame = CallFrame::new(magic_func.chunk.clone());
-                            frame.func = Some(magic_func.clone());
-                            frame.this = Some(obj_handle);
-                            frame.class_scope = Some(magic_class);
-                            frame.called_scope = Some(class_name);
-                            let mut frame_args = ArgList::new();
-                            frame_args.push(name_handle);
-                            frame_args.push(args_array_handle);
-                            frame.args = frame_args;
-
-                            // Pass args: $name, $arguments
-                            // Param 0: name
-                            if let Some(param) = magic_func.params.get(0) {
-                                frame.locals.insert(param.name, frame.args[0]);
-                            }
-                            // Param 1: arguments
-                            if let Some(param) = magic_func.params.get(1) {
-                                frame.locals.insert(param.name, frame.args[1]);
-                            }
-
-                            self.push_frame(frame);
-                        } else {
-                            let method_str = String::from_utf8_lossy(
-                                self.context
-                                    .interner
-                                    .lookup(method_name)
-                                    .unwrap_or(b"<unknown>"),
-                            );
-                            return Err(VmError::RuntimeError(format!(
-                                "Call to undefined method {}",
-                                method_str
-                            )));
-                        }
-                    }
-                }
+                let method_name_bytes = self.convert_to_string(method_name_handle)?;
+                let method_name = self.context.interner.intern(&method_name_bytes);
+                self.exec_call_method(method_name, arg_count, true)?;
             }
             OpCode::UnsetObj => {
                 let prop_name_handle = self
@@ -8939,119 +8814,25 @@ impl VM {
                 self.operand_stack.push(res_handle);
             }
             OpCode::CallStaticMethod(class_name, method_name, arg_count) => {
-                let resolved_class = self.resolve_class_name(class_name)?;
+                self.exec_call_static_method(class_name, method_name, arg_count, false)?;
+            }
+            OpCode::CallStaticMethodDynamic(arg_count) => {
+                let method_name_handle = self
+                    .operand_stack
+                    .peek_at(arg_count as usize)
+                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+                let class_name_handle = self
+                    .operand_stack
+                    .peek_at(arg_count as usize + 1)
+                    .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                let mut method_lookup = self.find_method(resolved_class, method_name);
+                let method_name_bytes = self.convert_to_string(method_name_handle)?;
+                let method_name = self.context.interner.intern(&method_name_bytes);
 
-                if method_lookup.is_none() {
-                    if let Some(scope) = self.get_current_class() {
-                        if let Some((func, vis, is_static, decl_class)) =
-                            self.find_method(scope, method_name)
-                        {
-                            if vis == Visibility::Private && decl_class == scope {
-                                method_lookup = Some((func, vis, is_static, decl_class));
-                            }
-                        }
-                    }
-                }
+                let class_name_bytes = self.convert_to_string(class_name_handle)?;
+                let class_name = self.context.interner.intern(&class_name_bytes);
 
-                if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
-                    let mut this_handle = None;
-                    if !is_static {
-                        if let Some(current_frame) = self.frames.last() {
-                            if let Some(th) = current_frame.this {
-                                if self.is_instance_of(th, defined_class) {
-                                    this_handle = Some(th);
-                                }
-                            }
-                        }
-                        if this_handle.is_none() {
-                            return Err(VmError::RuntimeError(
-                                "Non-static method called statically".into(),
-                            ));
-                        }
-                    }
-
-                    self.check_method_visibility(defined_class, visibility, Some(method_name))?;
-
-                    let args = self.collect_call_args(arg_count)?;
-
-                    let mut frame = CallFrame::new(user_func.chunk.clone());
-                    frame.func = Some(user_func.clone());
-                    frame.this = this_handle;
-                    frame.class_scope = Some(defined_class);
-                    frame.called_scope = Some(resolved_class);
-                    frame.args = args;
-
-                    self.push_frame(frame);
-                } else {
-                    // Method not found. Check for __callStatic.
-                    let call_static_magic = self.context.interner.intern(b"__callStatic");
-                    if let Some((magic_func, _, is_static, magic_class)) =
-                        self.find_method(resolved_class, call_static_magic)
-                    {
-                        if !is_static {
-                            return Err(VmError::RuntimeError(
-                                "__callStatic must be static".into(),
-                            ));
-                        }
-
-                        // Pop args
-                        let args = self.collect_call_args(arg_count)?;
-
-                        // Create array from args
-                        let mut array_map = IndexMap::new();
-                        for (i, arg) in args.into_iter().enumerate() {
-                            array_map.insert(ArrayKey::Int(i as i64), arg);
-                        }
-                        let args_array_handle = self.arena.alloc(Val::Array(
-                            crate::core::value::ArrayData::from(array_map).into(),
-                        ));
-
-                        // Create method name string
-                        let method_name_str = self
-                            .context
-                            .interner
-                            .lookup(method_name)
-                            .expect("Method name should be interned")
-                            .to_vec();
-                        let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
-
-                        // Prepare frame for __callStatic
-                        let mut frame = CallFrame::new(magic_func.chunk.clone());
-                        frame.func = Some(magic_func.clone());
-                        frame.this = None;
-                        frame.class_scope = Some(magic_class);
-                        frame.called_scope = Some(resolved_class);
-                        let mut frame_args = ArgList::new();
-                        frame_args.push(name_handle);
-                        frame_args.push(args_array_handle);
-                        frame.args = frame_args;
-
-                        // Pass args: $name, $arguments
-                        // Param 0: name
-                        if let Some(param) = magic_func.params.get(0) {
-                            frame.locals.insert(param.name, frame.args[0]);
-                        }
-                        // Param 1: arguments
-                        if let Some(param) = magic_func.params.get(1) {
-                            frame.locals.insert(param.name, frame.args[1]);
-                        }
-
-                        self.push_frame(frame);
-                    } else {
-                        let method_str = String::from_utf8_lossy(
-                            self.context
-                                .interner
-                                .lookup(method_name)
-                                .unwrap_or(b"<unknown>"),
-                        );
-                        return Err(VmError::RuntimeError(format!(
-                            "Call to undefined static method {}",
-                            method_str
-                        )));
-                    }
-                }
+                self.exec_call_static_method(class_name, method_name, arg_count, true)?;
             }
 
             OpCode::Concat => {
@@ -10367,6 +10148,315 @@ impl VM {
             }
             ReturnType::Static => "static".to_string(),
         }
+    }
+
+    fn exec_call_method(
+        &mut self,
+        method_name: Symbol,
+        arg_count: u8,
+        is_dynamic: bool,
+    ) -> Result<(), VmError> {
+        let obj_handle = self
+            .operand_stack
+            .peek_at(arg_count as usize + if is_dynamic { 1 } else { 0 })
+            .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
+
+        let class_name = if let Val::Object(h) = self.arena.get(obj_handle).value {
+            if let Val::ObjPayload(data) = &self.arena.get(h).value {
+                data.class
+            } else {
+                return Err(VmError::RuntimeError("Invalid object payload".into()));
+            }
+        } else {
+            return Err(VmError::RuntimeError(
+                "Call to member function on non-object".into(),
+            ));
+        };
+
+        // Check for native method first
+        let native_method = self.find_native_method(class_name, method_name);
+        if let Some(native_entry) = native_method {
+            self.check_method_visibility(
+                native_entry.declaring_class,
+                native_entry.visibility,
+                Some(method_name),
+            )?;
+
+            // Collect args
+            let args = self.collect_call_args(arg_count)?;
+
+            // Pop method name if dynamic
+            if is_dynamic {
+                self.operand_stack.pop();
+            }
+
+            // Pop object
+            let obj_handle = self.operand_stack.pop().unwrap();
+
+            // Set this in current frame temporarily for native method to access
+            let saved_this = self.frames.last().and_then(|f| f.this);
+            if let Some(frame) = self.frames.last_mut() {
+                frame.this = Some(obj_handle);
+            }
+
+            // Call native handler
+            let result = (native_entry.handler)(self, &args).map_err(VmError::RuntimeError)?;
+
+            // Restore previous this
+            if let Some(frame) = self.frames.last_mut() {
+                frame.this = saved_this;
+            }
+
+            self.operand_stack.push(result);
+        } else {
+            let mut method_lookup = self.find_method(class_name, method_name);
+
+            if method_lookup.is_none() {
+                // Fallback: Check if we are in a scope that has this method as private.
+                // This handles calling private methods of parent class from parent scope on child object.
+                if let Some(scope) = self.get_current_class() {
+                    if let Some((func, vis, is_static, decl_class)) =
+                        self.find_method(scope, method_name)
+                    {
+                        if vis == Visibility::Private && decl_class == scope {
+                            method_lookup = Some((func, vis, is_static, decl_class));
+                        }
+                    }
+                }
+            }
+
+            if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
+                self.check_method_visibility(defined_class, visibility, Some(method_name))?;
+
+                let args = self.collect_call_args(arg_count)?;
+
+                if is_dynamic {
+                    self.operand_stack.pop();
+                }
+                let obj_handle = self.operand_stack.pop().unwrap();
+
+                let mut frame = CallFrame::new(user_func.chunk.clone());
+                frame.func = Some(user_func.clone());
+                if !is_static {
+                    frame.this = Some(obj_handle);
+                }
+                frame.class_scope = Some(defined_class);
+                frame.called_scope = Some(class_name);
+                frame.args = args;
+
+                self.push_frame(frame);
+            } else {
+                // Method not found. Check for __call.
+                let call_magic = self.context.interner.intern(b"__call");
+                if let Some((magic_func, _, _, magic_class)) =
+                    self.find_method(class_name, call_magic)
+                {
+                    // Found __call.
+
+                    // Pop args
+                    let args = self.collect_call_args(arg_count)?;
+
+                    if is_dynamic {
+                        self.operand_stack.pop();
+                    }
+                    let obj_handle = self.operand_stack.pop().unwrap();
+
+                    // Create array from args
+                    let mut array_map = IndexMap::new();
+                    for (i, arg) in args.into_iter().enumerate() {
+                        array_map.insert(ArrayKey::Int(i as i64), arg);
+                    }
+                    let args_array_handle = self.arena.alloc(Val::Array(
+                        crate::core::value::ArrayData::from(array_map).into(),
+                    ));
+
+                    // Create method name string
+                    let method_name_str = self
+                        .context
+                        .interner
+                        .lookup(method_name)
+                        .expect("Method name should be interned")
+                        .to_vec();
+                    let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
+
+                    // Prepare frame for __call
+                    let mut frame = CallFrame::new(magic_func.chunk.clone());
+                    frame.func = Some(magic_func.clone());
+                    frame.this = Some(obj_handle);
+                    frame.class_scope = Some(magic_class);
+                    frame.called_scope = Some(class_name);
+                    let mut frame_args = ArgList::new();
+                    frame_args.push(name_handle);
+                    frame_args.push(args_array_handle);
+                    frame.args = frame_args;
+
+                    // Pass args: $name, $arguments
+                    // Param 0: name
+                    if let Some(param) = magic_func.params.get(0) {
+                        frame.locals.insert(param.name, frame.args[0]);
+                    }
+                    // Param 1: arguments
+                    if let Some(param) = magic_func.params.get(1) {
+                        frame.locals.insert(param.name, frame.args[1]);
+                    }
+
+                    self.push_frame(frame);
+                } else {
+                    let method_str = String::from_utf8_lossy(
+                        self.context
+                            .interner
+                            .lookup(method_name)
+                            .unwrap_or(b"<unknown>"),
+                    );
+                    return Err(VmError::RuntimeError(format!(
+                        "Call to undefined method {}",
+                        method_str
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn exec_call_static_method(
+        &mut self,
+        class_name: Symbol,
+        method_name: Symbol,
+        arg_count: u8,
+        is_dynamic: bool,
+    ) -> Result<(), VmError> {
+        let resolved_class = if is_dynamic {
+            class_name
+        } else {
+            self.resolve_class_name(class_name)?
+        };
+
+        let mut method_lookup = self.find_method(resolved_class, method_name);
+
+        if method_lookup.is_none() {
+            if let Some(scope) = self.get_current_class() {
+                if let Some((func, vis, is_static, decl_class)) =
+                    self.find_method(scope, method_name)
+                {
+                    if vis == Visibility::Private && decl_class == scope {
+                        method_lookup = Some((func, vis, is_static, decl_class));
+                    }
+                }
+            }
+        }
+
+        if let Some((user_func, visibility, is_static, defined_class)) = method_lookup {
+            let mut this_handle = None;
+            if !is_static {
+                if let Some(current_frame) = self.frames.last() {
+                    if let Some(th) = current_frame.this {
+                        if self.is_instance_of(th, defined_class) {
+                            this_handle = Some(th);
+                        }
+                    }
+                }
+                if this_handle.is_none() {
+                    return Err(VmError::RuntimeError(
+                        "Non-static method called statically".into(),
+                    ));
+                }
+            }
+
+            self.check_method_visibility(defined_class, visibility, Some(method_name))?;
+
+            let args = self.collect_call_args(arg_count)?;
+
+            if is_dynamic {
+                self.operand_stack.pop(); // method name
+                self.operand_stack.pop(); // class name
+            }
+
+            let mut frame = CallFrame::new(user_func.chunk.clone());
+            frame.func = Some(user_func.clone());
+            frame.this = this_handle;
+            frame.class_scope = Some(defined_class);
+            frame.called_scope = Some(resolved_class);
+            frame.args = args;
+
+            self.push_frame(frame);
+        } else {
+            // Method not found. Check for __callStatic.
+            let call_static_magic = self.context.interner.intern(b"__callStatic");
+            if let Some((magic_func, _, is_static, magic_class)) =
+                self.find_method(resolved_class, call_static_magic)
+            {
+                if !is_static {
+                    return Err(VmError::RuntimeError("__callStatic must be static".into()));
+                }
+
+                // Pop args
+                let args = self.collect_call_args(arg_count)?;
+
+                if is_dynamic {
+                    self.operand_stack.pop(); // method name
+                    self.operand_stack.pop(); // class name
+                }
+
+                // Create array from args
+                let mut array_map = IndexMap::new();
+                for (i, arg) in args.into_iter().enumerate() {
+                    array_map.insert(ArrayKey::Int(i as i64), arg);
+                }
+                let args_array_handle = self.arena.alloc(Val::Array(
+                    crate::core::value::ArrayData::from(array_map).into(),
+                ));
+
+                // Create method name string
+                let method_name_str = self
+                    .context
+                    .interner
+                    .lookup(method_name)
+                    .expect("Method name should be interned")
+                    .to_vec();
+                let name_handle = self.arena.alloc(Val::String(method_name_str.into()));
+
+                // Prepare frame for __callStatic
+                let mut frame = CallFrame::new(magic_func.chunk.clone());
+                frame.func = Some(magic_func.clone());
+                frame.this = None;
+                frame.class_scope = Some(magic_class);
+                frame.called_scope = Some(resolved_class);
+                let mut frame_args = ArgList::new();
+                frame_args.push(name_handle);
+                frame_args.push(args_array_handle);
+                frame.args = frame_args;
+
+                // Pass args: $name, $arguments
+                // Param 0: name
+                if let Some(param) = magic_func.params.get(0) {
+                    frame.locals.insert(param.name, frame.args[0]);
+                }
+                // Param 1: arguments
+                if let Some(param) = magic_func.params.get(1) {
+                    frame.locals.insert(param.name, frame.args[1]);
+                }
+
+                self.push_frame(frame);
+            } else {
+                let method_str = String::from_utf8_lossy(
+                    self.context
+                        .interner
+                        .lookup(method_name)
+                        .unwrap_or(b"<unknown>"),
+                );
+                return Err(VmError::RuntimeError(format!(
+                    "Call to undefined static method {}::{}",
+                    String::from_utf8_lossy(
+                        self.context
+                            .interner
+                            .lookup(resolved_class)
+                            .unwrap_or(b"<unknown>")
+                    ),
+                    method_str
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
