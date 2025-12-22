@@ -207,6 +207,10 @@ pub fn register_pdo_extension_to_registry(registry: &mut ExtensionRegistry) {
         b"ATTR_DEFAULT_FETCH_MODE".to_vec(),
         (Val::Int(19), Visibility::Public),
     );
+    pdo_constants.insert(
+        b"ATTR_EMULATE_PREPARES".to_vec(),
+        (Val::Int(20), Visibility::Public),
+    );
 
     registry.register_class(NativeClassDef {
         name: b"PDO".to_vec(),
@@ -433,7 +437,24 @@ pub fn php_pdo_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
         None
     };
 
-    // TODO: Handle options
+    let mut options = Vec::new();
+    if args.len() > 3 {
+        match &vm.arena.get(args[3]).value {
+            Val::Array(arr) => {
+                for (key, val) in arr.map.iter() {
+                    let attr_id = match key {
+                        ArrayKey::Int(i) => *i,
+                        _ => continue,
+                    };
+                    if let Some(attr) = Attribute::from_i64(attr_id) {
+                        options.push((attr, *val));
+                    }
+                }
+            }
+            Val::Null => {}
+            _ => return Err("PDO::__construct(): Options must be an array or null".into()),
+        }
+    }
 
     // Parse DSN and connect
     let (driver_name, _conn_str) =
@@ -451,7 +472,7 @@ pub fn php_pdo_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
         .ok_or_else(|| format!("PDO::__construct(): Driver '{}' not found", driver_name))?;
 
     let conn = driver
-        .connect(&dsn, username.as_deref(), password.as_deref(), &[])
+        .connect(&dsn, username.as_deref(), password.as_deref(), &options)
         .map_err(|e| format!("PDO::__construct(): Connection failed: {}", e))?;
 
     // Store connection in context
@@ -501,6 +522,7 @@ pub fn php_pdo_prepare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .context
         .pdo_connections
         .get(&conn_id)
+        .cloned()
         .ok_or("PDO::prepare(): Invalid connection")?;
 
     let stmt = conn_ref
@@ -527,11 +549,17 @@ pub fn php_pdo_prepare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .pdo_statements
         .insert(stmt_id, Rc::new(std::cell::RefCell::new(stmt)));
 
-    // Store ID in PDOStatement object
+    // Store ID and default fetch mode in PDOStatement object
     let id_sym = vm.context.interner.intern(b"__id");
     let id_val = vm.arena.alloc(Val::Int(stmt_id as i64));
+    let fetch_mode_sym = vm.context.interner.intern(b"fetchMode");
+    let default_fetch_mode = conn_ref.borrow().get_attribute(Attribute::DefaultFetchMode);
+
     if let Val::ObjPayload(obj) = &mut vm.arena.get_mut(payload_handle).value {
         obj.properties.insert(id_sym, id_val);
+        if let Some(mode) = default_fetch_mode {
+            obj.properties.insert(fetch_mode_sym, mode);
+        }
     }
 
     Ok(stmt_obj_handle)
@@ -893,7 +921,20 @@ pub fn php_pdo_stmt_fetch(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
             _ => types::FetchMode::Both,
         }
     } else {
-        types::FetchMode::Both
+        // Look for fetchMode property on the statement object
+        let fetch_mode_sym = vm.context.interner.intern(b"fetchMode");
+        let mut mode = types::FetchMode::Both;
+
+        if let Val::Object(payload_h) = &vm.arena.get(this_handle).value {
+            if let Val::ObjPayload(obj) = &vm.arena.get(*payload_h).value {
+                if let Some(val_h) = obj.properties.get(&fetch_mode_sym) {
+                    if let Val::Int(m) = &vm.arena.get(*val_h).value {
+                        mode = types::FetchMode::from_i64(*m).unwrap_or(types::FetchMode::Both);
+                    }
+                }
+            }
+        }
+        mode
     };
 
     let stmt_ref = vm
@@ -922,7 +963,20 @@ pub fn php_pdo_stmt_fetch_all(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
             _ => types::FetchMode::Both,
         }
     } else {
-        types::FetchMode::Both
+        // Look for fetchMode property on the statement object
+        let fetch_mode_sym = vm.context.interner.intern(b"fetchMode");
+        let mut mode = types::FetchMode::Both;
+
+        if let Val::Object(payload_h) = &vm.arena.get(this_handle).value {
+            if let Val::ObjPayload(obj) = &vm.arena.get(*payload_h).value {
+                if let Some(val_h) = obj.properties.get(&fetch_mode_sym) {
+                    if let Val::Int(m) = &vm.arena.get(*val_h).value {
+                        mode = types::FetchMode::from_i64(*m).unwrap_or(types::FetchMode::Both);
+                    }
+                }
+            }
+        }
+        mode
     };
 
     let stmt_ref = vm
