@@ -24,8 +24,6 @@
 pub mod driver;
 pub mod drivers;
 pub mod types;
-pub mod class_stub;
-
 
 use crate::runtime::context::EngineContext;
 use drivers::DriverRegistry;
@@ -39,17 +37,8 @@ pub fn register_pdo_extension(context: &mut EngineContext) {
     // Store registry in context (will need to add this field to EngineContext)
     // context.pdo_driver_registry = Some(registry);
     
-    // Register PDO and PDOStatement classes (stub)
-    // TODO: Replace with real class registration once class API is ready
-    // Example:
-    // context.class_registry.register_class("PDO", ...);
-    // context.class_registry.register_class("PDOStatement", ...);
-    // For now, just ensure stubs are linked
-    let _ = class_stub::php_pdo_construct;
-    let _ = class_stub::php_pdo_prepare;
-    let _ = class_stub::php_pdo_exec;
-    let _ = class_stub::php_pdo_stmt_execute;
-    let _ = class_stub::php_pdo_stmt_fetch;
+    // TODO: Register PDO class
+    // TODO: Register PDOStatement class
     // TODO: Register PDOException class
     // TODO: Register constants
 }

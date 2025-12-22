@@ -3,7 +3,6 @@
 //! This module contains all PDO driver implementations and the driver registry.
 
 pub mod sqlite;
-pub mod mysql;
 
 use super::driver::PdoDriver;
 use super::types::PdoError;
@@ -23,7 +22,6 @@ impl DriverRegistry {
         
         // Register built-in drivers
         registry.register(Box::new(sqlite::SqliteDriver));
-        registry.register(Box::new(mysql::MysqlDriver));
         
         registry
     }

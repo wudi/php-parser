@@ -12,6 +12,7 @@ use mysql::prelude::*;
 /// MySQLi connection wrapper
 ///
 /// Implements RAII pattern - connection is automatically closed on Drop
+#[derive(Debug)]
 pub struct MysqliConnection {
     pool: Pool,
     last_error: Option<(u32, String)>,
@@ -19,6 +20,40 @@ pub struct MysqliConnection {
 }
 
 impl MysqliConnection {
+        /// Begin a transaction
+        pub fn begin_transaction(&mut self) -> Result<(), MysqliError> {
+            let mut conn = self.pool.get_conn().map_err(|e| {
+                MysqliError::Connection(2006, format!("MySQL server has gone away: {}", e))
+            })?;
+            conn.query_drop("START TRANSACTION").map_err(|e| MysqliError::Query(1064, e.to_string()))
+        }
+
+        /// Commit a transaction
+        pub fn commit(&mut self) -> Result<(), MysqliError> {
+            let mut conn = self.pool.get_conn().map_err(|e| {
+                MysqliError::Connection(2006, format!("MySQL server has gone away: {}", e))
+            })?;
+            conn.query_drop("COMMIT").map_err(|e| MysqliError::Query(1064, e.to_string()))
+        }
+
+        /// Rollback a transaction
+        pub fn rollback(&mut self) -> Result<(), MysqliError> {
+            let mut conn = self.pool.get_conn().map_err(|e| {
+                MysqliError::Connection(2006, format!("MySQL server has gone away: {}", e))
+            })?;
+            conn.query_drop("ROLLBACK").map_err(|e| MysqliError::Query(1064, e.to_string()))
+        }
+
+        /// Check if in a transaction (not supported, always false)
+        pub fn in_transaction(&self) -> bool {
+            false // MySQL client does not expose this easily
+        }
+
+        /// Get last insert id
+        pub fn last_insert_id(&mut self) -> u64 {
+            // This is a stub; real implementation would require tracking per-connection
+            0
+        }
     /// Create a new MySQL connection
     ///
     /// Reference: $PHP_SRC_PATH/ext/mysqli/mysqli_api.c - mysqli_real_connect
