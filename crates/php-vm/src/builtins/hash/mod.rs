@@ -74,6 +74,15 @@ impl HashRegistry {
         registry.register(Box::new(algorithms::Sha1Algorithm));
         registry.register(Box::new(algorithms::Sha256Algorithm));
         registry.register(Box::new(algorithms::Sha512Algorithm));
+        registry.register(Box::new(algorithms::Sha224Algorithm));
+        registry.register(Box::new(algorithms::Sha384Algorithm));
+        registry.register(Box::new(algorithms::Sha512_224Algorithm));
+        registry.register(Box::new(algorithms::Sha512_256Algorithm));
+        registry.register(Box::new(algorithms::Sha3_224Algorithm));
+        registry.register(Box::new(algorithms::Sha3_256Algorithm));
+        registry.register(Box::new(algorithms::Sha3_384Algorithm));
+        registry.register(Box::new(algorithms::Sha3_512Algorithm));
+        registry.register(Box::new(algorithms::WhirlpoolAlgorithm));
 
         registry
     }

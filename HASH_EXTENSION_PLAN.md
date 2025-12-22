@@ -94,21 +94,45 @@ crates/php-vm/src/builtins/hash/
 ### 3. Supported Algorithms (Initial Set)
 
 #### Priority 1 (Most Common)
+- **gost** - GOST R 34.11-94
+- **gost-crypto** - GOST R 34.11-2012 (Streebog)
+- **md2** - MD2 (128-bit, legacy)
+- **md4** - MD4 (128-bit, legacy)
 - **md5** - MD5 (128-bit, legacy but widely used)
 - **sha1** - SHA-1 (160-bit, legacy)
-- **sha256** - SHA-2 256-bit (recommended)
-- **sha512** - SHA-2 512-bit
-
-#### Priority 2 (Additional Common)
-- **sha384** - SHA-2 384-bit
 - **sha224** - SHA-2 224-bit
+- **sha256** - SHA-2 256-bit (recommended)
+- **sha384** - SHA-2 384-bit
+- **sha512** - SHA-2 512-bit
+- **sha512/224** - SHA-2 512/224-bit
+- **sha512/256** - SHA-2 512/256-bit
+- **sha3-224** - SHA-3 224-bit
+- **sha3-256** - SHA-3 256-bit
+- **sha3-384** - SHA-3 384-bit
+- **sha3-512** - SHA-3 512-bit
 
 #### Priority 3 (Extended Support)
-- **sha3-256** - SHA-3 256-bit
-- **sha3-512** - SHA-3 512-bit
-- **xxhash** - xxHash (fast, non-cryptographic)
+- **ripemd128** - RIPEMD-128 (legacy)
+- **ripemd160** - RIPEMD-160 (legacy)
+- **ripemd256** - RIPEMD-256 (legacy)
+- **ripemd320** - RIPEMD-320 (legacy)
+- **whirlpool** - Whirlpool (512-bit)
+- **tiger128,3** - Tiger 128-bit, 3 rounds
+- **tiger160,3** - Tiger 160-bit, 3 rounds
+- **tiger192,3** - Tiger 192-bit, 3 rounds
+- **tiger128,4** - Tiger 128-bit, 4 rounds
+- **tiger160,4** - Tiger 160-bit, 4 rounds
+- **tiger192,4** - Tiger 192-bit, 4 rounds
+- **tiger128,5** - Tiger 128-bit, 5 rounds
+- **tiger160,5** - Tiger 160-bit, 5 rounds
+- **tiger192,5** - Tiger 192-bit, 5 rounds
+- **xxh32** - xxHash 32-bit (fast, non-cryptographic)
+- **xxh64** - xxHash 64-bit (fast, non-cryptographic)
+- **xxh3** - xxHash 64-bit (fast, non-cryptographic)
+- **xxh128** - xxHash 128-bit (fast, non-cryptographic)
 - **crc32** - CRC32 (non-cryptographic)
 - **crc32b** - CRC32b (Ethernet polynomial)
+- **crc32c** - CRC32c (Castagnoli)
 
 ## Implementation Strategy
 
@@ -847,24 +871,10 @@ criterion_main!(benches);
 - [x] Create module structure
 - [x] Implement HashAlgorithm trait
 - [x] Implement HashRegistry
-- [x] Add MD5 and SHA-256 algorithms (+ SHA-1, SHA-512)
+- [x] Add MD2, MD4, MD5, GOST, GOST-CRYPTO, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512, SHA-512/224, SHA-512/256, SHA3-224, SHA3-256, SHA3-384, SHA3-512 algorithms
 - [x] Implement `hash()` and `hash_algos()`
 - [x] Write unit tests for Phase 1
 - [x] Implement `hash_file()`
-
-**Status**: All Phase 1 objectives completed successfully.
-- 14 unit tests passing with NIST test vectors
-- Full PHP 8.x compatibility verified
-- Binary and hex output modes working
-- Case-insensitive algorithm names supported
-
-### Phase 2: File & Incremental (Week 2)
-- [ ] Implement `hash_file()`
-- [ ] Implement HashContextData
-- [ ] Implement `hash_init()`, `hash_update()`, `hash_final()`
-- [ ] Implement `hash_copy()`
-- [ ] Add remaining SHA-2 algorithms (SHA-1, SHA-384, SHA-512)
-- [ ] Write unit tests for Phase 2
 
 ### Phase 3: HMAC (Week 3)
 - [ ] Implement HMAC wrapper
@@ -873,10 +883,9 @@ criterion_main!(benches);
 - [ ] Cross-reference with PHP output
 
 ### Phase 4: Advanced Features (Week 4)
-- [ ] Implement `hash_equals()` with constant-time comparison
-- [ ] Implement `hash_pbkdf2()`
-- [ ] Implement `hash_hkdf()` (if time permits)
-- [ ] Add SHA-3 and non-cryptographic hashes
+- [ ] Implement `hash_equals()` - Timing-safe string comparison
+- [ ] Implement `hash_pbkdf2()` - Password-based key derivation
+- [ ] Implement `hash_hkdf()` (if time permits) - HKDF key derivation
 - [ ] Comprehensive integration tests
 - [ ] Performance benchmarks
 
