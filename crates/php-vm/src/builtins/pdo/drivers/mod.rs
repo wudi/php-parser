@@ -3,6 +3,7 @@
 //! This module contains all PDO driver implementations and the driver registry.
 
 pub mod mysql;
+pub mod oci;
 pub mod pgsql;
 pub mod sqlite;
 
@@ -26,6 +27,7 @@ impl DriverRegistry {
         registry.register(Box::new(sqlite::SqliteDriver));
         registry.register(Box::new(mysql::MysqlDriver));
         registry.register(Box::new(pgsql::PgsqlDriver));
+        registry.register(Box::new(oci::OciDriver));
 
         registry
     }
