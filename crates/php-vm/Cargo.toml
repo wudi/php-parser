@@ -30,6 +30,7 @@ mysql = "24.0"
 
 # PDO extension dependencies
 rusqlite = { version = "0.31", features = ["bundled"] }
+postgres = "0.19"
 
 [[bin]]
 name = "php"
