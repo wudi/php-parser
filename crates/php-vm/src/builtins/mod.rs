@@ -20,3 +20,4 @@ pub mod variable;
 pub mod zlib;
 pub mod zip;
 pub mod url;
+pub mod bcmath;

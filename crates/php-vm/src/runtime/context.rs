@@ -1,7 +1,7 @@
 use crate::builtins::spl;
 use crate::builtins::{
     array, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
-    output_control, pcre, string, url, variable,
+    output_control, pcre, string, url, variable, bcmath,
 };
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
@@ -208,6 +208,13 @@ impl EngineContext {
         functions.insert(b"max".to_vec(), math::php_max as NativeHandler);
         functions.insert(b"min".to_vec(), math::php_min as NativeHandler);
         functions.insert(b"define".to_vec(), variable::php_define as NativeHandler);
+
+        // BCMath functions
+        functions.insert(b"bcadd".to_vec(), bcmath::bcadd as NativeHandler);
+        functions.insert(b"bcsub".to_vec(), bcmath::bcsub as NativeHandler);
+        functions.insert(b"bcmul".to_vec(), bcmath::bcmul as NativeHandler);
+        functions.insert(b"bcdiv".to_vec(), bcmath::bcdiv as NativeHandler);
+
         functions.insert(b"defined".to_vec(), variable::php_defined as NativeHandler);
         functions.insert(
             b"constant".to_vec(),

@@ -45,6 +45,13 @@ zip = "2.2.2"
 openssl = "0.10.75"
 base64 = "0.21"
 
+# BCMath extension dependencies
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+rust_decimal = "1.39.0"
+rust_decimal_macros = "1.39.0"
+
 
 [[bin]]
 name = "php"
