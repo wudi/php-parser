@@ -36,6 +36,9 @@ oracle = "0.6"
 # Zlib extension dependencies
 flate2 = "1.0"
 
+# Zip extension dependencies
+zip = "2.2.2"
+
 
 [[bin]]
 name = "php"

@@ -17,3 +17,4 @@ pub mod spl;
 pub mod string;
 pub mod variable;
 pub mod zlib;
+pub mod zip;

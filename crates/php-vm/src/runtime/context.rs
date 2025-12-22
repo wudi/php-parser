@@ -643,6 +643,12 @@ impl EngineContext {
             .register_extension(Box::new(ZlibExtension))
             .expect("Failed to register Zlib extension");
 
+        // Register Zip extension
+        use crate::runtime::zip_extension::ZipExtension;
+        registry
+            .register_extension(Box::new(ZipExtension))
+            .expect("Failed to register Zip extension");
+
         Self {
             registry,
             functions,
@@ -680,6 +686,9 @@ pub struct RequestContext {
         HashMap<u64, Rc<std::cell::RefCell<Box<dyn crate::builtins::pdo::driver::PdoConnection>>>>,
     pub pdo_statements:
         HashMap<u64, Rc<std::cell::RefCell<Box<dyn crate::builtins::pdo::driver::PdoStatement>>>>,
+    pub zip_archives: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
+    pub zip_resources: HashMap<u64, Rc<std::cell::RefCell<crate::builtins::zip::ZipArchiveWrapper>>>,
+    pub zip_entries: HashMap<u64, (u64, usize)>,
 }
 
 impl RequestContext {
@@ -707,6 +716,9 @@ impl RequestContext {
             mysqli_results: HashMap::new(),         // Initialize MySQLi results
             pdo_connections: HashMap::new(),        // Initialize PDO connections
             pdo_statements: HashMap::new(),         // Initialize PDO statements
+            zip_archives: HashMap::new(),           // Initialize Zip archives
+            zip_resources: HashMap::new(),          // Initialize Zip resources
+            zip_entries: HashMap::new(),            // Initialize Zip entries
         };
         ctx.register_builtin_classes();
         ctx.materialize_extension_classes();
