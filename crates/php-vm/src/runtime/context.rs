@@ -656,25 +656,13 @@ impl EngineContext {
             output_control::php_output_reset_rewrite_vars as NativeHandler,
         );
 
-        // Hash extension functions
-        functions.insert(b"hash".to_vec(), hash::php_hash as NativeHandler);
-        functions.insert(
-            b"hash_algos".to_vec(),
-            hash::php_hash_algos as NativeHandler,
-        );
-        functions.insert(b"hash_file".to_vec(), hash::php_hash_file as NativeHandler);
-        functions.insert(b"hash_init".to_vec(), hash::php_hash_init as NativeHandler);
-        functions.insert(
-            b"hash_update".to_vec(),
-            hash::php_hash_update as NativeHandler,
-        );
-        functions.insert(
-            b"hash_final".to_vec(),
-            hash::php_hash_final as NativeHandler,
-        );
-        functions.insert(b"hash_copy".to_vec(), hash::php_hash_copy as NativeHandler);
-
         let mut registry = ExtensionRegistry::new();
+
+        // Register Hash extension
+        use crate::runtime::hash_extension::HashExtension;
+        registry
+            .register_extension(Box::new(HashExtension))
+            .expect("Failed to register Hash extension");
 
         // Register JSON extension
         use crate::runtime::json_extension::JsonExtension;
