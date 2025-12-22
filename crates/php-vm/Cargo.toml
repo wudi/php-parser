@@ -28,6 +28,9 @@ subtle = "2.5"
 # MySQLi extension dependencies
 mysql = "24.0"
 
+# PDO extension dependencies
+rusqlite = { version = "0.31", features = ["bundled"] }
+
 [[bin]]
 name = "php"
 path = "src/bin/php.rs"

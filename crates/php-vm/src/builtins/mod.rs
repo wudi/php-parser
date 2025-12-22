@@ -12,6 +12,7 @@ pub mod math;
 pub mod mysqli;
 pub mod output_control;
 pub mod pcre;
+pub mod pdo;
 pub mod spl;
 pub mod string;
 pub mod variable;

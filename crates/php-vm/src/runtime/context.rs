@@ -71,6 +71,8 @@ pub struct EngineContext {
     // Deprecated: use registry.constants() instead
     // Kept for backward compatibility
     pub constants: HashMap<Symbol, Val>,
+    /// PDO driver registry (set by PDO extension)
+    pub pdo_driver_registry: Option<std::sync::Arc<crate::builtins::pdo::drivers::DriverRegistry>>,
 }
 
 impl EngineContext {
@@ -636,6 +638,7 @@ impl EngineContext {
             registry,
             functions,
             constants: HashMap::new(),
+            pdo_driver_registry: None,
         }
     }
 }
@@ -1868,6 +1871,7 @@ impl EngineBuilder {
             registry,
             functions: HashMap::new(), // Deprecated, kept for compatibility
             constants: HashMap::new(), // Deprecated, kept for compatibility
+            pdo_driver_registry: None,
         }))
     }
 }
