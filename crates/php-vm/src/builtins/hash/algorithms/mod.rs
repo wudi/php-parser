@@ -21,6 +21,9 @@ mod ripemd;
 mod tiger;
 mod xxh;
 mod crc32;
+mod adler32;
+mod fnv;
+mod joaat;
 
 pub use md5::Md5Algorithm;
 pub use md2::Md2Algorithm;
@@ -41,3 +44,6 @@ pub use ripemd::{Ripemd128Algorithm, Ripemd160Algorithm, Ripemd256Algorithm, Rip
 pub use tiger::{Tiger192_3Algorithm, Tiger160_3Algorithm, Tiger128_3Algorithm};
 pub use xxh::{Xxh32Algorithm, Xxh64Algorithm, Xxh3Algorithm, Xxh128Algorithm};
 pub use crc32::{Crc32Algorithm, Crc32bAlgorithm};
+pub use adler32::Adler32Algorithm;
+pub use fnv::{Fnv132Algorithm, Fnv1a32Algorithm, Fnv164Algorithm, Fnv1a64Algorithm};
+pub use joaat::JoaatAlgorithm;

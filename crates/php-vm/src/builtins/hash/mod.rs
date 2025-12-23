@@ -129,6 +129,12 @@ impl HashRegistry {
         registry.register(Box::new(algorithms::Xxh128Algorithm));
         registry.register(Box::new(algorithms::Crc32Algorithm));
         registry.register(Box::new(algorithms::Crc32bAlgorithm));
+        registry.register(Box::new(algorithms::Adler32Algorithm));
+        registry.register(Box::new(algorithms::Fnv132Algorithm));
+        registry.register(Box::new(algorithms::Fnv1a32Algorithm));
+        registry.register(Box::new(algorithms::Fnv164Algorithm));
+        registry.register(Box::new(algorithms::Fnv1a64Algorithm));
+        registry.register(Box::new(algorithms::JoaatAlgorithm));
 
         registry
     }
