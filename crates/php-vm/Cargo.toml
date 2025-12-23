@@ -53,7 +53,14 @@ rust_decimal = "1.39.0"
 rust_decimal_macros = "1.39.0"
 rand = "0.8.5"
 
+# Signal handling for php-fpm
+ctrlc = "3.4"
+
 
 [[bin]]
 name = "php"
 path = "src/bin/php.rs"
+
+[[bin]]
+name = "php-fpm"
+path = "src/bin/php-fpm.rs"

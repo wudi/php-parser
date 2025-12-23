@@ -2734,7 +2734,7 @@ impl RequestContext {
         }
     }
 
-    fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
+    pub fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
         let sym = self.interner.intern(name);
         self.constants.insert(sym, value);
     }
