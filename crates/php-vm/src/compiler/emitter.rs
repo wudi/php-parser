@@ -347,6 +347,13 @@ impl<'src> Emitter<'src> {
                     self.chunk.code.push(OpCode::Echo);
                 }
             }
+            Stmt::InlineHtml { value, .. } => {
+                // Output inline HTML/text that appears outside PHP tags
+                // Convert the raw bytes to a string constant and echo it
+                let idx = self.add_constant(Val::String(value.to_vec().into()));
+                self.chunk.code.push(OpCode::Const(idx as u16));
+                self.chunk.code.push(OpCode::Echo);
+            }
             Stmt::Expression { expr, .. } => {
                 self.emit_expr(expr);
                 self.chunk.code.push(OpCode::Pop);
