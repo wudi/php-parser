@@ -3,6 +3,7 @@
 //! Maps FastCGI params to $_SERVER, $_GET, $_POST, etc.
 
 use crate::fcgi::request::Request;
+use crate::sapi::FileUpload;
 use std::collections::HashMap;
 
 /// Extract superglobal data from FastCGI request params.
@@ -11,7 +12,7 @@ pub struct FpmRequest {
     pub env_vars: HashMap<Vec<u8>, Vec<u8>>,
     pub get_vars: HashMap<Vec<u8>, Vec<u8>>,
     pub post_vars: HashMap<Vec<u8>, Vec<u8>>,
-    pub files_vars: HashMap<Vec<u8>, Vec<u8>>,
+    pub files_vars: HashMap<Vec<u8>, FileUpload>,
     pub script_filename: String,
     pub stdin_data: Vec<u8>,
 }

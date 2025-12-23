@@ -5,14 +5,17 @@
 
 use bumpalo::Bump;
 use clap::Parser;
+use multipart::server::Multipart;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::EngineContext;
 use php_vm::sapi::fpm::FpmRequest;
+use php_vm::sapi::FileUpload;
 use php_vm::vm::engine::VM;
 use std::collections::HashMap;
 use std::fs;
+use std::io::{Cursor, Read};
 use std::net::TcpListener as StdTcpListener;
 use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::PathBuf;
@@ -20,6 +23,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tempfile::NamedTempFile;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, UnixListener};
 use tokio::task::LocalSet;
@@ -220,12 +224,69 @@ async fn handle_request_inner<W: AsyncWrite + Unpin>(
         HashMap::new()
     };
 
+    let mut post_vars = HashMap::new();
+    let mut files_vars = HashMap::new();
+
+    if let Some(method) = params_map.get(b"REQUEST_METHOD".as_slice()) {
+        if method == b"POST" {
+            let content_type = params_map
+                .get(b"CONTENT_TYPE".as_slice())
+                .map(|v| String::from_utf8_lossy(v).to_string())
+                .unwrap_or_default();
+
+            if content_type.starts_with("application/x-www-form-urlencoded") {
+                post_vars = parse_query_string(&stdin_data);
+            } else if content_type.starts_with("multipart/form-data") {
+                if let Some(boundary) = extract_boundary(&content_type) {
+                    let cursor = Cursor::new(&stdin_data);
+                    let mut multipart = Multipart::with_body(cursor, &boundary);
+
+                    while let Ok(Some(mut field)) = multipart.read_entry() {
+                        let name = field.headers.name.to_string();
+                        if field.is_text() {
+                            let mut data = Vec::new();
+                            if field.data.read_to_end(&mut data).is_ok() {
+                                post_vars.insert(name.into_bytes(), data);
+                            }
+                        } else {
+                            // File upload
+                            let filename = field.headers.filename.clone().unwrap_or_default();
+                            let content_type = field
+                                .headers
+                                .content_type
+                                .clone()
+                                .map(|m| m.to_string())
+                                .unwrap_or_else(|| "application/octet-stream".to_string());
+
+                            if let Ok(temp_file) = NamedTempFile::new() {
+                                let mut temp_file = temp_file;
+                                if std::io::copy(&mut field.data, &mut temp_file).is_ok() {
+                                                                         if let Ok((file, path)) = temp_file.keep() {
+                                                                            let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                                                                            let tmp_name = path.to_string_lossy().to_string();
+                                                                            let file_upload = FileUpload {
+                                                                                name: filename,
+                                                                                type_: content_type,
+                                                                                tmp_name,
+                                                                                error: 0, // UPLOAD_ERR_OK
+                                                                                size,
+                                                                            };
+                                                                            files_vars.insert(name.into_bytes(), file_upload);
+                                                                        }                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let fpm_req = FpmRequest {
         server_vars: params_map.clone(),
         env_vars: params_map.clone(),
         get_vars,
-        post_vars: HashMap::new(),
-        files_vars: HashMap::new(),
+        post_vars,
+        files_vars,
         script_filename: script_filename.clone(),
         stdin_data,
     };
@@ -382,4 +443,16 @@ fn url_decode(s: &str) -> String {
     }
 
     result
+}
+
+fn extract_boundary(content_type: &str) -> Option<String> {
+    if let Some(idx) = content_type.find("boundary=") {
+        let boundary = &content_type[idx + 9..];
+        // Handle optional quotes or semicolon
+        let boundary = boundary.split(';').next().unwrap_or(boundary);
+        let boundary = boundary.trim_matches('"');
+        Some(boundary.to_string())
+    } else {
+        None
+    }
 }

@@ -26,6 +26,15 @@ impl SapiMode {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FileUpload {
+    pub name: String,
+    pub type_: String,
+    pub tmp_name: String,
+    pub error: i32,
+    pub size: u64,
+}
+
 /// Initialize/override superglobals ($_SERVER, $_ENV, $_GET, $_POST, etc.) in VM.
 /// Call this after VM::new() to populate superglobals with request data.
 pub fn init_superglobals(
@@ -35,7 +44,7 @@ pub fn init_superglobals(
     env_vars: HashMap<Vec<u8>, Vec<u8>>,
     get_vars: HashMap<Vec<u8>, Vec<u8>>,
     post_vars: HashMap<Vec<u8>, Vec<u8>>,
-    files_vars: HashMap<Vec<u8>, Vec<u8>>,
+    files_vars: HashMap<Vec<u8>, FileUpload>,
 ) {
     // Override PHP_SAPI constant
     let sapi_val = Val::String(Rc::new(sapi_mode.as_str().as_bytes().to_vec()));
@@ -75,7 +84,38 @@ pub fn init_superglobals(
     vm.context.globals.insert(post_sym, post_handle);
 
     // $_FILES
-    let files_handle = build_array(vm, files_vars);
+    let mut files_data = ArrayData::new();
+    for (key, file) in files_vars {
+        let key_arr = ArrayKey::Str(Rc::new(key));
+        
+        let mut file_arr = ArrayData::new();
+        
+        file_arr.insert(
+            ArrayKey::Str(Rc::new(b"name".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(file.name.into_bytes()))),
+        );
+        file_arr.insert(
+            ArrayKey::Str(Rc::new(b"type".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(file.type_.into_bytes()))),
+        );
+        file_arr.insert(
+            ArrayKey::Str(Rc::new(b"tmp_name".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(file.tmp_name.into_bytes()))),
+        );
+        file_arr.insert(
+            ArrayKey::Str(Rc::new(b"error".to_vec())),
+            vm.arena.alloc(Val::Int(file.error as i64)),
+        );
+        file_arr.insert(
+            ArrayKey::Str(Rc::new(b"size".to_vec())),
+            vm.arena.alloc(Val::Int(file.size as i64)),
+        );
+
+        let file_handle = vm.arena.alloc(Val::Array(Rc::new(file_arr)));
+        files_data.insert(key_arr, file_handle);
+    }
+    let files_handle = vm.arena.alloc(Val::Array(Rc::new(files_data)));
+    vm.arena.get_mut(files_handle).is_ref = true;
     let files_sym = vm.context.interner.intern(b"_FILES");
     vm.context.globals.insert(files_sym, files_handle);
 
