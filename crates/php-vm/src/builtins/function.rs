@@ -148,10 +148,17 @@ fn function_exists_case_insensitive(vm: &VM, name_bytes: &[u8]) -> bool {
 
     let lower_name: Vec<u8> = stripped.iter().map(|b| b.to_ascii_lowercase()).collect();
 
+    // Check extension-registered functions in the registry
+    if vm.context.engine.registry.get_function(stripped).is_some() {
+        return true;
+    }
+
+    // Check legacy functions (backward compatibility)
     if vm.context.engine.functions.contains_key(&lower_name) {
         return true;
     }
 
+    // Check user-defined functions
     vm.context
         .user_functions
         .keys()

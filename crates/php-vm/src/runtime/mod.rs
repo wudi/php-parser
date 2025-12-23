@@ -2,6 +2,7 @@ pub mod context;
 pub mod extension;
 pub mod hash_extension;
 pub mod json_extension;
+pub mod mysqli_extension;
 pub mod openssl_extension;
 pub mod pdo_extension;
 pub mod pthreads_extension;

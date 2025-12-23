@@ -784,6 +784,12 @@ impl EngineContext {
             .register_extension(Box::new(JsonExtension))
             .expect("Failed to register JSON extension");
 
+        // Register MySQLi extension
+        use crate::runtime::mysqli_extension::MysqliExtension;
+        registry
+            .register_extension(Box::new(MysqliExtension))
+            .expect("Failed to register MySQLi extension");
+
         // Register PDO extension
         use crate::runtime::pdo_extension::PdoExtension;
         registry
