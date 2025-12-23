@@ -18,11 +18,42 @@
 //! - RustCrypto: https://github.com/RustCrypto
 
 pub mod algorithms;
+pub mod hmac;
+pub mod kdf;
 
+use crate::builtins::exec::{PipeKind, PipeResource};
+use crate::builtins::filesystem::FileHandle;
+use crate::builtins::zlib::GzFile;
 use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val};
 use crate::vm::engine::VM;
 use std::collections::HashMap;
+use std::io::Read;
 use std::rc::Rc;
+use subtle::ConstantTimeEq;
+
+/// hash_equals(string $known_string, string $user_string): bool
+pub fn php_hash_equals(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("hash_equals() expects exactly 2 parameters".into());
+    }
+
+    let known = match &vm.arena.get(args[0]).value {
+        Val::String(s) => s.as_slice(),
+        _ => return Err("hash_equals(): Argument #1 ($known_string) must be of type string".into()),
+    };
+
+    let user = match &vm.arena.get(args[1]).value {
+        Val::String(s) => s.as_slice(),
+        _ => return Err("hash_equals(): Argument #2 ($user_string) must be of type string".into()),
+    };
+
+    if known.len() != user.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let result = known.ct_eq(user).into();
+    Ok(vm.arena.alloc(Val::Bool(result)))
+}
 
 /// Unified trait for all hash algorithms
 pub trait HashAlgorithm: Send + Sync {
@@ -71,6 +102,8 @@ impl HashRegistry {
 
         // Register algorithms
         registry.register(Box::new(algorithms::Md5Algorithm));
+        registry.register(Box::new(algorithms::Md2Algorithm));
+        registry.register(Box::new(algorithms::Md4Algorithm));
         registry.register(Box::new(algorithms::Sha1Algorithm));
         registry.register(Box::new(algorithms::Sha256Algorithm));
         registry.register(Box::new(algorithms::Sha512Algorithm));
@@ -83,6 +116,19 @@ impl HashRegistry {
         registry.register(Box::new(algorithms::Sha3_384Algorithm));
         registry.register(Box::new(algorithms::Sha3_512Algorithm));
         registry.register(Box::new(algorithms::WhirlpoolAlgorithm));
+        registry.register(Box::new(algorithms::Ripemd128Algorithm));
+        registry.register(Box::new(algorithms::Ripemd160Algorithm));
+        registry.register(Box::new(algorithms::Ripemd256Algorithm));
+        registry.register(Box::new(algorithms::Ripemd320Algorithm));
+        registry.register(Box::new(algorithms::Tiger192_3Algorithm));
+        registry.register(Box::new(algorithms::Tiger160_3Algorithm));
+        registry.register(Box::new(algorithms::Tiger128_3Algorithm));
+        registry.register(Box::new(algorithms::Xxh32Algorithm));
+        registry.register(Box::new(algorithms::Xxh64Algorithm));
+        registry.register(Box::new(algorithms::Xxh3Algorithm));
+        registry.register(Box::new(algorithms::Xxh128Algorithm));
+        registry.register(Box::new(algorithms::Crc32Algorithm));
+        registry.register(Box::new(algorithms::Crc32bAlgorithm));
 
         registry
     }
@@ -311,6 +357,7 @@ pub fn php_hash_update(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Update the hash
     if let Some(states) = vm.context.hash_states.as_mut() {
         if let Some(state) = states.get_mut(&resource_id) {
+            println!("DEBUG: hash_update data = {:?}", data);
             state.update(&data);
             Ok(vm.arena.alloc(Val::Bool(true)))
         } else {
@@ -318,6 +365,201 @@ pub fn php_hash_update(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         }
     } else {
         Err("hash_update(): Hash states not initialized".into())
+    }
+}
+
+/// hash_update_file(HashContext $context, string $filename, ?resource $stream_context = null): bool
+pub fn php_hash_update_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("hash_update_file() expects 2 or 3 parameters".into());
+    }
+
+    // Extract object
+    let obj_handle = match &vm.arena.get(args[0]).value {
+        Val::Object(h) => *h,
+        _ => {
+            return Err(
+                "hash_update_file(): Argument #1 ($context) must be of type HashContext".into(),
+            )
+        }
+    };
+
+    // Extract filename
+    let filename = match &vm.arena.get(args[1]).value {
+        Val::String(s) => String::from_utf8_lossy(s).to_string(),
+        _ => return Err("hash_update_file(): Argument #2 ($filename) must be of type string".into()),
+    };
+
+    // Get object payload
+    let obj = match &vm.arena.get(obj_handle).value {
+        Val::ObjPayload(o) => o,
+        _ => return Err("hash_update_file(): Invalid HashContext object".into()),
+    };
+
+    // Check if finalized
+    let finalized_prop = vm.context.interner.intern(b"__finalized");
+    if let Some(&finalized_handle) = obj.properties.get(&finalized_prop) {
+        if let Val::Bool(true) = vm.arena.get(finalized_handle).value {
+            return Err(
+                "hash_update_file(): Supplied HashContext has already been finalized".into(),
+            );
+        }
+    }
+
+    // Get state resource ID
+    let state_prop = vm.context.interner.intern(b"__state");
+    let resource_id = match obj.properties.get(&state_prop) {
+        Some(&handle) => match &vm.arena.get(handle).value {
+            Val::Resource(rc) => *rc
+                .downcast_ref::<u64>()
+                .ok_or("hash_update_file(): Invalid resource type")?,
+            _ => return Err("hash_update_file(): Invalid hash state".into()),
+        },
+        None => return Err("hash_update_file(): Invalid hash state".into()),
+    };
+
+    // Read file contents
+    let data = std::fs::read(&filename)
+        .map_err(|e| format!("hash_update_file(): Failed to open '{}': {}", filename, e))?;
+
+    // Update the hash
+    if let Some(states) = vm.context.hash_states.as_mut() {
+        if let Some(state) = states.get_mut(&resource_id) {
+            state.update(&data);
+            Ok(vm.arena.alloc(Val::Bool(true)))
+        } else {
+            Err("hash_update_file(): Invalid hash context state".into())
+        }
+    } else {
+        Err("hash_update_file(): Hash states not initialized".into())
+    }
+}
+
+/// hash_update_stream(HashContext $context, resource $stream, int $length = -1): int
+pub fn php_hash_update_stream(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("hash_update_stream() expects 2 or 3 parameters".into());
+    }
+
+    // Extract object
+    let obj_handle = match &vm.arena.get(args[0]).value {
+        Val::Object(h) => *h,
+        _ => {
+            return Err(
+                "hash_update_stream(): Argument #1 ($context) must be of type HashContext".into(),
+            )
+        }
+    };
+
+    // Extract stream resource
+    let stream_rc = match &vm.arena.get(args[1]).value {
+        Val::Resource(rc) => rc.clone(),
+        _ => {
+            return Err(
+                "hash_update_stream(): Argument #2 ($stream) must be of type resource".into(),
+            )
+        }
+    };
+
+    // Extract length (optional, default -1)
+    let length = if args.len() >= 3 {
+        match &vm.arena.get(args[2]).value {
+            Val::Int(i) => *i,
+            _ => -1,
+        }
+    } else {
+        -1
+    };
+
+    // Get object payload
+    let obj = match &vm.arena.get(obj_handle).value {
+        Val::ObjPayload(o) => o,
+        _ => return Err("hash_update_stream(): Invalid HashContext object".into()),
+    };
+
+    // Check if finalized
+    let finalized_prop = vm.context.interner.intern(b"__finalized");
+    if let Some(&finalized_handle) = obj.properties.get(&finalized_prop) {
+        if let Val::Bool(true) = vm.arena.get(finalized_handle).value {
+            return Err(
+                "hash_update_stream(): Supplied HashContext has already been finalized".into(),
+            );
+        }
+    }
+
+    // Get state resource ID
+    let state_prop = vm.context.interner.intern(b"__state");
+    let resource_id = match obj.properties.get(&state_prop) {
+        Some(&handle) => match &vm.arena.get(handle).value {
+            Val::Resource(rc) => *rc
+                .downcast_ref::<u64>()
+                .ok_or("hash_update_stream(): Invalid resource type")?,
+            _ => return Err("hash_update_stream(): Invalid hash state".into()),
+        },
+        None => return Err("hash_update_stream(): Invalid hash state".into()),
+    };
+
+    // Read from stream and update hash
+    let mut total_read = 0;
+    let mut buffer = vec![0u8; 8192];
+
+    // We need to update the hash state in a loop
+    if let Some(states) = vm.context.hash_states.as_mut() {
+        if let Some(state) = states.get_mut(&resource_id) {
+            loop {
+                let to_read = if length < 0 {
+                    buffer.len()
+                } else {
+                    let remaining = length as usize - total_read;
+                    if remaining == 0 {
+                        break;
+                    }
+                    std::cmp::min(buffer.len(), remaining)
+                };
+
+                let bytes_read = if let Some(fh) = stream_rc.downcast_ref::<FileHandle>() {
+                    fh.file
+                        .borrow_mut()
+                        .read(&mut buffer[..to_read])
+                        .map_err(|e| format!("hash_update_stream(): {}", e))?
+                } else if let Some(pr) = stream_rc.downcast_ref::<PipeResource>() {
+                    let mut pipe = pr.pipe.borrow_mut();
+                    match &mut *pipe {
+                        PipeKind::Stdout(stdout) => stdout
+                            .read(&mut buffer[..to_read])
+                            .map_err(|e| format!("hash_update_stream(): {}", e))?,
+                        PipeKind::Stderr(stderr) => stderr
+                            .read(&mut buffer[..to_read])
+                            .map_err(|e| format!("hash_update_stream(): {}", e))?,
+                        _ => {
+                            return Err(
+                                "hash_update_stream(): Cannot read from stdin pipe".into(),
+                            )
+                        }
+                    }
+                } else if let Some(gz) = stream_rc.downcast_ref::<GzFile>() {
+                    gz.inner
+                        .borrow_mut()
+                        .read(&mut buffer[..to_read])
+                        .map_err(|e| format!("hash_update_stream(): {}", e))?
+                } else {
+                    return Err("hash_update_stream(): Unsupported resource type".into());
+                };
+
+                if bytes_read == 0 {
+                    break;
+                }
+
+                state.update(&buffer[..bytes_read]);
+                total_read += bytes_read;
+            }
+
+            Ok(vm.arena.alloc(Val::Int(total_read as i64)))
+        } else {
+            Err("hash_update_stream(): Invalid hash context state".into())
+        }
+    } else {
+        Err("hash_update_stream(): Hash states not initialized".into())
     }
 }
 

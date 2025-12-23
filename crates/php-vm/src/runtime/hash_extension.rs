@@ -23,8 +23,16 @@ impl Extension for HashExtension {
         registry.register_function(b"hash_file", hash::php_hash_file);
         registry.register_function(b"hash_init", hash::php_hash_init);
         registry.register_function(b"hash_update", hash::php_hash_update);
+        registry.register_function(b"hash_update_file", hash::php_hash_update_file);
+        registry.register_function(b"hash_update_stream", hash::php_hash_update_stream);
         registry.register_function(b"hash_final", hash::php_hash_final);
         registry.register_function(b"hash_copy", hash::php_hash_copy);
+        registry.register_function(b"hash_hmac", hash::hmac::php_hash_hmac);
+        registry.register_function(b"hash_hmac_file", hash::hmac::php_hash_hmac_file);
+        registry.register_function(b"hash_hmac_algos", hash::hmac::php_hash_hmac_algos);
+        registry.register_function(b"hash_equals", hash::php_hash_equals);
+        registry.register_function(b"hash_pbkdf2", hash::kdf::php_hash_pbkdf2);
+        registry.register_function(b"hash_hkdf", hash::kdf::php_hash_hkdf);
 
         ExtensionResult::Success
     }

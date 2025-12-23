@@ -19,13 +19,22 @@ chrono-tz = "0.10"
 
 # Hash extension dependencies
 md-5 = "0.10"
+md2 = "0.10"
+md4 = "0.10"
 sha1 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
 whirlpool = "0.10"
+ripemd = "0.1"
+tiger = "0.2"
+xxhash-rust = { version = "0.8", features = ["xxh32", "xxh64", "xxh3"] }
+crc32fast = "1.3"
 digest = "0.10"
 hex = "0.4"
 subtle = "2.5"
+hmac = "0.12"
+pbkdf2 = "0.12"
+hkdf = "0.12"
 
 # MySQLi extension dependencies
 mysql = "24.0"

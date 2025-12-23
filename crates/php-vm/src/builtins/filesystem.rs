@@ -12,11 +12,11 @@ use std::rc::Rc;
 /// Uses RefCell for interior mutability to allow read/write operations
 #[derive(Debug)]
 #[allow(dead_code)]
-struct FileHandle {
-    file: RefCell<File>,
-    path: PathBuf,
-    mode: String,
-    eof: RefCell<bool>,
+pub struct FileHandle {
+    pub file: RefCell<File>,
+    pub path: PathBuf,
+    pub mode: String,
+    pub eof: RefCell<bool>,
 }
 
 /// Convert VM handle to string bytes for path operations
