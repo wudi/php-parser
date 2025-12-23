@@ -215,6 +215,8 @@ pub fn php_hash(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(Rc::new(result))))
 }
 
+const HASH_HMAC: i64 = 1;
+
 /// hash_init(string $algo, int $flags = 0, string $key = ""): HashContext
 pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.is_empty() || args.len() > 3 {
@@ -228,7 +230,7 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Extract flags (optional, default 0)
-    let _flags = if args.len() >= 2 {
+    let flags = if args.len() >= 2 {
         match &vm.arena.get(args[1]).value {
             Val::Int(i) => *i,
             _ => 0,
@@ -238,7 +240,7 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Extract HMAC key (optional)
-    let _hmac_key = if args.len() >= 3 {
+    let hmac_key = if args.len() >= 3 {
         match &vm.arena.get(args[2]).value {
             Val::String(s) => {
                 if !s.is_empty() {
@@ -253,22 +255,29 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         None
     };
 
-    // Get algorithm from registry
-    let registry = vm
-        .context
-        .hash_registry
-        .as_ref()
-        .ok_or("Hash extension not initialized")?;
+    // Check if HMAC flag is set
+    let state = if (flags & HASH_HMAC) != 0 {
+        let key = hmac_key.ok_or("hash_init(): HMAC key required when HASH_HMAC flag is set")?;
+        hmac::new_hmac_state(&algo_name, &key)?
+    } else {
+        // Get algorithm from registry
+        let registry = vm
+            .context
+            .hash_registry
+            .as_ref()
+            .ok_or("Hash extension not initialized")?;
 
-    let algo = registry
-        .get(&algo_name)
-        .ok_or_else(|| format!("hash_init(): Unknown hashing algorithm: {}", algo_name))?;
+        let algo = registry
+            .get(&algo_name)
+            .ok_or_else(|| format!("hash_init(): Unknown hashing algorithm: {}", algo_name))?;
+        
+        algo.new_hasher()
+    };
 
     // Get or define HashContext class
     let class_name = vm.context.interner.intern(b"HashContext");
 
     // Create hash state (boxed for storage in Val::Resource)
-    let state = algo.new_hasher();
     let resource_id = vm.context.next_resource_id;
     vm.context.next_resource_id += 1;
 
@@ -629,16 +638,12 @@ pub fn php_hash_final(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Err("hash_final(): Hash states not initialized".into());
     };
 
-    // Mark as finalized (need to mutate the object - this is tricky with arena)
-    // We'll update it by modifying the existing ObjPayload
+    // Mark as finalized
     if let Val::ObjPayload(mut obj_data) = vm.arena.get(obj_handle).value.clone() {
         obj_data
             .properties
             .insert(finalized_prop, vm.arena.alloc(Val::Bool(true)));
-        // Replace the payload
-        let new_payload_handle = vm.arena.alloc(Val::ObjPayload(obj_data));
-        // Update the Object's reference... but we can't mutate arena values!
-        // This is a limitation - we need a different approach
+        vm.arena.get_mut(obj_handle).value = Val::ObjPayload(obj_data);
     }
 
     // Format output

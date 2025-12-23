@@ -1,4 +1,5 @@
 use crate::builtins::hash;
+use crate::core::value::Val;
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
@@ -33,6 +34,9 @@ impl Extension for HashExtension {
         registry.register_function(b"hash_equals", hash::php_hash_equals);
         registry.register_function(b"hash_pbkdf2", hash::kdf::php_hash_pbkdf2);
         registry.register_function(b"hash_hkdf", hash::kdf::php_hash_hkdf);
+
+        // Register Hash constants
+        registry.register_constant(b"HASH_HMAC", Val::Int(1));
 
         ExtensionResult::Success
     }

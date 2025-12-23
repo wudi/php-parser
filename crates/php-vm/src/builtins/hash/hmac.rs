@@ -15,8 +15,9 @@ use digest::{Digest, FixedOutput, HashMarker, OutputSizeUser, Reset, Update};
 use digest::core_api::BlockSizeUser;
 use digest::generic_array::GenericArray;
 use digest::typenum::{U16, U20, U64, Unsigned};
+use crate::builtins::hash::HashState;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Tiger128 {
     inner: Tiger,
 }
@@ -50,7 +51,7 @@ impl Reset for Tiger128 {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Tiger160 {
     inner: Tiger,
 }
@@ -81,6 +82,114 @@ impl FixedOutput for Tiger160 {
 impl Reset for Tiger160 {
     fn reset(&mut self) {
         Reset::reset(&mut self.inner);
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GenericHmacState<M> {
+    inner: M,
+}
+
+impl<M: Mac + Clone + std::fmt::Debug + Send + 'static> HashState for GenericHmacState<M> {
+    fn update(&mut self, data: &[u8]) {
+        Mac::update(&mut self.inner, data);
+    }
+
+    fn finalize(self: Box<Self>) -> Vec<u8> {
+        self.inner.finalize().into_bytes().to_vec()
+    }
+
+    fn clone_state(&self) -> Box<dyn HashState> {
+        Box::new(self.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ManualTigerHmacState<D: Digest + BlockSizeUser + Clone + Update> {
+    inner: D,
+    opad: Vec<u8>,
+}
+
+impl<D: Digest + BlockSizeUser + Clone + Update + FixedOutput> ManualTigerHmacState<D> {
+    fn new(key: &[u8]) -> Self {
+        let mut key = key.to_vec();
+        let block_size = <D as BlockSizeUser>::BlockSize::to_usize();
+
+        if key.len() > block_size {
+            let mut digest = D::new();
+            Update::update(&mut digest, &key);
+            let output = digest.finalize();
+            key = output.to_vec();
+        }
+        if key.len() < block_size {
+            key.resize(block_size, 0);
+        }
+
+        let mut ipad = vec![0x36; block_size];
+        let mut opad = vec![0x5c; block_size];
+        for i in 0..block_size {
+            ipad[i] ^= key[i];
+            opad[i] ^= key[i];
+        }
+
+        let mut inner = D::new();
+        Update::update(&mut inner, &ipad);
+
+        Self { inner, opad }
+    }
+}
+
+impl<D: Digest + BlockSizeUser + Clone + Update + FixedOutput + std::fmt::Debug + Send + 'static> HashState for ManualTigerHmacState<D> {
+    fn update(&mut self, data: &[u8]) {
+        Update::update(&mut self.inner, data);
+    }
+
+    fn finalize(self: Box<Self>) -> Vec<u8> {
+        let inner_hash = self.inner.finalize();
+
+        let mut outer = D::new();
+        Update::update(&mut outer, &self.opad);
+        Update::update(&mut outer, &inner_hash);
+        outer.finalize().to_vec()
+    }
+
+    fn clone_state(&self) -> Box<dyn HashState> {
+        Box::new(self.clone())
+    }
+}
+
+pub fn new_hmac_state(algo_name: &str, key: &[u8]) -> Result<Box<dyn HashState>, String> {
+    macro_rules! make_hmac {
+        ($algo:ty) => {{
+            let mac = Hmac::<$algo>::new_from_slice(key).map_err(|e| e.to_string())?;
+            Ok(Box::new(GenericHmacState { inner: mac }))
+        }};
+    }
+
+    match algo_name {
+        "md5" => make_hmac!(Md5),
+        "md2" => make_hmac!(Md2),
+        "md4" => make_hmac!(Md4),
+        "sha1" => make_hmac!(Sha1),
+        "sha224" => make_hmac!(Sha224),
+        "sha256" => make_hmac!(Sha256),
+        "sha384" => make_hmac!(Sha384),
+        "sha512" => make_hmac!(Sha512),
+        "sha512/224" => make_hmac!(Sha512_224),
+        "sha512/256" => make_hmac!(Sha512_256),
+        "sha3-224" => make_hmac!(Sha3_224),
+        "sha3-256" => make_hmac!(Sha3_256),
+        "sha3-384" => make_hmac!(Sha3_384),
+        "sha3-512" => make_hmac!(Sha3_512),
+        "ripemd128" => make_hmac!(Ripemd128),
+        "ripemd160" => make_hmac!(Ripemd160),
+        "ripemd256" => make_hmac!(Ripemd256),
+        "ripemd320" => make_hmac!(Ripemd320),
+        "tiger128,3" => Ok(Box::new(ManualTigerHmacState::<Tiger128>::new(key))),
+        "tiger160,3" => Ok(Box::new(ManualTigerHmacState::<Tiger160>::new(key))),
+        "tiger192,3" => make_hmac!(Tiger),
+        "whirlpool" => make_hmac!(Whirlpool),
+        _ => Err(format!("Unknown HMAC algorithm: {}", algo_name)),
     }
 }
 
