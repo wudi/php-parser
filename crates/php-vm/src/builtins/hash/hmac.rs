@@ -11,12 +11,116 @@ use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use tiger::Tiger;
 use whirlpool::Whirlpool;
+use digest::{Digest, FixedOutput, HashMarker, OutputSizeUser, Reset, Update};
+use digest::core_api::BlockSizeUser;
+use digest::generic_array::GenericArray;
+use digest::typenum::{U16, U20, U64, Unsigned};
+
+#[derive(Clone, Default)]
+pub struct Tiger128 {
+    inner: Tiger,
+}
+
+impl HashMarker for Tiger128 {}
+
+impl Update for Tiger128 {
+    fn update(&mut self, data: &[u8]) {
+        Update::update(&mut self.inner, data);
+    }
+}
+
+impl OutputSizeUser for Tiger128 {
+    type OutputSize = U16;
+}
+
+impl BlockSizeUser for Tiger128 {
+    type BlockSize = U64;
+}
+
+impl FixedOutput for Tiger128 {
+    fn finalize_into(self, out: &mut GenericArray<u8, Self::OutputSize>) {
+        let full = self.inner.finalize();
+        out.copy_from_slice(&full[..16]);
+    }
+}
+
+impl Reset for Tiger128 {
+    fn reset(&mut self) {
+        Reset::reset(&mut self.inner);
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Tiger160 {
+    inner: Tiger,
+}
+
+impl HashMarker for Tiger160 {}
+
+impl Update for Tiger160 {
+    fn update(&mut self, data: &[u8]) {
+        Update::update(&mut self.inner, data);
+    }
+}
+
+impl OutputSizeUser for Tiger160 {
+    type OutputSize = U20;
+}
+
+impl BlockSizeUser for Tiger160 {
+    type BlockSize = U64;
+}
+
+impl FixedOutput for Tiger160 {
+    fn finalize_into(self, out: &mut GenericArray<u8, Self::OutputSize>) {
+        let full = self.inner.finalize();
+        out.copy_from_slice(&full[..20]);
+    }
+}
+
+impl Reset for Tiger160 {
+    fn reset(&mut self) {
+        Reset::reset(&mut self.inner);
+    }
+}
+
+fn manual_hmac<D: Digest + BlockSizeUser + Update>(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut key = key.to_vec();
+    let block_size = <D as BlockSizeUser>::BlockSize::to_usize();
+
+    if key.len() > block_size {
+        let mut digest = D::new();
+        Update::update(&mut digest, &key);
+        let output = digest.finalize();
+        key = output.to_vec();
+    }
+    if key.len() < block_size {
+        key.resize(block_size, 0);
+    }
+
+    let mut ipad = vec![0x36; block_size];
+    let mut opad = vec![0x5c; block_size];
+    for i in 0..block_size {
+        ipad[i] ^= key[i];
+        opad[i] ^= key[i];
+    }
+
+    let mut inner = D::new();
+    Update::update(&mut inner, &ipad);
+    Update::update(&mut inner, data);
+    let inner_hash = inner.finalize();
+
+    let mut outer = D::new();
+    Update::update(&mut outer, &opad);
+    Update::update(&mut outer, &inner_hash);
+    outer.finalize().to_vec()
+}
 
 pub fn compute_hmac(_vm: &mut VM, algo_name: &str, key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     macro_rules! do_hmac {
         ($algo:ty) => {{
             let mut mac = Hmac::<$algo>::new_from_slice(key).map_err(|e| e.to_string())?;
-            mac.update(data);
+            Mac::update(&mut mac, data);
             Ok(mac.finalize().into_bytes().to_vec())
         }};
     }
@@ -40,6 +144,8 @@ pub fn compute_hmac(_vm: &mut VM, algo_name: &str, key: &[u8], data: &[u8]) -> R
         "ripemd160" => do_hmac!(Ripemd160),
         "ripemd256" => do_hmac!(Ripemd256),
         "ripemd320" => do_hmac!(Ripemd320),
+        "tiger128,3" => Ok(manual_hmac::<Tiger128>(key, data)),
+        "tiger160,3" => Ok(manual_hmac::<Tiger160>(key, data)),
         "tiger192,3" => do_hmac!(Tiger),
         "whirlpool" => do_hmac!(Whirlpool),
         _ => Err(format!("Unknown HMAC algorithm: {}", algo_name)),
@@ -66,6 +172,8 @@ pub fn php_hash_hmac_algos(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Stri
         "ripemd160",
         "ripemd256",
         "ripemd320",
+        "tiger128,3",
+        "tiger160,3",
         "tiger192,3",
         "whirlpool",
     ];
