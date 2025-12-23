@@ -60,8 +60,7 @@ fn run_test_with_echo(src: &str) -> Result<String, String> {
 
 #[test]
 fn test_property_array_simple() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             private $data = ['count' => 5, 'name' => 'test'];
             
@@ -82,8 +81,7 @@ fn test_property_array_simple() {
 
 #[test]
 fn test_property_array_numeric_keys() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             private $items = [10, 20, 30];
             
@@ -106,8 +104,7 @@ fn test_property_array_numeric_keys() {
 
 #[test]
 fn test_property_array_nested() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             private $config = [
                 'db' => ['host' => 'localhost', 'port' => 3306],
@@ -135,8 +132,7 @@ fn test_property_array_nested() {
 
 #[test]
 fn test_property_empty_array() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             private $data = [];
             
@@ -156,8 +152,7 @@ fn test_property_empty_array() {
 
 #[test]
 fn test_static_property_array() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             public static $config = ['version' => 1, 'name' => 'app'];
             
