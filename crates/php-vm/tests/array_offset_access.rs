@@ -1,33 +1,12 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_vm_only;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
-
-fn run_code(source: &str) -> VM {
-    let full_source = format!("<?php\n{}", source);
-    let engine_context = std::sync::Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(std::rc::Rc::new(chunk)).expect("Execution failed");
-    vm
-}
 
 #[test]
 fn test_array_offset_integer_key() {
-    let vm = run_code("$arr = [10, 20, 30]; return [$arr[0], $arr[1], $arr[2]];");
+    let vm = run_code_vm_only("<?php $arr = [10, 20, 30]; return [$arr[0], $arr[1], $arr[2]];");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
 
@@ -40,7 +19,7 @@ fn test_array_offset_integer_key() {
 
 #[test]
 fn test_string_offset_negative() {
-    let vm = run_code(r#"$str = "Hello"; return [$str[-1], $str[-2], $str[-5]];"#);
+    let vm = run_code_vm_only(r#"<?php $str = "Hello"; return [$str[-1], $str[-2], $str[-5]];"#);
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
 
@@ -54,8 +33,8 @@ fn test_string_offset_negative() {
 
 #[test]
 fn test_string_offset_type_coercion() {
-    let vm = run_code(
-        r#"
+    let vm = run_code_vm_only(
+        r#"<?php
 $str = "Hello";
 return [$str["1"], $str[1.9], $str[true], $str[false]];
 "#,
@@ -76,8 +55,8 @@ return [$str["1"], $str[1.9], $str[true], $str[false]];
 
 #[test]
 fn test_offset_on_scalar_returns_null() {
-    let vm = run_code(
-        r#"
+    let vm = run_code_vm_only(
+        r#"<?php
 $bool = true;
 $num = 123;
 $float = 3.14;
@@ -99,8 +78,8 @@ return [$bool[0], $num[0], $float[0]];
 
 #[test]
 fn test_isset_on_string_offset() {
-    let vm = run_code(
-        r#"
+    let vm = run_code_vm_only(
+        r#"<?php
 $str = "Hello";
 return [isset($str[0]), isset($str[10]), isset($str[-1]), isset($str[-10])];
 "#,
@@ -125,8 +104,8 @@ return [isset($str[0]), isset($str[10]), isset($str[-1]), isset($str[-10])];
 
 #[test]
 fn test_numeric_string_key_conversion() {
-    let vm = run_code(
-        r#"
+    let vm = run_code_vm_only(
+        r#"<?php
 $arr = [];
 $arr["42"] = "value";
 return [$arr[42], $arr["42"]];
@@ -147,8 +126,8 @@ return [$arr[42], $arr["42"]];
 
 #[test]
 fn test_array_key_coercion() {
-    let vm = run_code(
-        "
+    let vm = run_code_vm_only(
+        "<?php
 $arr = [];
 $arr[true] = 'a';
 $arr[false] = 'b';

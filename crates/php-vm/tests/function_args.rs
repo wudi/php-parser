@@ -1,37 +1,11 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Val {
-    let full_source = format!("<?php {}", source);
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).expect("Execution failed");
-
-    let handle = vm.last_return_value.expect("No return value");
-    vm.arena.get(handle).value.clone()
-}
 
 #[test]
 fn test_default_args() {
-    let src = "
+    let src = "<?php
         function greet($name = 'World') {
             return 'Hello ' . $name;
         }
@@ -52,7 +26,7 @@ fn test_default_args() {
 
 #[test]
 fn test_multiple_default_args() {
-    let src = "
+    let src = "<?php
         function make_point($x = 0, $y = 0, $z = 0) {
             return $x . ',' . $y . ',' . $z;
         }
@@ -75,7 +49,7 @@ fn test_multiple_default_args() {
 
 #[test]
 fn test_pass_by_value_isolation() {
-    let src = "
+    let src = "<?php
         function modify($val) {
             $val = 100;
             return $val;
@@ -97,7 +71,7 @@ fn test_pass_by_value_isolation() {
 
 #[test]
 fn test_pass_by_ref() {
-    let src = "
+    let src = "<?php
         function modify(&$val) {
             $val = 100;
         }
@@ -120,7 +94,7 @@ fn test_pass_by_ref() {
 fn test_pass_by_ref_default() {
     // PHP allows default values for reference parameters, but they must be constant.
     // If no argument is passed, the local variable is initialized with the default value (as a value, not ref to anything external).
-    let src = "
+    let src = "<?php
         function modify(&$val = 10) {
             $val = 100;
             return $val;
@@ -140,7 +114,7 @@ fn test_pass_by_ref_default() {
 
 #[test]
 fn test_mixed_args() {
-    let src = "
+    let src = "<?php
         function test($a, $b = 20, &$c) {
             $c = $a + $b;
         }

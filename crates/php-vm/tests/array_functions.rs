@@ -1,31 +1,7 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_php(src: &[u8]) -> Val {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src);
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    let emitter = Emitter::new(src, &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
-
-    if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    }
-}
 
 #[test]
 fn test_array_merge() {
@@ -37,7 +13,7 @@ fn test_array_merge() {
         return array_merge($a, $b, $c);
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Array(arr) = val {
         // Expected:
         // 'a' => 5 (overwritten by $c)
@@ -84,7 +60,7 @@ fn test_array_keys() {
         return array_keys($a);
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Array(arr) = val {
         assert_eq!(arr.map.len(), 2);
         // 0 => 'a'
@@ -101,7 +77,7 @@ fn test_array_values() {
         return array_values($a);
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Array(arr) = val {
         assert_eq!(arr.map.len(), 2);
         // 0 => 1

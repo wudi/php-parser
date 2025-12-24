@@ -1,35 +1,7 @@
-use bumpalo::Bump;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::EngineContext;
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Val {
-    let arena = Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let context = EngineContext::new();
-    let mut vm = VM::new(Arc::new(context));
-
-    let emitter =
-        php_vm::compiler::emitter::Emitter::new(source.as_bytes(), &mut vm.context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    vm.run(Rc::new(chunk)).unwrap();
-
-    if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    }
-}
 
 #[test]
 fn test_foreach_value() {

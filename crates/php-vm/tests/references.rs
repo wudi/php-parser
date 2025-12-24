@@ -1,39 +1,8 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_with_vm;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-
-fn run_code(source: &str) -> Result<(Val, VM), VmError> {
-    let engine_context = std::sync::Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        return Err(VmError::RuntimeError(format!(
-            "Parse errors: {:?}",
-            program.errors
-        )));
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    let result = if let Some(val) = vm.last_return_value.clone() {
-        vm.arena.get(val).value.clone()
-    } else {
-        Val::Null
-    };
-
-    Ok((result, vm))
-}
+use php_vm::vm::engine::VmError;
 
 #[test]
 fn test_basic_reference() {
@@ -44,7 +13,7 @@ fn test_basic_reference() {
     return $a;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 2),
@@ -62,7 +31,7 @@ fn test_reference_chain() {
     return $a;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 3),
@@ -80,7 +49,7 @@ fn test_reference_separation() {
     return $a;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 1),
@@ -99,7 +68,7 @@ fn test_reference_reassign() {
     return $a;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 1),
@@ -118,7 +87,7 @@ fn test_reference_reassign_check_b() {
     return $b;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 3),
@@ -136,7 +105,7 @@ fn test_reference_separation_check_b() {
     return $b;
     "#;
 
-    let (result, _) = run_code(src).unwrap();
+    let (result, _) = run_code_with_vm(src).unwrap();
 
     match result {
         Val::Int(i) => assert_eq!(i, 1),

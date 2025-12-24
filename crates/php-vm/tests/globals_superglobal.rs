@@ -16,18 +16,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-fn compile_and_run(source: &str) -> Result<String, String> {
-    let full_source = if source.trim().starts_with("<?php") {
-        source.to_string()
-    } else {
-        format!("<?php {}", source)
-    };
-
+fn compile_and_run(src: &str) -> Result<String, String> {
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
+    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
@@ -35,7 +29,7 @@ fn compile_and_run(source: &str) -> Result<String, String> {
         return Err(format!("Parse errors: {:?}", program.errors));
     }
 
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

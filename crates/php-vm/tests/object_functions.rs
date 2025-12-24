@@ -1,28 +1,7 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_php(src: &[u8]) -> Val {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src);
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    let emitter = Emitter::new(src, &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
-
-    let res_handle = vm.last_return_value.expect("Should return value");
-    vm.arena.get(res_handle).value.clone()
-}
 
 #[test]
 fn test_get_object_vars() {
@@ -37,7 +16,7 @@ fn test_get_object_vars() {
         return get_object_vars($f);
     ";
 
-    let res = run_php(src);
+    let res = run_code(std::str::from_utf8(src).unwrap());
     if let Val::Array(map) = res {
         assert_eq!(map.map.len(), 2);
         // Check keys
@@ -64,7 +43,7 @@ fn test_get_object_vars_inside() {
         return $f->getAll();
     ";
 
-    let res = run_php(src);
+    let res = run_code(std::str::from_utf8(src).unwrap());
     if let Val::Array(map) = res {
         assert_eq!(map.map.len(), 2); // Should see private $c too?
                                       // Wait, get_object_vars returns accessible properties from the scope where it is called.
@@ -90,7 +69,7 @@ fn test_var_export() {
         return var_export($e, true);
     ";
 
-    let res = run_php(src);
+    let res = run_code(std::str::from_utf8(src).unwrap());
     if let Val::String(s) = res {
         let s_str = String::from_utf8_lossy(&s);
         assert!(s_str.contains("ExportMe::__set_state(array("));

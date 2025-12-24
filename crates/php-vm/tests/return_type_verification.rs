@@ -32,8 +32,7 @@ fn compile_and_run(code: &str) -> Result<(), String> {
 
 #[test]
 fn test_int_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int {
             return 42;
         }
@@ -48,8 +47,7 @@ fn test_int_return_type_valid() {
 
 #[test]
 fn test_int_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int {
             return "string";
         }
@@ -65,8 +63,7 @@ fn test_int_return_type_invalid() {
 
 #[test]
 fn test_string_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): string {
             return "hello";
         }
@@ -78,8 +75,7 @@ fn test_string_return_type_valid() {
 
 #[test]
 fn test_string_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): string {
             return 123;
         }
@@ -95,8 +91,7 @@ fn test_string_return_type_invalid() {
 
 #[test]
 fn test_bool_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): bool {
             return true;
         }
@@ -108,8 +103,7 @@ fn test_bool_return_type_valid() {
 
 #[test]
 fn test_bool_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): bool {
             return 1;
         }
@@ -125,8 +119,7 @@ fn test_bool_return_type_invalid() {
 
 #[test]
 fn test_float_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): float {
             return 3.14;
         }
@@ -138,8 +131,7 @@ fn test_float_return_type_valid() {
 
 #[test]
 fn test_float_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): float {
             return "not a float";
         }
@@ -155,8 +147,7 @@ fn test_float_return_type_invalid() {
 
 #[test]
 fn test_array_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): array {
             return [1, 2, 3];
         }
@@ -168,8 +159,7 @@ fn test_array_return_type_valid() {
 
 #[test]
 fn test_array_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): array {
             return "not an array";
         }
@@ -185,8 +175,7 @@ fn test_array_return_type_invalid() {
 
 #[test]
 fn test_void_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): void {
             return;
         }
@@ -198,8 +187,7 @@ fn test_void_return_type_valid() {
 
 #[test]
 fn test_void_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): void {
             return 42;
         }
@@ -215,8 +203,7 @@ fn test_void_return_type_invalid() {
 
 #[test]
 fn test_mixed_return_type() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): mixed {
             return 42;
         }
@@ -236,8 +223,7 @@ fn test_mixed_return_type() {
 
 #[test]
 fn test_nullable_int_return_type_with_null() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): ?int {
             return null;
         }
@@ -249,8 +235,7 @@ fn test_nullable_int_return_type_with_null() {
 
 #[test]
 fn test_nullable_int_return_type_with_int() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): ?int {
             return 42;
         }
@@ -262,8 +247,7 @@ fn test_nullable_int_return_type_with_int() {
 
 #[test]
 fn test_nullable_int_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): ?int {
             return "string";
         }
@@ -279,8 +263,7 @@ fn test_nullable_int_return_type_invalid() {
 
 #[test]
 fn test_union_return_type_int_or_string_with_int() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int|string {
             return 42;
         }
@@ -292,8 +275,7 @@ fn test_union_return_type_int_or_string_with_int() {
 
 #[test]
 fn test_union_return_type_int_or_string_with_string() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int|string {
             return "hello";
         }
@@ -305,8 +287,7 @@ fn test_union_return_type_int_or_string_with_string() {
 
 #[test]
 fn test_union_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int|string {
             return [1, 2, 3];
         }
@@ -322,8 +303,7 @@ fn test_union_return_type_invalid() {
 
 #[test]
 fn test_true_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): true {
             return true;
         }
@@ -335,8 +315,7 @@ fn test_true_return_type_valid() {
 
 #[test]
 fn test_true_return_type_invalid_with_false() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): true {
             return false;
         }
@@ -352,8 +331,7 @@ fn test_true_return_type_invalid_with_false() {
 
 #[test]
 fn test_false_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): false {
             return false;
         }
@@ -365,8 +343,7 @@ fn test_false_return_type_valid() {
 
 #[test]
 fn test_false_return_type_invalid_with_true() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): false {
             return true;
         }
@@ -382,8 +359,7 @@ fn test_false_return_type_invalid_with_true() {
 
 #[test]
 fn test_null_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): null {
             return null;
         }
@@ -395,8 +371,7 @@ fn test_null_return_type_valid() {
 
 #[test]
 fn test_null_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): null {
             return 42;
         }
@@ -412,8 +387,7 @@ fn test_null_return_type_invalid() {
 
 #[test]
 fn test_object_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {}
         function foo(): object {
             return new MyClass();
@@ -426,8 +400,7 @@ fn test_object_return_type_valid() {
 
 #[test]
 fn test_object_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): object {
             return "not an object";
         }
@@ -445,8 +418,7 @@ fn test_object_return_type_invalid() {
 
 #[test]
 fn test_callable_return_type_with_function_name() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function bar() { return 42; }
         function foo(): callable {
             return 'bar';
@@ -459,8 +431,7 @@ fn test_callable_return_type_with_function_name() {
 
 #[test]
 fn test_callable_return_type_with_closure() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): callable {
             return function() { return 42; };
         }
@@ -472,8 +443,7 @@ fn test_callable_return_type_with_closure() {
 
 #[test]
 fn test_callable_return_type_with_array_object_method() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             public function bar() { return 42; }
         }
@@ -488,8 +458,7 @@ fn test_callable_return_type_with_array_object_method() {
 
 #[test]
 fn test_callable_return_type_with_array_static_method() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             public static function bar() { return 42; }
         }
@@ -504,8 +473,7 @@ fn test_callable_return_type_with_array_static_method() {
 
 #[test]
 fn test_callable_return_type_with_invokable_object() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {
             public function __invoke() { return 42; }
         }
@@ -520,8 +488,7 @@ fn test_callable_return_type_with_invokable_object() {
 
 #[test]
 fn test_callable_return_type_invalid_non_existent_function() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): callable {
             return 'nonExistentFunction';
         }
@@ -537,8 +504,7 @@ fn test_callable_return_type_invalid_non_existent_function() {
 
 #[test]
 fn test_callable_return_type_invalid_non_callable() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): callable {
             return 42;
         }
@@ -554,8 +520,7 @@ fn test_callable_return_type_invalid_non_callable() {
 
 #[test]
 fn test_callable_return_type_invalid_wrong_array_format() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): callable {
             return [1, 2, 3];  // Not [object/class, method]
         }
@@ -573,8 +538,7 @@ fn test_callable_return_type_invalid_wrong_array_format() {
 
 #[test]
 fn test_iterable_return_type_with_array() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): iterable {
             return [1, 2, 3];
         }
@@ -586,8 +550,7 @@ fn test_iterable_return_type_with_array() {
 
 #[test]
 fn test_iterable_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): iterable {
             return 42;
         }
@@ -605,8 +568,7 @@ fn test_iterable_return_type_invalid() {
 
 #[test]
 fn test_named_class_return_type_valid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {}
         function foo(): MyClass {
             return new MyClass();
@@ -619,8 +581,7 @@ fn test_named_class_return_type_valid() {
 
 #[test]
 fn test_named_class_return_type_with_subclass() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class Base {}
         class Derived extends Base {}
         function foo(): Base {
@@ -634,8 +595,7 @@ fn test_named_class_return_type_with_subclass() {
 
 #[test]
 fn test_named_class_return_type_invalid_different_class() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class ClassA {}
         class ClassB {}
         function foo(): ClassA {
@@ -653,8 +613,7 @@ fn test_named_class_return_type_invalid_different_class() {
 
 #[test]
 fn test_named_class_return_type_invalid_non_object() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class MyClass {}
         function foo(): MyClass {
             return 42;
@@ -674,8 +633,7 @@ fn test_named_class_return_type_invalid_non_object() {
 #[test]
 fn test_float_return_type_accepts_int() {
     // SSTH exception: int can be promoted to float
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): float {
             return 42;
         }
@@ -689,8 +647,7 @@ fn test_float_return_type_accepts_int() {
 
 #[test]
 fn test_union_with_null() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int|null {
             return null;
         }
@@ -702,8 +659,7 @@ fn test_union_with_null() {
 
 #[test]
 fn test_union_with_multiple_scalar_types() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int|string|bool {
             return true;
         }
@@ -715,8 +671,7 @@ fn test_union_with_multiple_scalar_types() {
 
 #[test]
 fn test_union_with_class_types() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class A {}
         class B {}
         function foo(): A|B {
@@ -732,8 +687,7 @@ fn test_union_with_class_types() {
 
 #[test]
 fn test_static_return_type_in_base_class() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class Base {
             public static function create(): static {
                 return new static();
@@ -747,8 +701,7 @@ fn test_static_return_type_in_base_class() {
 
 #[test]
 fn test_static_return_type_in_derived_class() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class Base {
             public static function create(): static {
                 return new static();
@@ -763,8 +716,7 @@ fn test_static_return_type_in_derived_class() {
 
 #[test]
 fn test_static_return_type_invalid() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         class Base {
             public static function create(): static {
                 return new OtherClass();
@@ -785,8 +737,7 @@ fn test_static_return_type_invalid() {
 
 #[test]
 fn test_never_return_type_with_exit() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): never {
             exit();
         }
@@ -801,8 +752,7 @@ fn test_never_return_type_with_exit() {
 
 #[test]
 fn test_never_return_type_with_throw() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): never {
             throw new Exception("error");
         }
@@ -816,8 +766,7 @@ fn test_never_return_type_with_throw() {
 
 #[test]
 fn test_never_return_type_invalid_with_return() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): never {
             return 42;
         }
@@ -835,8 +784,7 @@ fn test_never_return_type_invalid_with_return() {
 
 #[test]
 fn test_missing_return_with_non_nullable_type() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): int {
             // No return statement
         }
@@ -851,8 +799,7 @@ fn test_missing_return_with_non_nullable_type() {
 
 #[test]
 fn test_missing_return_with_nullable_type_ok() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): ?int {
             // No return - implicitly returns null
         }
@@ -864,8 +811,7 @@ fn test_missing_return_with_nullable_type_ok() {
 
 #[test]
 fn test_missing_return_with_void_ok() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): void {
             // No return
         }
@@ -879,8 +825,7 @@ fn test_missing_return_with_void_ok() {
 
 #[test]
 fn test_void_with_explicit_null_return() {
-    let code = r#"
-        <?php
+    let code = r#"<?php
         function foo(): void {
             return null;
         }

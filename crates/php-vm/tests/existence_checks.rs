@@ -1,31 +1,7 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_php(src: &[u8]) -> Val {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src);
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    let emitter = Emitter::new(src, &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
-
-    if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    }
-}
 
 #[test]
 fn test_class_exists() {
@@ -34,7 +10,7 @@ fn test_class_exists() {
         return class_exists('A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -48,7 +24,7 @@ fn test_class_exists_false() {
         return class_exists('NonExistent');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -63,7 +39,7 @@ fn test_interface_exists() {
         return interface_exists('I');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -78,7 +54,7 @@ fn test_interface_exists_false() {
         return interface_exists('A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -93,7 +69,7 @@ fn test_trait_exists() {
         return trait_exists('T');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -108,7 +84,7 @@ fn test_trait_exists_false() {
         return trait_exists('A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -124,7 +100,7 @@ fn test_is_a() {
         return is_a($a, 'A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -141,7 +117,7 @@ fn test_is_a_subclass() {
         return is_a($b, 'A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -156,7 +132,7 @@ fn test_is_a_string() {
         return is_a('A', 'A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -173,7 +149,7 @@ fn test_is_a_false() {
         return is_a($b, 'A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -191,7 +167,7 @@ fn test_method_exists() {
         return method_exists($a, 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -208,7 +184,7 @@ fn test_method_exists_static() {
         return method_exists('A', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -226,7 +202,7 @@ fn test_method_exists_inherited() {
         return method_exists('B', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -241,7 +217,7 @@ fn test_method_exists_false() {
         return method_exists('A', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {
@@ -259,7 +235,7 @@ fn test_property_exists() {
         return property_exists($a, 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -276,7 +252,7 @@ fn test_property_exists_dynamic() {
         return property_exists($a, 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -293,7 +269,7 @@ fn test_property_exists_static_check() {
         return property_exists('A', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -311,7 +287,7 @@ fn test_property_exists_inherited() {
         return property_exists('B', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, true);
     } else {
@@ -329,7 +305,7 @@ fn test_get_class_methods() {
         return get_class_methods('A');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Array(arr) = val {
         assert_eq!(arr.map.len(), 2);
     } else {
@@ -351,7 +327,7 @@ fn test_get_class_methods_string() {
         return count($methods);
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Int(i) = val {
         assert_eq!(i, 2);
     } else {
@@ -370,7 +346,7 @@ fn test_get_class_methods_visibility_global_scope() {
         return implode(',', get_class_methods('A'));
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::String(s) = val {
         assert_eq!(s.as_ref(), b"open");
     } else {
@@ -392,7 +368,7 @@ fn test_get_class_methods_visibility_internal_scope() {
         return A::expose();
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::String(s) = val {
         assert_eq!(s.as_ref(), b"expose,hidden,mid,open");
     } else {
@@ -411,7 +387,7 @@ fn test_get_class_vars() {
         return count($vars);
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Int(i) = val {
         assert_eq!(i, 2);
     } else {
@@ -434,7 +410,7 @@ fn test_get_class_vars_visibility_global_scope() {
         return -1;
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Int(i) = val {
         assert_eq!(i, 1);
     } else {
@@ -460,7 +436,7 @@ fn test_get_class_vars_visibility_internal_scope() {
         return A::expose();
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Int(i) = val {
         assert_eq!(i, 3);
     } else {
@@ -475,7 +451,7 @@ fn test_property_exists_false() {
         return property_exists('A', 'foo');
     "#;
 
-    let val = run_php(code.as_bytes());
+    let val = run_code(code);
     if let Val::Bool(b) = val {
         assert_eq!(b, false);
     } else {

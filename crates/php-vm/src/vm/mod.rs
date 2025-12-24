@@ -5,6 +5,7 @@ mod class_resolution;
 pub mod engine;
 mod error_construction;
 mod error_formatting;
+pub mod executor;
 pub mod frame;
 mod frame_helpers;
 pub mod inc_dec;

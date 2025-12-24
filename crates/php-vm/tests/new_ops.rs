@@ -1,31 +1,8 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_vm_only;
 use php_vm::core::value::{ArrayKey, Val};
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> VM {
-    let full_source = format!("<?php {}", source);
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).expect("Execution failed");
-    vm
-}
 
 fn get_return_value(vm: &VM) -> Val {
     let handle = vm.last_return_value.expect("No return value");
@@ -44,7 +21,7 @@ fn get_array_idx(vm: &VM, val: &Val, idx: i64) -> Val {
 
 #[test]
 fn test_bitwise_ops() {
-    let source = "
+    let source = "<?php
         $a = 6 & 3;
         $b = 6 | 3;
         $c = 6 ^ 3;
@@ -54,7 +31,7 @@ fn test_bitwise_ops() {
         return [$a, $b, $c, $d, $e, $f];
     ";
 
-    let vm = run_code(source);
+    let vm = run_code_vm_only(source);
     let ret = get_return_value(&vm);
 
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(2)); // 6 & 3
@@ -67,14 +44,14 @@ fn test_bitwise_ops() {
 
 #[test]
 fn test_spaceship() {
-    let source = "
+    let source = "<?php
         $a = 1 <=> 1;
         $b = 1 <=> 2;
         $c = 2 <=> 1;
         return [$a, $b, $c];
     ";
 
-    let vm = run_code(source);
+    let vm = run_code_vm_only(source);
     let ret = get_return_value(&vm);
 
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(0));
@@ -84,7 +61,7 @@ fn test_spaceship() {
 
 #[test]
 fn test_ternary() {
-    let source = "
+    let source = "<?php
         $a = true ? 1 : 2;
         $b = false ? 1 : 2;
         $c = 1 ?: 2;
@@ -92,7 +69,7 @@ fn test_ternary() {
         return [$a, $b, $c, $d];
     ";
 
-    let vm = run_code(source);
+    let vm = run_code_vm_only(source);
     let ret = get_return_value(&vm);
 
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(1));
@@ -103,7 +80,7 @@ fn test_ternary() {
 
 #[test]
 fn test_inc_dec() {
-    let source = "
+    let source = "<?php
         $a = 1;
         $b = ++$a; // a=2, b=2
         $c = $a++; // c=2, a=3
@@ -112,7 +89,7 @@ fn test_inc_dec() {
         return [$a, $b, $c, $d, $e];
     ";
 
-    let vm = run_code(source);
+    let vm = run_code_vm_only(source);
     let ret = get_return_value(&vm);
 
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(1)); // a
@@ -124,7 +101,7 @@ fn test_inc_dec() {
 
 #[test]
 fn test_cast() {
-    let source = "
+    let source = "<?php
         $a = (int) 10.5;
         $b = (bool) 0;
         $c = (bool) 1;
@@ -132,7 +109,7 @@ fn test_cast() {
         return [$a, $b, $c, $d];
     ";
 
-    let vm = run_code(source);
+    let vm = run_code_vm_only(source);
     let ret = get_return_value(&vm);
 
     assert_eq!(get_array_idx(&vm, &ret, 0), Val::Int(10));

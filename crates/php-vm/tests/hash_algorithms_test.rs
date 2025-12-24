@@ -1,35 +1,11 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-use std::sync::Arc;
+mod common;
 
-fn run_code(source: &str) -> Result<String, VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    Ok("Success".to_string())
-}
+use common::run_code;
+use php_vm::core::value::Val;
 
 #[test]
 fn test_new_algorithms() {
-    let source = r#"
-        <?php
+    let source = r#"<?php
         $tests = [
             'adler32' => '062c0215',
             'fnv132' => 'b6fa7167',
@@ -62,6 +38,9 @@ fn test_new_algorithms() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+
+    match run_code(source) {
+        Val::Null => { /* success */ }
+        other => panic!("Expected int return, got {:?}", other),
+    }
 }

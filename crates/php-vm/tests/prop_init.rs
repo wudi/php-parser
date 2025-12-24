@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 #[test]
 fn test_prop_init() {
-    let src = r#"
+    let src = r#"<?php
         class A {
             public $data = [];
         }
@@ -16,13 +16,12 @@ fn test_prop_init() {
         return $a->data;
     "#;
 
-    let full_source = format!("<?php {}", src);
 
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
+    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
     let mut parser = php_parser::parser::Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
@@ -30,7 +29,7 @@ fn test_prop_init() {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

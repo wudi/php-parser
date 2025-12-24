@@ -1,30 +1,11 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_vm_only;
 use php_vm::core::value::{ArrayKey, Val};
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn run_code(source: &str) -> VM {
-    let full_source = format!("<?php {}", source);
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).expect("Execution failed");
-    vm
+    run_code_vm_only(source)
 }
 
 fn get_return_value(vm: &VM) -> Val {
@@ -44,7 +25,7 @@ fn get_array_idx(vm: &VM, val: &Val, idx: i64) -> Val {
 
 #[test]
 fn test_logical_and() {
-    let source = "
+    let source = "<?php
         $a = true && true;
         $b = true && false;
         $c = false && true;
@@ -69,7 +50,7 @@ fn test_logical_and() {
 
 #[test]
 fn test_logical_or() {
-    let source = "
+    let source = "<?php
         $a = true || true;
         $b = true || false;
         $c = false || true;
@@ -94,7 +75,7 @@ fn test_logical_or() {
 
 #[test]
 fn test_coalesce() {
-    let source = "
+    let source = "<?php
         $a = null ?? 1;
         $b = 2 ?? 1;
         $c = false ?? 1; // false is not null

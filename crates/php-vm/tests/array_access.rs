@@ -1,45 +1,13 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Val {
-    let full_source = if source.trim().starts_with("<?php") {
-        source.to_string()
-    } else {
-        format!("<?php {}", source)
-    };
-
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))
-        .unwrap_or_else(|e| panic!("Runtime error: {:?}", e));
-
-    let handle = vm.last_return_value.expect("No return value");
-    vm.arena.get(handle).value.clone()
-}
 
 /// Test basic ArrayAccess implementation with offsetGet
 /// Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - ArrayAccess interface
 #[test]
 fn test_array_access_offset_get() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -79,7 +47,7 @@ fn test_array_access_offset_get() {
 /// Test ArrayAccess offsetSet
 #[test]
 fn test_array_access_offset_set() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -116,7 +84,7 @@ fn test_array_access_offset_set() {
 /// Test ArrayAccess offsetUnset
 #[test]
 fn test_array_access_offset_unset() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = ['foo' => 'bar', 'baz' => 'qux'];
             
@@ -151,7 +119,7 @@ fn test_array_access_offset_unset() {
 /// Test ArrayAccess with isset()
 #[test]
 fn test_array_access_isset() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = ['exists' => 'yes', 'null' => null];
             
@@ -200,7 +168,7 @@ fn test_array_access_isset() {
 /// Test ArrayAccess with empty()
 #[test]
 fn test_array_access_empty() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [
                 'zero' => 0,
@@ -256,7 +224,7 @@ fn test_array_access_empty() {
 /// Test ArrayAccess with numeric offsets
 #[test]
 fn test_array_access_numeric_offsets() {
-    let code = r#"
+    let code = r#"<?php
         class NumberedContainer implements ArrayAccess {
             private $items = [];
             
@@ -296,7 +264,7 @@ fn test_array_access_numeric_offsets() {
 /// Test ArrayAccess with null offset (append-style)
 #[test]
 fn test_array_access_null_offset() {
-    let code = r#"
+    let code = r#"<?php
         class AppendableContainer implements ArrayAccess {
             private $items = [];
             private $nextIndex = 0;
@@ -341,7 +309,7 @@ fn test_array_access_null_offset() {
 /// Test ArrayAccess with complex nested operations
 #[test]
 fn test_array_access_nested_operations() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -382,7 +350,7 @@ fn test_array_access_nested_operations() {
 /// Test ArrayAccess implementation inheriting from parent class
 #[test]
 fn test_array_access_inheritance() {
-    let code = r#"
+    let code = r#"<?php
         class BaseContainer implements ArrayAccess {
             protected $data = [];
             
@@ -427,7 +395,7 @@ fn test_array_access_inheritance() {
 /// Test ArrayAccess with modification operations (+=, etc.)
 #[test]
 fn test_array_access_compound_assignment() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -466,7 +434,7 @@ fn test_array_access_compound_assignment() {
 /// Test ArrayAccess with string concatenation assignment
 #[test]
 fn test_array_access_string_concat_assignment() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -505,7 +473,7 @@ fn test_array_access_string_concat_assignment() {
 /// Test ArrayAccess with increment/decrement operators
 #[test]
 fn test_array_access_increment_decrement() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             private $data = [];
             
@@ -548,7 +516,7 @@ fn test_array_access_increment_decrement() {
 /// Test that regular objects without ArrayAccess still produce warnings
 #[test]
 fn test_non_array_access_object_warning() {
-    let code = r#"
+    let code = r#"<?php
         class RegularClass {
             public $data = 'test';
         }
@@ -571,7 +539,7 @@ fn test_non_array_access_object_warning() {
 /// Test ArrayAccess with mixed type offsets
 #[test]
 fn test_array_access_mixed_offsets() {
-    let code = r#"
+    let code = r#"<?php
         class FlexibleContainer implements ArrayAccess {
             private $data = [];
             
@@ -615,7 +583,7 @@ fn test_array_access_mixed_offsets() {
 /// Test ArrayAccess interface detection
 #[test]
 fn test_array_access_instanceof() {
-    let code = r#"
+    let code = r#"<?php
         class Container implements ArrayAccess {
             public function offsetExists($offset): bool { return false; }
             public function offsetGet($offset): mixed { return null; }

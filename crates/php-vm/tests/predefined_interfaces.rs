@@ -43,7 +43,6 @@ fn run_code(source: &str) -> Result<(), VmError> {
 #[test]
 fn test_traversable_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Traversable')) {
             throw new Exception('Traversable interface not found');
         }
@@ -56,7 +55,6 @@ fn test_traversable_interface_exists() {
 #[test]
 fn test_iterator_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Iterator')) {
             throw new Exception('Iterator interface not found');
         }
@@ -72,7 +70,6 @@ fn test_iterator_interface_exists() {
 #[test]
 fn test_iterator_aggregate_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('IteratorAggregate')) {
             throw new Exception('IteratorAggregate interface not found');
         }
@@ -88,7 +85,6 @@ fn test_iterator_aggregate_interface_exists() {
 #[test]
 fn test_throwable_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Throwable')) {
             throw new Exception('Throwable interface not found');
         }
@@ -105,7 +101,6 @@ fn test_throwable_interface_exists() {
 #[test]
 fn test_countable_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Countable')) {
             throw new Exception('Countable interface not found');
         }
@@ -118,7 +113,6 @@ fn test_countable_interface_exists() {
 #[test]
 fn test_array_access_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('ArrayAccess')) {
             throw new Exception('ArrayAccess interface not found');
         }
@@ -131,7 +125,6 @@ fn test_array_access_interface_exists() {
 #[test]
 fn test_serializable_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Serializable')) {
             throw new Exception('Serializable interface not found');
         }
@@ -144,7 +137,6 @@ fn test_serializable_interface_exists() {
 #[test]
 fn test_stringable_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('Stringable')) {
             throw new Exception('Stringable interface not found');
         }
@@ -161,7 +153,6 @@ fn test_stringable_interface_exists() {
 #[test]
 fn test_closure_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('Closure')) {
             throw new Exception('Closure class not found');
         }
@@ -174,7 +165,6 @@ fn test_closure_class_exists() {
 #[test]
 fn test_stdclass_exists() {
     let source = r#"
-        <?php
         if (!class_exists('stdClass')) {
             throw new Exception('stdClass not found');
         }
@@ -192,7 +182,6 @@ fn test_stdclass_exists() {
 #[test]
 fn test_generator_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('Generator')) {
             throw new Exception('Generator class not found');
         }
@@ -208,7 +197,6 @@ fn test_generator_class_exists() {
 #[test]
 fn test_fiber_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('Fiber')) {
             throw new Exception('Fiber class not found');
         }
@@ -221,7 +209,6 @@ fn test_fiber_class_exists() {
 #[test]
 fn test_weak_reference_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('WeakReference')) {
             throw new Exception('WeakReference class not found');
         }
@@ -234,7 +221,6 @@ fn test_weak_reference_class_exists() {
 #[test]
 fn test_weak_map_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('WeakMap')) {
             throw new Exception('WeakMap class not found');
         }
@@ -256,7 +242,6 @@ fn test_weak_map_class_exists() {
 #[test]
 fn test_sensitive_parameter_value_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('SensitiveParameterValue')) {
             throw new Exception('SensitiveParameterValue class not found');
         }
@@ -269,7 +254,6 @@ fn test_sensitive_parameter_value_class_exists() {
 #[test]
 fn test_incomplete_class_exists() {
     let source = r#"
-        <?php
         if (!class_exists('__PHP_Incomplete_Class')) {
             throw new Exception('__PHP_Incomplete_Class not found');
         }
@@ -286,7 +270,6 @@ fn test_incomplete_class_exists() {
 #[test]
 fn test_unit_enum_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('UnitEnum')) {
             throw new Exception('UnitEnum interface not found');
         }
@@ -299,7 +282,6 @@ fn test_unit_enum_interface_exists() {
 #[test]
 fn test_backed_enum_interface_exists() {
     let source = r#"
-        <?php
         if (!interface_exists('BackedEnum')) {
             throw new Exception('BackedEnum interface not found');
         }
@@ -319,7 +301,6 @@ fn test_backed_enum_interface_exists() {
 #[test]
 fn test_iterator_implementation() {
     let source = r#"
-        <?php
         class MyIterator implements Iterator {
             private $position = 0;
             private $array = ['a', 'b', 'c'];
@@ -358,7 +339,6 @@ fn test_iterator_implementation() {
 #[test]
 fn test_exception_implements_throwable() {
     let source = r#"
-        <?php
         if (!is_subclass_of('Exception', 'Throwable')) {
             throw new Exception('Exception must implement Throwable');
         }
@@ -371,7 +351,6 @@ fn test_exception_implements_throwable() {
 #[test]
 fn test_error_implements_throwable() {
     let source = r#"
-        <?php
         if (!is_subclass_of('Error', 'Throwable')) {
             throw new Exception('Error must implement Throwable');
         }
@@ -384,7 +363,6 @@ fn test_error_implements_throwable() {
 #[test]
 fn test_all_predefined_interfaces_and_classes_exist() {
     let source = r#"
-        <?php
         // Test all interfaces
         $interfaces = [
             'Traversable',

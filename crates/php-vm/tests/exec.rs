@@ -1,32 +1,9 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-
-fn run_code(source: &str) -> VM {
-    let full_source = format!("<?php {}", source);
-    let engine_context = std::sync::Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(std::rc::Rc::new(chunk)).expect("Execution failed");
-    vm
-}
+mod common;
+use common::run_code_with_vm;
 
 #[test]
 fn test_escapeshellarg() {
-    let vm = run_code("return escapeshellarg('hello');");
+    let (_val, vm) = run_code_with_vm("<?php return escapeshellarg('hello');").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -40,7 +17,7 @@ fn test_escapeshellarg() {
 
 #[test]
 fn test_escapeshellarg_with_quotes() {
-    let vm = run_code("return escapeshellarg(\"hello'world\");");
+    let (_val, vm) = run_code_with_vm("<?php return escapeshellarg(\"hello'world\");").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -54,7 +31,7 @@ fn test_escapeshellarg_with_quotes() {
 
 #[test]
 fn test_escapeshellcmd() {
-    let vm = run_code("return escapeshellcmd('echo hello; rm -rf /');");
+    let (_val, vm) = run_code_with_vm("<?php return escapeshellcmd('echo hello; rm -rf /');").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -69,7 +46,7 @@ fn test_escapeshellcmd() {
 
 #[test]
 fn test_shell_exec() {
-    let vm = run_code("return shell_exec('echo hello');");
+    let (_val, vm) = run_code_with_vm("<?php return shell_exec('echo hello');").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -83,14 +60,14 @@ fn test_shell_exec() {
 
 #[test]
 fn test_exec_with_output() {
-    let vm = run_code(
-        r#"
+    let (_val, vm) = run_code_with_vm(
+        r#"<?php
         $output = [];
         $return_var = 0;
         $last_line = exec('echo "line1"; echo "line2"', $output, $return_var);
         return [$last_line, $output, $return_var];
     "#,
-    );
+    ).expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -127,8 +104,8 @@ fn test_exec_with_output() {
 
 #[test]
 fn test_proc_open_basic() {
-    let vm = run_code(
-        r#"
+    let (_val, vm) = run_code_with_vm(
+        r#"<?php
         $descriptors = [
             0 => ["pipe", "r"],
             1 => ["pipe", "w"],
@@ -141,7 +118,7 @@ fn test_proc_open_basic() {
         // Just verify we got a process resource and pipes array
         return [gettype($process), count($pipes)];
     "#,
-    );
+    ).expect("Execution failed");
 
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);

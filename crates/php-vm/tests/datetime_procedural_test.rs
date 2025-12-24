@@ -2,7 +2,7 @@ use bumpalo::Bump;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -18,19 +18,11 @@ impl OutputWriter for TestOutputWriter {
     }
 }
 
-fn run_php(code: &str) -> String {
-    let engine = Arc::new(EngineContext::new());
-    let mut vm = VM::new(engine);
+fn run_php(source_code: &str) -> String {
+    let engine_context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(engine_context);
+    
     let output = Arc::new(Mutex::new(Vec::new()));
-    vm.set_output_writer(Box::new(TestOutputWriter {
-        buffer: output.clone(),
-    }));
-
-    let source_code = if code.starts_with("<?php") {
-        code.to_string()
-    } else {
-        format!("<?php {}", code)
-    };
 
     let source_bytes = source_code.as_bytes();
     let arena = Bump::new();
@@ -38,9 +30,14 @@ fn run_php(code: &str) -> String {
     let mut parser = PhpParser::new(lexer, &arena);
     let program = parser.parse_program();
 
-    let mut emitter = Emitter::new(source_bytes, &mut vm.context.interner);
+    let mut emitter = Emitter::new(source_bytes, &mut request_context.interner);
     let (chunk, _) = emitter.compile(program.statements);
 
+    let mut vm = VM::new_with_context(request_context);
+    vm.set_output_writer(Box::new(TestOutputWriter {
+        buffer: output.clone(),
+    }));
+    
     vm.run(Rc::new(chunk)).unwrap();
 
     let bytes = output.lock().unwrap().clone();
@@ -50,7 +47,7 @@ fn run_php(code: &str) -> String {
 #[test]
 fn test_date_procedural_basic() {
     // date() and strtotime()
-    let code = "
+    let code = "<?php
         $t = strtotime('2023-01-01 12:00:00');
         echo date('Y-m-d H:i:s', $t);
     ";
@@ -60,7 +57,7 @@ fn test_date_procedural_basic() {
 
 #[test]
 fn test_date_create_and_format() {
-    let code = "
+    let code = "<?php
         $date = date_create('2023-01-01 12:00:00');
         echo date_format($date, 'Y-m-d H:i:s');
     ";
@@ -70,7 +67,7 @@ fn test_date_create_and_format() {
 
 #[test]
 fn test_date_add_sub() {
-    let code = "
+    let code = "<?php
         $date = date_create('2023-01-01');
         $interval = date_interval_create_from_date_string('P1D');
         date_add($date, $interval);
@@ -84,7 +81,7 @@ fn test_date_add_sub() {
 
 #[test]
 fn test_date_diff() {
-    let code = "
+    let code = "<?php
         $date1 = date_create('2023-01-01');
         $date2 = date_create('2023-01-05');
         $diff = date_diff($date1, $date2);
@@ -96,7 +93,7 @@ fn test_date_diff() {
 
 #[test]
 fn test_date_modify() {
-    let code = "
+    let code = "<?php
         $date = date_create('2023-01-01');
         date_modify($date, '+1 day');
         echo date_format($date, 'Y-m-d');
@@ -107,7 +104,7 @@ fn test_date_modify() {
 
 #[test]
 fn test_timezone_open() {
-    let code = "
+    let code = "<?php
         $tz = timezone_open('Europe/London');
         $date = date_create('2023-01-01', $tz);
         echo date_format($date, 'e');
@@ -118,7 +115,7 @@ fn test_timezone_open() {
 
 #[test]
 fn test_checkdate() {
-    let code = "
+    let code = "<?php
         echo checkdate(2, 29, 2023) ? 'true' : 'false';
         echo \" \";
         echo checkdate(2, 29, 2024) ? 'true' : 'false';

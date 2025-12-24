@@ -1,36 +1,8 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_with_vm;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Result<(Val, VM), VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    let val = if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    };
-    Ok((val, vm))
-}
+use php_vm::vm::engine::VmError;
 
 // ============================================================================
 // Basic Exception Handling Tests
@@ -49,7 +21,7 @@ fn test_basic_try_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught");
     } else {
@@ -71,7 +43,7 @@ fn test_catch_parent_class() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught parent");
     } else {
@@ -85,7 +57,7 @@ fn test_uncaught_exception() {
         throw new Exception();
     "#;
 
-    let res = run_code(src);
+    let res = run_code_with_vm(src);
     assert!(res.is_err());
     if let Err(VmError::Exception(_)) = res {
         // OK
@@ -114,7 +86,7 @@ fn test_nested_try_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "inner outer");
     } else {
@@ -143,7 +115,7 @@ fn test_multi_catch_first_match() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "A");
     } else {
@@ -168,7 +140,7 @@ fn test_multi_catch_second_match() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "B");
     } else {
@@ -196,7 +168,7 @@ fn test_multi_catch_parent_fallback() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "parent");
     } else {
@@ -220,7 +192,7 @@ fn test_finally_after_try_success() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "try finally");
     } else {
@@ -242,7 +214,7 @@ fn test_finally_after_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "catch finally");
     } else {
@@ -262,7 +234,7 @@ fn test_finally_without_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "try finally");
     } else {
@@ -286,7 +258,7 @@ fn test_nested_finally() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(
             std::str::from_utf8(&s).unwrap(),
@@ -313,7 +285,7 @@ fn test_catch_error_class() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught error");
     } else {
@@ -333,7 +305,7 @@ fn test_catch_throwable() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught throwable");
     } else {
@@ -353,7 +325,7 @@ fn test_error_caught_by_throwable() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught");
     } else {
@@ -373,7 +345,7 @@ fn test_type_error() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught type error");
     } else {
@@ -393,7 +365,7 @@ fn test_arithmetic_error() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught arithmetic error");
     } else {
@@ -415,7 +387,7 @@ fn test_division_by_zero_error() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught division by zero");
     } else {
@@ -435,7 +407,7 @@ fn test_division_by_zero_caught_by_parent() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught by parent");
     } else {
@@ -459,7 +431,7 @@ fn test_runtime_exception() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught runtime");
     } else {
@@ -479,7 +451,7 @@ fn test_logic_exception() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught logic");
     } else {
@@ -499,7 +471,7 @@ fn test_spl_exception_caught_by_exception() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught by base");
     } else {
@@ -523,7 +495,7 @@ fn test_catch_without_variable() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught");
     } else {
@@ -552,7 +524,7 @@ fn test_rethrow_in_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "inner outer");
     } else {
@@ -577,7 +549,7 @@ fn test_throw_new_exception_in_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(
             std::str::from_utf8(&s).unwrap(),
@@ -599,7 +571,7 @@ fn test_throw_non_throwable_object() {
         throw new NotAnException();
     "#;
 
-    let res = run_code(src);
+    let res = run_code_with_vm(src);
     assert!(res.is_err());
     if let Err(VmError::RuntimeError(msg)) = res {
         assert!(msg.contains("Throwable") || msg.contains("throwable"));
@@ -614,7 +586,7 @@ fn test_throw_string() {
         throw "not an object";
     "#;
 
-    let res = run_code(src);
+    let res = run_code_with_vm(src);
     assert!(res.is_err());
     if let Err(VmError::RuntimeError(msg)) = res {
         assert!(msg.contains("object"));
@@ -641,7 +613,7 @@ fn test_exception_skips_remaining_try_code() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "before caught");
     } else {
@@ -661,7 +633,7 @@ fn test_no_exception_skips_catch() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "try success");
     } else {
@@ -686,7 +658,7 @@ fn test_exception_in_function() {
         return $res;
     "#;
 
-    let (res, _) = run_code(src).unwrap();
+    let (res, _) = run_code_with_vm(src).unwrap();
     if let Val::String(s) = res {
         assert_eq!(std::str::from_utf8(&s).unwrap(), "caught");
     } else {

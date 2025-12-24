@@ -1,36 +1,14 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-use std::sync::Arc;
+mod common;
+use common::run_code_with_vm;
+use php_vm::vm::engine::VmError;
 
 fn run_code(source: &str) -> Result<String, VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    // Capture output if needed, but for now we just check if it runs
-    Ok("Success".to_string())
+    run_code_with_vm(source).map(|_| "Success".to_string())
 }
 
 #[test]
 fn test_hash_hmac() {
     let source = r#"
-        <?php
         $res = hash_hmac('sha256', 'The quick brown fox jumps over the lazy dog', 'key');
         if ($res !== 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8') {
             throw new Exception("HMAC failed: $res");
@@ -44,7 +22,6 @@ fn test_hash_hmac() {
 #[test]
 fn test_hash_equals() {
     let source = r#"
-        <?php
         if (!hash_equals('same', 'same')) {
             throw new Exception("hash_equals failed on same strings");
         }
@@ -60,7 +37,6 @@ fn test_hash_equals() {
 #[test]
 fn test_hash_pbkdf2() {
     let source = r#"
-        <?php
         $res = hash_pbkdf2('sha256', 'password', 'salt', 1000, 32);
         if (strlen($res) !== 64) { // hex encoded
             throw new Exception("PBKDF2 failed: length is " . strlen($res));
@@ -74,7 +50,6 @@ fn test_hash_pbkdf2() {
 #[test]
 fn test_hash_hmac_algos() {
     let source = r#"
-        <?php
         $algos = hash_hmac_algos();
         if (!is_array($algos)) {
             throw new Exception("hash_hmac_algos() should return an array");
@@ -91,7 +66,6 @@ fn test_hash_hmac_algos() {
 #[test]
 fn test_hash_update_file() {
     let source = r#"
-        <?php
         $file = tempnam(sys_get_temp_dir(), 'hash_test');
         file_put_contents($file, "hello world");
         
@@ -113,7 +87,6 @@ fn test_hash_update_file() {
 #[test]
 fn test_hash_update_stream() {
     let source = r#"
-        <?php
         $file = tempnam(sys_get_temp_dir(), 'hash_test_stream');
         file_put_contents($file, "hello world stream");
         
@@ -140,7 +113,6 @@ fn test_hash_update_stream() {
 #[test]
 fn test_new_algorithms() {
     let source = r#"
-        <?php
         $tests = [
             ["sha256", "abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"],
             ["crc32", "abc", "352441c2"],

@@ -1,9 +1,9 @@
+mod common;
+
+use common::run_code_with_vm;
 use php_vm::core::value::{ArrayKey, Handle, Val};
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
 use std::process::Command;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn php_json(expr: &str) -> String {
     let script = format!("echo json_encode({});", expr);
@@ -20,30 +20,6 @@ fn php_json(expr: &str) -> String {
         );
     }
     String::from_utf8_lossy(&output.stdout).to_string()
-}
-
-fn run_vm(expr: &str) -> (VM, Handle) {
-    let engine = Arc::new(EngineContext::new());
-    let mut vm = VM::new(engine);
-    let full_source = format!("<?php return {};", expr);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-    assert!(
-        program.errors.is_empty(),
-        "Parse errors: {:?}",
-        program.errors
-    );
-
-    let emitter =
-        php_vm::compiler::emitter::Emitter::new(full_source.as_bytes(), &mut vm.context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    vm.run(Rc::new(chunk)).expect("VM run failed");
-    let handle = vm.last_return_value.expect("no return");
-    (vm, handle)
 }
 
 fn val_to_json(vm: &VM, handle: Handle) -> String {
@@ -93,18 +69,22 @@ fn val_to_json(vm: &VM, handle: Handle) -> String {
 
 #[test]
 fn array_unpack_reindexes_numeric_keys() {
-    let expr = "[1, 2, ...[5 => 'a', 'b'], 3]";
-    let php_out = php_json(expr);
-    let (vm, handle) = run_vm(expr);
+    let expr_vm = "<?php return [1, 2, ...[5 => 'a', 'b'], 3]";
+    let expr_php = "[1, 2, ...[5 => 'a', 'b'], 3]";
+    let php_out = php_json(expr_php);
+    let (_val, vm) = run_code_with_vm(expr_vm).expect("VM execution failed");
+    let handle = vm.last_return_value.expect("no return");
     let vm_json = val_to_json(&vm, handle);
     assert_eq!(vm_json, php_out, "vm json {} vs php {}", vm_json, php_out);
 }
 
 #[test]
 fn array_unpack_overwrites_string_keys() {
-    let expr = "['x' => 1, ...['x' => 2, 'y' => 3], 'z' => 4]";
-    let php_out = php_json(expr);
-    let (vm, handle) = run_vm(expr);
+    let expr_vm = "<?php return ['x' => 1, ...['x' => 2, 'y' => 3], 'z' => 4]";
+    let expr_php = "['x' => 1, ...['x' => 2, 'y' => 3], 'z' => 4]";
+    let php_out = php_json(expr_php);
+    let (_val, vm) = run_code_with_vm(expr_vm).expect("VM execution failed");
+    let handle = vm.last_return_value.expect("no return");
     let vm_json = val_to_json(&vm, handle);
     assert_eq!(vm_json, php_out, "vm json {} vs php {}", vm_json, php_out);
 }

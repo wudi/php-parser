@@ -1,33 +1,11 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_vm_only;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn run_code(src: &str) -> VM {
-    let full_source = format!("<?php {}", src);
-
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))
-        .unwrap_or_else(|e| panic!("Runtime error: {:?}", e));
-
-    vm
+    run_code_vm_only(src)
 }
 
 fn check_array_bools(vm: &VM, expected: &[bool]) {
@@ -49,7 +27,7 @@ fn check_array_bools(vm: &VM, expected: &[bool]) {
 
 #[test]
 fn test_isset_var() {
-    let code = r#"
+    let code = r#"<?php
         $a = 1;
         $b = null;
         $c = isset($a);
@@ -63,7 +41,7 @@ fn test_isset_var() {
 
 #[test]
 fn test_isset_dim() {
-    let code = r#"
+    let code = r#"<?php
         $a = [1, 2, 3];
         $b = isset($a[0]);
         $c = isset($a[5]);
@@ -75,7 +53,7 @@ fn test_isset_dim() {
 
 #[test]
 fn test_unset_var() {
-    let code = r#"
+    let code = r#"<?php
         $a = 1;
         unset($a);
         $b = isset($a);
@@ -87,7 +65,7 @@ fn test_unset_var() {
 
 #[test]
 fn test_unset_dim() {
-    let code = r#"
+    let code = r#"<?php
         $a = [1, 2, 3];
         unset($a[1]);
         $b = isset($a[1]);
@@ -100,7 +78,7 @@ fn test_unset_dim() {
 
 #[test]
 fn test_empty() {
-    let code = r#"
+    let code = r#"<?php
         $a = 0;
         $b = 1;
         $c = empty($a);

@@ -1,42 +1,11 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Val {
-    let full_source = if source.trim().starts_with("<?php") {
-        source.to_string()
-    } else {
-        format!("<?php {}", source)
-    };
-
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(full_source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).expect("Execution failed");
-
-    let handle = vm.last_return_value.expect("No return value");
-    vm.arena.get(handle).value.clone()
-}
 
 #[test]
 fn test_static_property() {
-    let src = "
+    let src = "<?php
         class A {
             public static $val = 10;
         }
@@ -53,7 +22,7 @@ fn test_static_property() {
 
 #[test]
 fn test_static_method() {
-    let src = "
+    let src = "<?php
         class Math {
             public static function add($a, $b) {
                 return $a + $b;
@@ -71,7 +40,7 @@ fn test_static_method() {
 
 #[test]
 fn test_self_access() {
-    let src = "
+    let src = "<?php
         class Counter {
             public static $count = 0;
             public static function inc() {
@@ -95,7 +64,7 @@ fn test_self_access() {
 
 #[test]
 fn test_lsb_static() {
-    let src = "
+    let src = "<?php
         class A {
             public static function who() {
                 return 'A';
@@ -123,7 +92,7 @@ fn test_lsb_static() {
 
 #[test]
 fn test_lsb_property() {
-    let src = "
+    let src = "<?php
         class A {
             public static $name = 'A';
             public static function getName() {

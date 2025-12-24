@@ -1,36 +1,8 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+
+use common::run_code_with_vm;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Result<(Val, VM), VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    let val = if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    };
-    Ok((val, vm))
-}
+use php_vm::vm::engine::VmError;
 
 #[test]
 fn test_class_constants_basic() {
@@ -52,7 +24,7 @@ fn test_class_constants_basic() {
         return $res;
     "#;
 
-    let (result, vm) = run_code(src).unwrap();
+    let (result, vm) = run_code_with_vm(src).unwrap();
 
     if let Val::Array(map) = result {
         assert_eq!(map.map.len(), 4);
@@ -120,7 +92,7 @@ fn test_class_constants_visibility_access() {
         return $res;
     "#;
 
-    let (result, vm) = run_code(src).unwrap();
+    let (result, vm) = run_code_with_vm(src).unwrap();
 
     if let Val::Array(map) = result {
         assert_eq!(map.map.len(), 5);
@@ -158,7 +130,7 @@ fn test_class_constants_private_fail() {
         return A::PRIV;
     "#;
 
-    let result = run_code(src);
+    let result = run_code_with_vm(src);
     assert!(result.is_err());
 }
 
@@ -171,6 +143,6 @@ fn test_class_constants_protected_fail() {
         return A::PROT;
     "#;
 
-    let result = run_code(src);
+    let result = run_code_with_vm(src);
     assert!(result.is_err());
 }

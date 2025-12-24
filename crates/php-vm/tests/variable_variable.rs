@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 #[test]
 fn test_variable_variable() {
-    let src = r#"
+    let src = r#"<?php
         $a = "b";
         $b = 1;
         $$a = 2;
@@ -19,13 +19,12 @@ fn test_variable_variable() {
         return [$a, $b];
     "#;
 
-    let full_source = format!("<?php {}", src);
 
     let engine_context = Arc::new(EngineContext::new());
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();
-    let lexer = Lexer::new(full_source.as_bytes());
+    let lexer = Lexer::new(src.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
 
@@ -35,7 +34,7 @@ fn test_variable_variable() {
 
     // println!("AST: {:#?}", program);
 
-    let emitter = Emitter::new(full_source.as_bytes(), &mut request_context.interner);
+    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
 
     let mut vm = VM::new_with_context(request_context);

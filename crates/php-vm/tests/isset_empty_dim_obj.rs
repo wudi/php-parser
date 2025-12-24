@@ -73,8 +73,7 @@ fn run_code(source: &str) -> Result<String, VmError> {
 
 #[test]
 fn test_isset_empty_on_array() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 $arr = ["key" => "value", "zero" => 0, "false" => false, "empty" => "", "null" => null];
 
 // isset tests
@@ -108,8 +107,7 @@ echo empty($arr["missing"]) ? "true\n" : "false\n";  // true - missing is empty
 
 #[test]
 fn test_isset_empty_on_string() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 $str = "hello";
 
 echo isset($str[0]) ? "true\n" : "false\n";   // true
@@ -135,8 +133,7 @@ echo isset($str[-1]) ? "true\n" : "false\n";  // true
 
 #[test]
 fn test_isset_empty_on_arrayaccess() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 class MyArrayAccess implements ArrayAccess {
     private $data = [
         "key1" => "value1",
@@ -188,8 +185,7 @@ echo empty($obj["zero"]) ? "true\n" : "false\n";    // true
 
 #[test]
 fn test_isset_empty_on_non_arrayaccess_object_should_error() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 class RegularClass {
     public $prop = "value";
 }
@@ -217,8 +213,7 @@ echo isset($obj["test"]) ? "true\n" : "false\n";
 
 #[test]
 fn test_isset_empty_arrayaccess_offset_exists_semantics() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 class TestOffsetExists implements ArrayAccess {
     private $data = ["exists_but_null" => null];
     
@@ -255,8 +250,7 @@ echo isset($obj["missing"]) ? "true\n" : "false\n";
 
 #[test]
 fn test_empty_arrayaccess_offsetexists_false() {
-    let code = r#"
-<?php
+    let code = r#"<?php
 class EmptyTest implements ArrayAccess {
     public function offsetExists($offset): bool {
         echo "offsetExists called\n";

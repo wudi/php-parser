@@ -1,9 +1,6 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+use common::run_code_with_vm;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 #[test]
 fn test_constructor() {
@@ -26,23 +23,7 @@ fn test_constructor() {
         return $p->sum();
     "#;
 
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
+    let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
@@ -71,23 +52,7 @@ fn test_constructor_no_args() {
         return $c->inc();
     "#;
 
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
+    let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
@@ -113,23 +78,7 @@ fn test_constructor_defaults_respected() {
         return $first->msg . '|' . $second->msg . '|' . $third->msg;
     "#;
 
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
+    let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
@@ -158,23 +107,7 @@ fn test_constructor_dynamic_class_args() {
         return $a->value . '|' . $b->value;
     "#;
 
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk)).unwrap();
+    let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let res_handle = vm.last_return_value.expect("Should return value");
     let res_val = vm.arena.get(res_handle).value.clone();
