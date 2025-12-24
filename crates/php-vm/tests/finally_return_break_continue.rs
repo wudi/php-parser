@@ -1,75 +1,5 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{OutputWriter, VmError, VM};
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-
-// Simple output writer that collects to a string
-struct StringOutputWriter {
-    buffer: Vec<u8>,
-}
-
-impl StringOutputWriter {
-    fn new() -> Self {
-        Self { buffer: Vec::new() }
-    }
-}
-
-impl OutputWriter for StringOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.buffer.extend_from_slice(bytes);
-        Ok(())
-    }
-}
-
-// Wrapper to allow RefCell-based output writer
-struct RefCellOutputWriter {
-    writer: Rc<RefCell<StringOutputWriter>>,
-}
-
-impl OutputWriter for RefCellOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.writer.borrow_mut().write(bytes)
-    }
-}
-
-fn run_code(source: &str) -> Result<(Val, String), VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
-    let output_writer_clone = output_writer.clone();
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter {
-        writer: output_writer,
-    });
-
-    vm.run(Rc::new(chunk))?;
-
-    let val = if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    };
-
-    let output = output_writer_clone.borrow().buffer.clone();
-    Ok((val, String::from_utf8_lossy(&output).to_string()))
-}
+mod common;
+use common::run_code_capture_output;
 
 // ============================================================================
 // Finally execution on return
@@ -91,9 +21,7 @@ function test() {
 echo test();
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP outputs "before finally" then "value"
     assert_eq!(output, "before finallyvalue");
 }
@@ -120,9 +48,7 @@ function outer() {
 echo outer();
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP executes inner finally, then outer finally, then returns
     assert_eq!(output, "outer inner inner-finally outer-finallyvalue");
 }
@@ -141,9 +67,7 @@ function test() {
 echo test();
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP returns "finally", not "try"
     assert_eq!(output, "finally");
 }
@@ -169,9 +93,7 @@ for ($i = 0; $i < 3; $i++) {
 echo "end";
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP outputs "0f1fend" (0 with finally, 1 with finally and break, then end)
     assert_eq!(output, "0f1fend");
 }
@@ -196,9 +118,7 @@ for ($i = 0; $i < 2; $i++) {
 echo "end";
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP: o0i0i1f (outer 0, inner 0, inner 1, finally, then break 2)
     assert_eq!(output, "o0i0i1fend");
 }
@@ -224,9 +144,7 @@ for ($i = 0; $i < 3; $i++) {
 echo "end";
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // PHP outputs "0ffend" (0 with finally, skip 1 but finally runs, 2 with finally)
     // Wait, let me verify the exact output
     // i=0: not 1, echo 0, finally echo f
@@ -256,9 +174,7 @@ for ($i = 0; $i < 2; $i++) {
 echo "end";
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // o0i0f (j=0 prints, j=1 continues to outer, finally runs)
     // o1i0f (j=0 prints, j=1 continues to outer, finally runs)
     assert_eq!(output, "o0i0fo1i0fend");

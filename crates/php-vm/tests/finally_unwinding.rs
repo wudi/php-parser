@@ -1,115 +1,8 @@
-use php_vm::compiler::emitter::Emitter;
+mod common;
+use crate::common::run_code_with_vm;
+use common::run_code_capture_output;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{OutputWriter, VmError, VM};
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-
-// Simple output writer that collects to a string
-struct StringOutputWriter {
-    buffer: Vec<u8>,
-}
-
-impl StringOutputWriter {
-    fn new() -> Self {
-        Self { buffer: Vec::new() }
-    }
-}
-
-impl OutputWriter for StringOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.buffer.extend_from_slice(bytes);
-        Ok(())
-    }
-}
-
-// Wrapper to allow RefCell-based output writer
-struct RefCellOutputWriter {
-    writer: Rc<RefCell<StringOutputWriter>>,
-}
-
-impl OutputWriter for RefCellOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.writer.borrow_mut().write(bytes)
-    }
-}
-
-fn run_code(source: &str) -> Result<(Val, String), VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
-    let output_writer_clone = output_writer.clone();
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter {
-        writer: output_writer,
-    });
-
-    vm.run(Rc::new(chunk))?;
-
-    let val = if let Some(handle) = vm.last_return_value {
-        vm.arena.get(handle).value.clone()
-    } else {
-        Val::Null
-    };
-
-    let output = output_writer_clone.borrow().buffer.clone();
-    Ok((val, String::from_utf8_lossy(&output).to_string()))
-}
-
-fn run_code_with_output(source: &str) -> (Result<Val, VmError>, String) {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
-    let output_writer_clone = output_writer.clone();
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter {
-        writer: output_writer,
-    });
-
-    let result = vm.run(Rc::new(chunk));
-
-    let val = match result {
-        Ok(()) => Ok(if let Some(handle) = vm.last_return_value {
-            vm.arena.get(handle).value.clone()
-        } else {
-            Val::Null
-        }),
-        Err(e) => Err(e),
-    };
-
-    let output = output_writer_clone.borrow().buffer.clone();
-    (val, String::from_utf8_lossy(&output).to_string())
-}
-
+use php_vm::vm::engine::{VmError, VM};
 // ============================================================================
 // Finally execution during exception unwinding
 // ============================================================================
@@ -128,11 +21,19 @@ try {
 echo " end";  // Not reached due to uncaught exception
 "#;
 
-    let (result, output) = run_code_with_output(code);
-    assert!(result.is_err(), "Should error due to uncaught exception");
-
-    // PHP outputs "before finally" before the error
-    assert_eq!(output, "before finally");
+    let result = run_code_capture_output(code);
+    match result {
+        Ok(_) => {
+            panic!("Expected uncaught exception, but code executed successfully");
+        }
+        Err(err) => {
+            assert!(
+                err.to_string().contains("Uncaught exception"),
+                "Expected uncaught exception error, got: {}",
+                err
+            );
+        }
+    }
 }
 
 #[test]
@@ -150,9 +51,7 @@ try {
 echo " end";
 "#;
 
-    let result = run_code(code);
-    assert!(result.is_ok());
-    let (_, output) = result.unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "try catch finally end");
 }
 
@@ -172,10 +71,8 @@ function test() {
 echo test();
 "#;
 
-    let result = run_code(code);
-    // Current implementation: return skips finally
-    // TODO: Should be "try finally" + "value"
-    assert!(result.is_ok());
+    let (_, output) = run_code_capture_output(code).unwrap();
+    assert_eq!(output, "try finallyvalue");
 }
 
 #[test]
@@ -195,9 +92,8 @@ function test() {
 echo test();
 "#;
 
-    let result = run_code(code);
-    // TODO: Should output "catch finally" + "value"
-    assert!(result.is_ok());
+    let (_, output) = run_code_capture_output(code).unwrap();
+    assert_eq!(output, "catch finallyvalue");
 }
 
 #[test]
@@ -219,9 +115,8 @@ try {
 echo " end";
 "#;
 
-    let result = run_code(code);
-    // TODO: Should output "inner-catch inner-finally outer-catch end"
-    assert!(result.is_ok());
+    let (_, output) = run_code_capture_output(code).unwrap();
+    assert_eq!(output, "inner-catch inner-finally outer-catch end");
 }
 
 #[test]
@@ -241,9 +136,19 @@ try {
 }
 "#;
 
-    let result = run_code(code);
-    // TODO: Should output "outer inner inner-finally outer-finally" then error
-    assert!(result.is_err(), "Should error due to uncaught exception");
+    let result = run_code_capture_output(code);
+    match result {
+        Ok(_) => {
+            panic!("Expected uncaught exception, but code executed successfully");
+        }
+        Err(err) => {
+            assert!(
+                err.to_string().contains("Uncaught exception"),
+                "Expected uncaught exception error, got: {}",
+                err
+            );
+        }
+    }
 }
 
 #[test]
@@ -261,9 +166,8 @@ for ($i = 0; $i < 3; $i++) {
 echo " end";
 "#;
 
-    let result = run_code(code);
-    // TODO: Should output "0f1f end"
-    assert!(result.is_ok());
+    let (_, output) = run_code_capture_output(code).unwrap();
+    assert_eq!(output, "0f1f end");
 }
 
 #[test]
@@ -282,7 +186,6 @@ for ($i = 0; $i < 3; $i++) {
 echo " end";
 "#;
 
-    let result = run_code(code);
-    // TODO: Should output "0xf1f2xf end"
-    assert!(result.is_ok());
+    let (_, output) = run_code_capture_output(code).unwrap();
+    assert_eq!(output, "0xf1f2xf end");
 }

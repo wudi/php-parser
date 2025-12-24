@@ -45,7 +45,7 @@ fn unescape_string(s: &[u8]) -> Vec<u8> {
                 }
                 // Octal: \nnn (up to 3 digits)
                 b'0'..=b'7' => {
-                    let mut octal_val = (s[i + 1] - b'0') as u8;
+                    let mut octal_val = s[i + 1] - b'0';
                     let mut consumed = 1;
                     if i + 2 < s.len() && (b'0'..=b'7').contains(&s[i + 2]) {
                         octal_val = octal_val * 8 + (s[i + 2] - b'0');
@@ -167,7 +167,7 @@ impl<'src> Emitter<'src> {
         (self.chunk, self.is_generator)
     }
 
-    fn emit_members(&mut self, class_sym: crate::core::value::Symbol, members: &[ClassMember]) {
+    fn emit_members(&mut self, class_sym: Symbol, members: &[ClassMember]) {
         for member in members {
             match member {
                 ClassMember::Method {
@@ -314,10 +314,7 @@ impl<'src> Emitter<'src> {
                         let const_name_str = self.get_text(entry.name.span);
                         let const_sym = self.interner.intern(const_name_str);
 
-                        let val = match self.get_literal_value(entry.value) {
-                            Some(v) => v,
-                            None => Val::Null,
-                        };
+                        let val = self.get_literal_value(entry.value).unwrap_or_else(|| Val::Null);
                         let val_idx = self.add_constant(val);
                         self.chunk.code.push(OpCode::DefClassConst(
                             class_sym,
@@ -381,10 +378,7 @@ impl<'src> Emitter<'src> {
                     // No, `DefGlobalConst` takes `val_idx` which implies it's in the constant table.
                     // So we must evaluate it at compile time.
 
-                    let val = match self.get_literal_value(c.value) {
-                        Some(v) => v,
-                        None => Val::Null, // TODO: Error or support more complex constant expressions
-                    };
+                    let val = self.get_literal_value(c.value).unwrap_or_else(|| Val::Null);
 
                     let val_idx = self.add_constant(val);
                     self.chunk
@@ -1145,7 +1139,7 @@ impl<'src> Emitter<'src> {
                 let try_start = self.chunk.code.len() as u32;
 
                 // If there's a finally block, we need to track it BEFORE emitting the try body
-                // so that break/continue inside the try body know they're inside a finally context
+                // so that break/continue inside the try body know they're inside a final context
                 let has_finally = finally.is_some();
                 let try_finally_placeholder_idx = if has_finally {
                     // Reserve space in try_finally_stack with placeholder values

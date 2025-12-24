@@ -239,25 +239,18 @@ impl AssignOpType {
     }
 
     fn concat(left: Val, right: Val) -> Result<Val, VmError> {
-        let left_str = match left {
-            Val::String(s) => String::from_utf8_lossy(&s).to_string(),
-            Val::Int(i) => i.to_string(),
-            Val::Float(f) => f.to_string(),
-            Val::Bool(b) => if b { "1" } else { "" }.to_string(),
-            Val::Null => String::new(),
-            _ => String::new(),
-        };
+        fn to_php_string(val: Val) -> String {
+            match val {
+                Val::String(s) => String::from_utf8_lossy(&s).to_string(),
+                Val::Int(i) => i.to_string(),
+                Val::Float(f) => f.to_string(),
+                Val::Bool(b) => if b { "1".parse().unwrap() } else { "".to_string() },
+                Val::Null => String::new(),
+                _ => String::new(),
+            }
+        }
 
-        let right_str = match right {
-            Val::String(s) => String::from_utf8_lossy(&s).to_string(),
-            Val::Int(i) => i.to_string(),
-            Val::Float(f) => f.to_string(),
-            Val::Bool(b) => if b { "1" } else { "" }.to_string(),
-            Val::Null => String::new(),
-            _ => String::new(),
-        };
-
-        let result = left_str + &right_str;
+        let result = to_php_string(left) + &to_php_string(right);
         Ok(Val::String(result.into_bytes().into()))
     }
 

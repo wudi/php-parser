@@ -1,75 +1,5 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{OutputWriter, VmError, VM};
-use std::cell::RefCell;
-use std::rc::Rc;
-
-// Simple output writer that collects to a string
-struct StringOutputWriter {
-    buffer: Vec<u8>,
-}
-
-impl StringOutputWriter {
-    fn new() -> Self {
-        Self { buffer: Vec::new() }
-    }
-
-    fn get_output(&self) -> String {
-        String::from_utf8_lossy(&self.buffer).to_string()
-    }
-}
-
-impl OutputWriter for StringOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.buffer.extend_from_slice(bytes);
-        Ok(())
-    }
-}
-
-// Wrapper to allow RefCell-based output writer
-struct RefCellOutputWriter {
-    writer: Rc<RefCell<StringOutputWriter>>,
-}
-
-impl OutputWriter for RefCellOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.writer.borrow_mut().write(bytes)
-    }
-}
-
-fn run_code(source: &str) -> Result<String, VmError> {
-    let engine_context = std::sync::Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        return Err(VmError::RuntimeError(format!(
-            "Parse errors: {:?}",
-            program.errors
-        )));
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
-    let output_writer_clone = output_writer.clone();
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter {
-        writer: output_writer,
-    });
-
-    vm.run(Rc::new(chunk))?;
-
-    // Get output from the cloned reference
-    let output = output_writer_clone.borrow().get_output();
-    Ok(output)
-}
+mod common;
+use crate::common::run_code_capture_output;
 
 #[test]
 fn test_isset_empty_on_array() {
@@ -90,7 +20,7 @@ echo empty($arr["null"]) ? "true\n" : "false\n";     // true - null is empty
 echo empty($arr["missing"]) ? "true\n" : "false\n";  // true - missing is empty
 "#;
 
-    let output = run_code(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
 
     // Check we have both true and false results
     assert!(
@@ -116,7 +46,7 @@ echo empty($str[0]) ? "true\n" : "false\n";   // false
 echo isset($str[-1]) ? "true\n" : "false\n";  // true
 "#;
 
-    let output = run_code(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
 
     // Verify output contains expected values
     assert!(
@@ -168,7 +98,7 @@ echo empty($obj["key1"]) ? "true\n" : "false\n";    // false
 echo empty($obj["zero"]) ? "true\n" : "false\n";    // true
 "#;
 
-    let output = run_code(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
 
     // Verify output contains expected values
     assert!(
@@ -194,10 +124,16 @@ $obj = new RegularClass();
 echo isset($obj["test"]) ? "true\n" : "false\n";
 "#;
 
-    match run_code(code) {
+    let output = run_code_capture_output(code);
+
+    match output {
         Ok(output) => {
             // Should return false (object doesn't implement ArrayAccess)
-            assert!(output.contains("false"), "Should return false: {}", output);
+            assert!(
+                output.1.contains("false"),
+                "Should return false: {}",
+                output.1
+            );
         }
         Err(e) => {
             // Or throw an error (preferred in PHP)
@@ -237,7 +173,7 @@ echo empty($obj["exists_but_null"]) ? "true\n" : "false\n";
 echo isset($obj["missing"]) ? "true\n" : "false\n";
 "#;
 
-    let output = run_code(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
 
     // Just verify we got some output with true/false
     assert!(output.len() > 0, "Should have some output: {}", output);
@@ -271,7 +207,7 @@ $obj = new EmptyTest();
 echo empty($obj["test"]) ? "true\n" : "false\n";
 "#;
 
-    let output = run_code(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     // Should return true when offsetExists returns false
     assert!(
         output.contains("true"),

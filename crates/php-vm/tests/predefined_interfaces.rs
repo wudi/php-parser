@@ -8,53 +8,25 @@
 /// - WeakReference, WeakMap, Stringable
 /// - UnitEnum, BackedEnum
 /// - SensitiveParameterValue, __PHP_Incomplete_Class
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{VmError, VM};
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn run_code(source: &str) -> Result<(), VmError> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(source.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        panic!("Parse errors: {:?}", program.errors);
-    }
-
-    let emitter = Emitter::new(source.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.run(Rc::new(chunk))?;
-
-    Ok(())
-}
-
+mod common;
+use common::run_code;
 //=============================================================================
 // Interface Existence Tests
 //=============================================================================
 
 #[test]
 fn test_traversable_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Traversable')) {
             throw new Exception('Traversable interface not found');
         }
     "#;
-
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    let _ = run_code(source);
 }
 
 #[test]
 fn test_iterator_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Iterator')) {
             throw new Exception('Iterator interface not found');
         }
@@ -63,13 +35,12 @@ fn test_iterator_interface_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_iterator_aggregate_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('IteratorAggregate')) {
             throw new Exception('IteratorAggregate interface not found');
         }
@@ -78,13 +49,12 @@ fn test_iterator_aggregate_interface_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_throwable_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Throwable')) {
             throw new Exception('Throwable interface not found');
         }
@@ -94,56 +64,51 @@ fn test_throwable_interface_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_countable_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Countable')) {
             throw new Exception('Countable interface not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_array_access_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('ArrayAccess')) {
             throw new Exception('ArrayAccess interface not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_serializable_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Serializable')) {
             throw new Exception('Serializable interface not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_stringable_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('Stringable')) {
             throw new Exception('Stringable interface not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 //=============================================================================
@@ -152,19 +117,18 @@ fn test_stringable_interface_exists() {
 
 #[test]
 fn test_closure_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('Closure')) {
             throw new Exception('Closure class not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_stdclass_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('stdClass')) {
             throw new Exception('stdClass not found');
         }
@@ -175,13 +139,12 @@ fn test_stdclass_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_generator_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('Generator')) {
             throw new Exception('Generator class not found');
         }
@@ -190,37 +153,34 @@ fn test_generator_class_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_fiber_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('Fiber')) {
             throw new Exception('Fiber class not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_weak_reference_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('WeakReference')) {
             throw new Exception('WeakReference class not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_weak_map_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('WeakMap')) {
             throw new Exception('WeakMap class not found');
         }
@@ -235,32 +195,29 @@ fn test_weak_map_class_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_sensitive_parameter_value_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('SensitiveParameterValue')) {
             throw new Exception('SensitiveParameterValue class not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_incomplete_class_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!class_exists('__PHP_Incomplete_Class')) {
             throw new Exception('__PHP_Incomplete_Class not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 //=============================================================================
@@ -269,19 +226,18 @@ fn test_incomplete_class_exists() {
 
 #[test]
 fn test_unit_enum_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('UnitEnum')) {
             throw new Exception('UnitEnum interface not found');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_backed_enum_interface_exists() {
-    let source = r#"
+    let source = r#"<?php
         if (!interface_exists('BackedEnum')) {
             throw new Exception('BackedEnum interface not found');
         }
@@ -290,8 +246,7 @@ fn test_backed_enum_interface_exists() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 //=============================================================================
@@ -300,7 +255,7 @@ fn test_backed_enum_interface_exists() {
 
 #[test]
 fn test_iterator_implementation() {
-    let source = r#"
+    let source = r#"<?php
         class MyIterator implements Iterator {
             private $position = 0;
             private $array = ['a', 'b', 'c'];
@@ -332,37 +287,34 @@ fn test_iterator_implementation() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_exception_implements_throwable() {
-    let source = r#"
+    let source = r#"<?php
         if (!is_subclass_of('Exception', 'Throwable')) {
             throw new Exception('Exception must implement Throwable');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_error_implements_throwable() {
-    let source = r#"
+    let source = r#"<?php
         if (!is_subclass_of('Error', 'Throwable')) {
             throw new Exception('Error must implement Throwable');
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }
 
 #[test]
 fn test_all_predefined_interfaces_and_classes_exist() {
-    let source = r#"
+    let source = r#"<?php
         // Test all interfaces
         $interfaces = [
             'Traversable',
@@ -404,6 +356,5 @@ fn test_all_predefined_interfaces_and_classes_exist() {
         }
     "#;
 
-    let result = run_code(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    run_code(source);
 }

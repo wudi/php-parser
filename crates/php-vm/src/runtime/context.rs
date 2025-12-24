@@ -72,7 +72,7 @@ pub struct EngineContext {
     // Kept for backward compatibility
     pub constants: HashMap<Symbol, Val>,
     /// PDO driver registry (set by PDO extension)
-    pub pdo_driver_registry: Option<std::sync::Arc<crate::builtins::pdo::drivers::DriverRegistry>>,
+    pub pdo_driver_registry: Option<Arc<crate::builtins::pdo::drivers::DriverRegistry>>,
 }
 
 impl EngineContext {
@@ -2100,6 +2100,22 @@ impl RequestContext {
             date_exception_sym,
             ClassDef {
                 name: date_exception_sym,
+                parent: Some(exception_sym),
+                is_interface: false,
+                is_trait: false,
+                interfaces: Vec::new(),
+                traits: Vec::new(),
+                methods: HashMap::new(),
+                properties: IndexMap::new(),
+                constants: HashMap::new(),
+                static_properties: HashMap::new(),
+                allows_dynamic_properties: false,
+            },
+        );
+        self.classes.insert(
+            runtime_exception_sym,
+            ClassDef {
+                name: runtime_exception_sym,
                 parent: Some(exception_sym),
                 is_interface: false,
                 is_trait: false,

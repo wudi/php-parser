@@ -77,6 +77,56 @@ pub fn run_code_with_vm(code: &str) -> Result<(Val, VM), VmError> {
 pub fn run_code_vm_only(code: &str) -> VM {
     run_code_with_vm(code).expect("code execution failed").1
 }
+// Result<Val, VmError>, String
+pub fn run_code_capture_output(code: &str) -> Result<(Val, String), VmError> {
+    use php_vm::compiler::emitter::Emitter;
+    use php_vm::runtime::context::{EngineContext, RequestContext};
+    use php_vm::vm::engine::{OutputWriter, VmError, VM};
+    use std::sync::{Arc, Mutex};
+
+    struct TestOutputWriter {
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl OutputWriter for TestOutputWriter {
+        fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
+            self.buffer.lock().unwrap().extend_from_slice(bytes);
+            Ok(())
+        }
+    }
+
+    let arena = bumpalo::Bump::new();
+    let lexer = php_parser::lexer::Lexer::new(code.as_bytes());
+    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
+    let program = parser.parse_program();
+
+    if !program.errors.is_empty() {
+        panic!("Parse errors: {:?}", program.errors);
+    }
+
+    let engine_context = Arc::new(EngineContext::new());
+    let mut request_context = RequestContext::new(engine_context);
+    let emitter = Emitter::new(code.as_bytes(), &mut request_context.interner);
+    let (chunk, _) = emitter.compile(&program.statements);
+
+    let mut vm = VM::new_with_context(request_context);
+    let output = Arc::new(Mutex::new(Vec::new()));
+    vm.set_output_writer(Box::new(TestOutputWriter {
+        buffer: output.clone(),
+    }));
+
+    vm.run(std::rc::Rc::new(chunk))?;
+
+    let value = match vm.last_return_value {
+        Some(handle) => vm.arena.get(handle).value.clone(),
+        None => Val::Null,
+    };
+
+    let bytes = output.lock().unwrap().clone();
+    let output_str = String::from_utf8_lossy(&bytes).to_string();
+
+    Ok((value, output_str))
+}
 
 #[cfg(test)]
 mod tests {

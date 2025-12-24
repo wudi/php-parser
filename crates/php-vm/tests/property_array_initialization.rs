@@ -1,62 +1,5 @@
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::{OutputWriter, VmError, VM};
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-
-struct StringOutputWriter {
-    buffer: Vec<u8>,
-}
-
-impl StringOutputWriter {
-    fn new() -> Self {
-        Self { buffer: Vec::new() }
-    }
-}
-
-impl OutputWriter for StringOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.buffer.extend_from_slice(bytes);
-        Ok(())
-    }
-}
-
-struct RefCellOutputWriter {
-    writer: Rc<RefCell<StringOutputWriter>>,
-}
-
-impl OutputWriter for RefCellOutputWriter {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), VmError> {
-        self.writer.borrow_mut().write(bytes)
-    }
-}
-
-fn run_test_with_echo(src: &str) -> Result<String, String> {
-    let context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let output_writer = Rc::new(RefCell::new(StringOutputWriter::new()));
-    let output_writer_clone = output_writer.clone();
-
-    let mut vm = VM::new_with_context(request_context);
-    vm.output_writer = Box::new(RefCellOutputWriter {
-        writer: output_writer,
-    });
-
-    vm.run(Rc::new(chunk)).map_err(|e| format!("{:?}", e))?;
-
-    let output_bytes = output_writer_clone.borrow().buffer.clone();
-    Ok(String::from_utf8_lossy(&output_bytes).to_string())
-}
+mod common;
+use common::run_code_capture_output;
 
 #[test]
 fn test_property_array_simple() {
@@ -75,7 +18,7 @@ fn test_property_array_simple() {
         echo $obj->get('name');
     "#;
 
-    let output = run_test_with_echo(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "5\ntest");
 }
 
@@ -98,7 +41,7 @@ fn test_property_array_numeric_keys() {
         echo $obj->getItem(2);
     "#;
 
-    let output = run_test_with_echo(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "10\n20\n30");
 }
 
@@ -126,7 +69,7 @@ fn test_property_array_nested() {
         echo $obj->getDbPort();
     "#;
 
-    let output = run_test_with_echo(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "localhost\n3306");
 }
 
@@ -146,7 +89,7 @@ fn test_property_empty_array() {
         echo $obj->add('test', 42);
     "#;
 
-    let output = run_test_with_echo(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "42");
 }
 
@@ -164,6 +107,6 @@ fn test_static_property_array() {
         echo MyClass::getVersion();
     "#;
 
-    let output = run_test_with_echo(code).unwrap();
+    let (_, output) = run_code_capture_output(code).unwrap();
     assert_eq!(output, "1");
 }

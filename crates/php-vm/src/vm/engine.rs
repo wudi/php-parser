@@ -375,9 +375,9 @@ impl VM {
             finally_return_value: None,
             opcodes_executed: 0,
             function_calls: 0,
-            memory_limit: 0, // Unlimited by default
-            allow_file_io: true, // Allow by default
-            allow_network: true, // Allow by default
+            memory_limit: 0,         // Unlimited by default
+            allow_file_io: true,     // Allow by default
+            allow_network: true,     // Allow by default
             allowed_functions: None, // All functions allowed by default
             disable_functions: std::collections::HashSet::new(),
             disable_classes: std::collections::HashSet::new(),
@@ -470,16 +470,10 @@ impl VM {
         }
     }
 
-    /// Convert bytes to lowercase for case-insensitive lookups
-    #[inline(always)]
-    pub(super) fn to_lowercase_bytes(bytes: &[u8]) -> Vec<u8> {
-        bytes.iter().map(|b| b.to_ascii_lowercase()).collect()
-    }
-
     #[inline]
     fn method_lookup_key(&self, name: Symbol) -> Option<Symbol> {
         let name_bytes = self.context.interner.lookup(name)?;
-        let lower = Self::to_lowercase_bytes(name_bytes);
+        let lower = name_bytes.to_ascii_lowercase();
         self.context.interner.find(&lower)
     }
 
@@ -490,7 +484,7 @@ impl VM {
             .interner
             .lookup(name)
             .ok_or_else(|| VmError::RuntimeError("Invalid method symbol".into()))?;
-        let lower = Self::to_lowercase_bytes(name_bytes);
+        let lower = name_bytes.to_ascii_lowercase();
         Ok(self.context.interner.intern(&lower))
     }
 
@@ -561,7 +555,7 @@ impl VM {
     fn create_server_superglobal(&mut self) -> Handle {
         let mut data = ArrayData::new();
 
-        let mut insert_str = |vm: &mut Self, data: &mut ArrayData, key: &[u8], val: &[u8]| {
+        let insert_str = |vm: &mut Self, data: &mut ArrayData, key: &[u8], val: &[u8]| {
             let handle = vm.alloc_string_handle(val);
             Self::insert_array_value(data, key, handle);
         };
@@ -647,7 +641,7 @@ impl VM {
         if kind == SuperglobalKind::Globals {
             // Update the $GLOBALS array to reflect current global state
             let globals_sym = self.context.interner.intern(b"GLOBALS");
-            if let Some(&existing_handle) = self.context.globals.get(&globals_sym) {
+            return if let Some(&existing_handle) = self.context.globals.get(&globals_sym) {
                 // Update the existing array in place, maintaining handle sharing
                 let mut map = IndexMap::new();
 
@@ -675,14 +669,14 @@ impl VM {
                 // Update the array value in-place
                 let array_val = Val::Array(ArrayData::from(map).into());
                 self.arena.get_mut(existing_handle).value = array_val;
-                return Some(existing_handle);
+                Some(existing_handle)
             } else {
                 // Create new $GLOBALS array
                 let handle = self.create_globals_superglobal();
                 self.arena.get_mut(handle).is_ref = true;
                 self.context.globals.insert(sym, handle);
-                return Some(handle);
-            }
+                Some(handle)
+            };
         }
 
         let handle = if let Some(&existing) = self.context.globals.get(&sym) {
@@ -789,9 +783,9 @@ impl VM {
             finally_return_value: None,
             opcodes_executed: 0,
             function_calls: 0,
-            memory_limit: 0, // Unlimited by default
-            allow_file_io: true, // Allow by default
-            allow_network: true, // Allow by default
+            memory_limit: 0,         // Unlimited by default
+            allow_file_io: true,     // Allow by default
+            allow_network: true,     // Allow by default
             allowed_functions: None, // All functions allowed by default
             disable_functions: std::collections::HashSet::new(),
             disable_classes: std::collections::HashSet::new(),
@@ -848,12 +842,11 @@ impl VM {
         }
 
         let current_usage = self.get_memory_usage();
-        
+
         if current_usage >= self.memory_limit {
             return Err(VmError::RuntimeError(format!(
                 "Allowed memory size of {} bytes exhausted (tried to allocate {} bytes)",
-                self.memory_limit,
-                current_usage
+                self.memory_limit, current_usage
             )));
         }
 
@@ -872,7 +865,7 @@ impl VM {
                 )));
             }
         }
-        
+
         // Check blacklist
         if self.disable_functions.contains(function_name) {
             return Err(VmError::RuntimeError(format!(
@@ -880,7 +873,7 @@ impl VM {
                 function_name
             )));
         }
-        
+
         Ok(())
     }
 
@@ -899,7 +892,7 @@ impl VM {
     pub(crate) fn check_file_io_allowed(&self) -> Result<(), VmError> {
         if !self.allow_file_io {
             return Err(VmError::RuntimeError(
-                "File operations have been disabled for security reasons".to_string()
+                "File operations have been disabled for security reasons".to_string(),
             ));
         }
         Ok(())
@@ -909,7 +902,7 @@ impl VM {
     pub(crate) fn check_network_allowed(&self) -> Result<(), VmError> {
         if !self.allow_network {
             return Err(VmError::RuntimeError(
-                "Network operations have been disabled for security reasons".to_string()
+                "Network operations have been disabled for security reasons".to_string(),
             ));
         }
         Ok(())
@@ -1197,11 +1190,10 @@ impl VM {
         // Walk the inheritance chain (class -> parent -> parent -> ...)
         // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_std_get_method
         let lower_method_key = self.method_lookup_key(method_name);
-        let search_bytes = self
+        let search_name = self
             .context
             .interner
-            .lookup(method_name)
-            .map(Self::to_lowercase_bytes);
+            .lookup(method_name);
 
         self.walk_inheritance_chain(class_name, |def, _cls_sym| {
             // Try direct lookup with case-insensitive key
@@ -1217,10 +1209,11 @@ impl VM {
             }
 
             // Fallback: scan all methods with case-insensitive comparison
-            if let Some(ref search_lower) = search_bytes {
+            if let Some(ref search_bytes) = search_name {
+                let search_lower = search_bytes.to_ascii_lowercase();
                 for entry in def.methods.values() {
                     if let Some(stored_bytes) = self.context.interner.lookup(entry.name) {
-                        if Self::to_lowercase_bytes(stored_bytes) == *search_lower {
+                        if stored_bytes.to_ascii_lowercase() == *search_lower {
                             return Some((
                                 entry.func.clone(),
                                 entry.visibility,
@@ -1309,7 +1302,7 @@ impl VM {
                     // Only add if we haven't seen this method name yet (respect overrides)
                     let lower_name =
                         if let Some(name_bytes) = self.context.interner.lookup(entry.name) {
-                            Self::to_lowercase_bytes(name_bytes)
+                            name_bytes.to_ascii_lowercase()
                         } else {
                             continue;
                         };
@@ -2367,9 +2360,9 @@ impl VM {
             }
             _ => {
                 // Other types (e.g., ObjPayload) should not occur here
-                Err(VmError::RuntimeError(format!(
-                    "Cannot convert value to string"
-                )))
+                Err(VmError::RuntimeError(
+                    "Cannot convert value to string".to_string(),
+                ))
             }
         }
     }
@@ -2665,53 +2658,58 @@ impl VM {
     }
 
     fn exec_load_var(&mut self, sym: Symbol) -> Result<(), VmError> {
-        // Special handling for $GLOBALS - always refresh to ensure it's current
+        // Special handling for $GLOBALS
         if self.is_globals_symbol(sym) {
             if let Some(handle) = self.ensure_superglobal_handle(sym) {
                 self.var_handle_map.insert(handle, sym);
                 self.operand_stack.push(handle);
-                return Ok(());
             }
+            return Ok(());
         }
 
-        let handle = {
-            let frame = self.current_frame()?;
-            frame.locals.get(&sym).copied()
-        };
-
-        if let Some(handle) = handle {
+        // Try to get from locals
+        if let Some(handle) = self.current_frame()?.locals.get(&sym).copied() {
             self.var_handle_map.insert(handle, sym);
             self.operand_stack.push(handle);
-        } else {
-            let name = self.context.interner.lookup(sym);
-            if name == Some(b"this") {
+            return Ok(());
+        }
+
+        let name = self.context.interner.lookup(sym);
+        if let Some(name_bytes) = name {
+            if name_bytes == b"this" {
                 let frame = self.current_frame()?;
                 if let Some(this_val) = frame.this {
                     self.var_handle_map.insert(this_val, sym);
                     self.operand_stack.push(this_val);
-                } else {
-                    return Err(VmError::RuntimeError(
-                        "Using $this when not in object context".into(),
-                    ));
+                    return Ok(());
                 }
-            } else if self.is_superglobal(sym) {
-                if let Some(handle) = self.ensure_superglobal_handle(sym) {
-                    let frame = self.current_frame_mut()?;
-                    frame.locals.entry(sym).or_insert(handle);
-                    self.var_handle_map.insert(handle, sym);
-                    self.operand_stack.push(handle);
-                } else {
-                    let null = self.arena.alloc(Val::Null);
-                    self.var_handle_map.insert(null, sym);
-                    self.operand_stack.push(null);
-                }
+                return Err(VmError::RuntimeError(
+                    "Using $this when not in object context".into(),
+                ));
+            }
+        }
+
+        if self.is_superglobal(sym) {
+            if let Some(handle) = self.ensure_superglobal_handle(sym) {
+                self.current_frame_mut()?
+                    .locals
+                    .entry(sym)
+                    .or_insert(handle);
+                self.var_handle_map.insert(handle, sym);
+                self.operand_stack.push(handle);
             } else {
                 let null = self.arena.alloc(Val::Null);
                 self.var_handle_map.insert(null, sym);
-                self.pending_undefined.insert(null, sym);
                 self.operand_stack.push(null);
             }
+            return Ok(());
         }
+
+        // Undefined variable
+        let null = self.arena.alloc(Val::Null);
+        self.var_handle_map.insert(null, sym);
+        self.pending_undefined.insert(null, sym);
+        self.operand_stack.push(null);
         Ok(())
     }
 
@@ -3282,11 +3280,11 @@ impl VM {
                     4 => match val {
                         // Array
                         Val::Array(a) => Val::Array(a),
-                        Val::Null => Val::Array(crate::core::value::ArrayData::new().into()),
+                        Val::Null => Val::Array(ArrayData::new().into()),
                         _ => {
                             let mut map = IndexMap::new();
                             map.insert(ArrayKey::Int(0), self.arena.alloc(val));
-                            Val::Array(crate::core::value::ArrayData::from(map).into())
+                            Val::Array(ArrayData::from(map).into())
                         }
                     },
                     5 => match val {
@@ -3677,9 +3675,7 @@ impl VM {
                                 }
                             }
                         }
-                        let arr_handle = self
-                            .arena
-                            .alloc(Val::Array(crate::core::value::ArrayData::from(arr).into()));
+                        let arr_handle = self.arena.alloc(Val::Array(ArrayData::from(arr).into()));
                         frame.locals.insert(param.name, arr_handle);
                     }
                 }
@@ -4585,7 +4581,7 @@ impl VM {
                 {
                     let dest_zval = self.arena.get_mut(dest_handle);
                     if matches!(dest_zval.value, Val::Null | Val::Bool(false)) {
-                        dest_zval.value = Val::Array(crate::core::value::ArrayData::new().into());
+                        dest_zval.value = Val::Array(ArrayData::new().into());
                     } else if !matches!(dest_zval.value, Val::Array(_)) {
                         return Err(VmError::RuntimeError("Cannot unpack into non-array".into()));
                     }
@@ -6363,9 +6359,7 @@ impl VM {
                     let key_bytes = self.context.interner.lookup(*sym).unwrap_or(b"").to_vec();
                     map.insert(ArrayKey::Str(Rc::new(key_bytes)), *handle);
                 }
-                let arr_handle = self
-                    .arena
-                    .alloc(Val::Array(crate::core::value::ArrayData::from(map).into()));
+                let arr_handle = self.arena.alloc(Val::Array(ArrayData::from(map).into()));
                 self.operand_stack.push(arr_handle);
             }
             OpCode::IncludeOrEval => {
@@ -6887,7 +6881,7 @@ impl VM {
                         let key = match &self.arena.get(dim).value {
                             Val::Int(i) => ArrayKey::Int(*i),
                             Val::String(s) => ArrayKey::Str(s.clone()),
-                            _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
+                            _ => ArrayKey::Str(Rc::new(Vec::<u8>::new())),
                         };
 
                         if let Some(val_handle) = map.map.get(&key) {
@@ -6920,7 +6914,7 @@ impl VM {
                         let key = match &self.arena.get(dim).value {
                             Val::Int(i) => ArrayKey::Int(*i),
                             Val::String(s) => ArrayKey::Str(s.clone()),
-                            _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
+                            _ => ArrayKey::Str(Rc::new(Vec::<u8>::new())),
                         };
 
                         if let Some(val_handle) = map.map.get(&key) {
@@ -7126,7 +7120,7 @@ impl VM {
                 let key = match &self.arena.get(dim).value {
                     Val::Int(i) => ArrayKey::Int(*i),
                     Val::String(s) => ArrayKey::Str(s.clone()),
-                    _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
+                    _ => ArrayKey::Str(Rc::new(Vec::<u8>::new())),
                 };
 
                 // 2. Check if we need to insert (Immutable check)
@@ -7150,7 +7144,7 @@ impl VM {
                     // 4. Modify container
                     let container = &mut self.arena.get_mut(container_handle).value;
                     if let Val::Null = container {
-                        *container = Val::Array(crate::core::value::ArrayData::new().into());
+                        *container = Val::Array(ArrayData::new().into());
                     }
 
                     if let Val::Array(map) = container {
@@ -7340,9 +7334,7 @@ impl VM {
                 for (i, handle) in frame.args.iter().enumerate() {
                     map.insert(ArrayKey::Int(i as i64), *handle);
                 }
-                let handle = self
-                    .arena
-                    .alloc(Val::Array(crate::core::value::ArrayData::from(map).into()));
+                let handle = self.arena.alloc(Val::Array(ArrayData::from(map).into()));
                 self.operand_stack.push(handle);
             }
             OpCode::InitMethodCall => {
@@ -7449,7 +7441,6 @@ impl VM {
                 };
 
                 let result = if type_val == 0 {
-                    // Isset
                     // isset returns true if var exists and is not null
                     if let Some(h) = val_handle {
                         !matches!(self.arena.get(h).value, Val::Null)
@@ -7457,7 +7448,6 @@ impl VM {
                         false
                     }
                 } else {
-                    // Empty
                     // empty returns true if var does not exist or is falsey
                     if let Some(h) = val_handle {
                         let val = &self.arena.get(h).value;
@@ -7571,7 +7561,7 @@ impl VM {
                             let key = match &self.arena.get(dim_handle).value {
                                 Val::Int(i) => ArrayKey::Int(*i),
                                 Val::String(s) => ArrayKey::Str(s.clone()),
-                                _ => ArrayKey::Str(std::rc::Rc::new(Vec::<u8>::new())),
+                                _ => ArrayKey::Str(Rc::new(Vec::<u8>::new())),
                             };
                             map.map.get(&key).cloned()
                         }
@@ -9507,7 +9497,7 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
 
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
+                array_zval_mut.value = Val::Array(ArrayData::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
@@ -9526,7 +9516,7 @@ impl VM {
             let mut new_val = array_zval.value.clone();
 
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(crate::core::value::ArrayData::new().into());
+                new_val = Val::Array(ArrayData::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
@@ -9563,7 +9553,7 @@ impl VM {
             let array_zval_mut = self.arena.get_mut(array_handle);
 
             if let Val::Null | Val::Bool(false) = array_zval_mut.value {
-                array_zval_mut.value = Val::Array(crate::core::value::ArrayData::new().into());
+                array_zval_mut.value = Val::Array(ArrayData::new().into());
             }
 
             if let Val::Array(map) = &mut array_zval_mut.value {
@@ -9578,7 +9568,7 @@ impl VM {
             let mut new_val = array_zval.value.clone();
 
             if let Val::Null | Val::Bool(false) = new_val {
-                new_val = Val::Array(crate::core::value::ArrayData::new().into());
+                new_val = Val::Array(ArrayData::new().into());
             }
 
             if let Val::Array(ref mut map) = new_val {
@@ -9742,9 +9732,9 @@ impl VM {
                 let class_name = obj_data.class;
                 if self.implements_array_access(class_name) {
                     // If there's only one key, call offsetSet directly
-                    if keys.len() == 1 {
+                    return if keys.len() == 1 {
                         self.call_array_access_offset_set(current_handle, keys[0], val_handle)?;
-                        return Ok(current_handle);
+                        Ok(current_handle)
                     } else {
                         // Multiple keys: fetch the intermediate value and recurse
                         let first_key = keys[0];
@@ -9767,8 +9757,8 @@ impl VM {
                             )?;
                         }
 
-                        return Ok(current_handle);
-                    }
+                        Ok(current_handle)
+                    };
                 }
             }
         }
@@ -9802,8 +9792,7 @@ impl VM {
 
             // Auto-vivify if needed
             if needs_autovivify {
-                self.arena.get_mut(current_handle).value =
-                    Val::Array(crate::core::value::ArrayData::new().into());
+                self.arena.get_mut(current_handle).value = Val::Array(ArrayData::new().into());
             }
 
             // Now compute the actual key if it was AppendPlaceholder
@@ -9888,9 +9877,7 @@ impl VM {
                     h
                 } else {
                     // Create empty array and insert it
-                    let empty_handle = self
-                        .arena
-                        .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
+                    let empty_handle = self.arena.alloc(Val::Array(ArrayData::new().into()));
                     let current_zval_mut = self.arena.get_mut(current_handle);
                     if let Val::Array(ref mut map) = current_zval_mut.value {
                         Rc::make_mut(map).insert(key.clone(), empty_handle);
@@ -9918,7 +9905,7 @@ impl VM {
         let mut new_val = current_zval.value.clone();
 
         if let Val::Null | Val::Bool(false) = new_val {
-            new_val = Val::Array(crate::core::value::ArrayData::new().into());
+            new_val = Val::Array(ArrayData::new().into());
         }
 
         if let Val::Array(ref mut map) = new_val {
@@ -9953,8 +9940,7 @@ impl VM {
                     *h
                 } else {
                     // Create empty array
-                    self.arena
-                        .alloc(Val::Array(crate::core::value::ArrayData::new().into()))
+                    self.arena.alloc(Val::Array(ArrayData::new().into()))
                 };
 
                 let new_next_handle =
@@ -10467,9 +10453,9 @@ impl VM {
                     for (i, arg) in args.into_iter().enumerate() {
                         array_map.insert(ArrayKey::Int(i as i64), arg);
                     }
-                    let args_array_handle = self.arena.alloc(Val::Array(
-                        crate::core::value::ArrayData::from(array_map).into(),
-                    ));
+                    let args_array_handle = self
+                        .arena
+                        .alloc(Val::Array(ArrayData::from(array_map).into()));
 
                     // Create method name string
                     let method_name_str = self
@@ -10603,9 +10589,9 @@ impl VM {
                 for (i, arg) in args.into_iter().enumerate() {
                     array_map.insert(ArrayKey::Int(i as i64), arg);
                 }
-                let args_array_handle = self.arena.alloc(Val::Array(
-                    crate::core::value::ArrayData::from(array_map).into(),
-                ));
+                let args_array_handle = self
+                    .arena
+                    .alloc(Val::Array(ArrayData::from(array_map).into()));
 
                 // Create method name string
                 let method_name_str = self
@@ -10672,7 +10658,7 @@ mod tests {
     use std::sync::Arc;
 
     fn create_vm() -> VM {
-        let mut functions = std::collections::HashMap::new();
+        let mut functions = HashMap::new();
         functions.insert(
             b"strlen".to_vec(),
             php_strlen as crate::runtime::context::NativeHandler,
@@ -10724,9 +10710,7 @@ mod tests {
 
         let mut vm = create_vm();
         // Create a reference array so assign_dim modifies it in-place
-        let array_zval = vm
-            .arena
-            .alloc(Val::Array(crate::core::value::ArrayData::new().into()));
+        let array_zval = vm.arena.alloc(Val::Array(ArrayData::new().into()));
         vm.arena.get_mut(array_zval).is_ref = true;
         let key_handle = vm.arena.alloc(Val::Int(0));
         let val_handle = vm.arena.alloc(Val::Int(99));

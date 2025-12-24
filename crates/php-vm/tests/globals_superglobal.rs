@@ -1,54 +1,6 @@
-//! Tests for $GLOBALS superglobal
-//!
-//! Reference: https://www.php.net/manual/en/reserved.variables.globals.php
-//!
-//! Key behaviors:
-//! - $GLOBALS is an associative array containing references to all variables in global scope
-//! - Available in all scopes (functions, methods, etc.)
-//! - PHP 8.1+: Writing to entire $GLOBALS is not allowed
-//! - PHP 8.1+: $GLOBALS is now a read-only copy of the global symbol table
-//! - Individual elements can still be modified: $GLOBALS['x'] = 5
-
-use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
-use php_vm::vm::engine::VM;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
-
-fn compile_and_run(src: &str) -> Result<String, String> {
-    let engine_context = Arc::new(EngineContext::new());
-    let mut request_context = RequestContext::new(engine_context);
-
-    let arena = bumpalo::Bump::new();
-    let lexer = php_parser::lexer::Lexer::new(src.as_bytes());
-    let mut parser = php_parser::parser::Parser::new(lexer, &arena);
-    let program = parser.parse_program();
-
-    if !program.errors.is_empty() {
-        return Err(format!("Parse errors: {:?}", program.errors));
-    }
-
-    let emitter = Emitter::new(src.as_bytes(), &mut request_context.interner);
-    let (chunk, _) = emitter.compile(&program.statements);
-
-    let mut vm = VM::new_with_context(request_context);
-
-    // Capture output
-    let output = Rc::new(RefCell::new(Vec::new()));
-    let output_clone = output.clone();
-    vm.set_output_writer(Box::new(php_vm::vm::engine::CapturingOutputWriter::new(
-        move |bytes| {
-            output_clone.borrow_mut().extend_from_slice(bytes);
-        },
-    )));
-
-    vm.run(Rc::new(chunk))
-        .map_err(|e| format!("Runtime error: {:?}", e))?;
-
-    let result = output.borrow().clone();
-    Ok(String::from_utf8_lossy(&result).to_string())
-}
+mod common;
+use crate::common::run_code_with_vm;
+use common::run_code_capture_output;
 
 #[test]
 fn test_globals_basic_access() {
@@ -62,7 +14,7 @@ function test() {
 test();
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "Example content");
 }
 
@@ -79,7 +31,7 @@ $foo = "Example content";
 test();
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(
         result,
         "$foo in global scope: Example content\n$foo in current scope: local variable\n"
@@ -93,7 +45,7 @@ $GLOBALS['a'] = 'test value';
 echo $a;
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "test value");
 }
 
@@ -110,7 +62,7 @@ modify_global();
 echo $x;
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "20");
 }
 
@@ -129,7 +81,7 @@ echo "\n";
 check_global();
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "100\n200");
 }
 
@@ -149,7 +101,7 @@ function check_globals() {
 check_globals();
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "111");
 }
 
@@ -160,10 +112,20 @@ fn test_globals_assignment_forbidden() {
     let source = r#"<?php
 $GLOBALS = [];
 "#;
+    let res = run_code_with_vm(source);
 
-    let result = compile_and_run(source);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("can only be modified using"));
+    match res {
+        Ok(_) => {
+            panic!("Expected error");
+        }
+        Err(_) => {
+            assert!(res
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("can only be modified using"));
+        }
+    }
 }
 
 #[test]
@@ -172,10 +134,19 @@ fn test_globals_unset_forbidden() {
     let source = r#"<?php
 unset($GLOBALS);
 "#;
+    let res = run_code_with_vm(source);
 
-    let result = compile_and_run(source);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Cannot unset $GLOBALS"));
+    match res {
+        Ok(_) => {
+            panic!("Expected error when unsetting $GLOBALS");
+        }
+        Err(_) => {
+            assert_eq!(
+                res.err().unwrap().to_string(),
+                "Cannot unset $GLOBALS variable"
+            );
+        }
+    }
 }
 
 #[test]
@@ -191,7 +162,7 @@ echo "\n";
 echo $GLOBALS['a']; // Should be 1, not 2
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "1\n1");
 }
 
@@ -206,7 +177,7 @@ echo "\n";
 echo $GLOBALS['a'];
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "2\n2");
 }
 
@@ -217,7 +188,7 @@ fn test_globals_does_not_contain_itself() {
 echo isset($GLOBALS['GLOBALS']) ? '1' : '0';
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "0");
 }
 
@@ -229,7 +200,7 @@ $GLOBALS[$key] = 'dynamic value';
 echo $dynamic_var;
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "dynamic value");
 }
 
@@ -248,7 +219,7 @@ foreach ($GLOBALS as $key => $value) {
 echo $count;
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "2");
 }
 
@@ -267,7 +238,7 @@ function level1() {
 level1();
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "outer value");
 }
 
@@ -281,7 +252,7 @@ unset($GLOBALS['x']);
 echo isset($x) ? 'exists' : 'not exists';
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "10\nnot exists");
 }
 
@@ -295,7 +266,7 @@ $ref = 10;
 echo $x;
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "10");
 }
 
@@ -309,7 +280,7 @@ echo "\n";
 echo $arr[3];
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "4\n4");
 }
 
@@ -322,7 +293,7 @@ echo "\n";
 echo empty($GLOBALS['nonexistent']) ? '1' : '0';
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "1\n1");
 }
 
@@ -333,6 +304,6 @@ $GLOBALS['123'] = 'numeric key';
 echo ${'123'};
 "#;
 
-    let result = compile_and_run(source).unwrap();
+    let (_, result) = run_code_capture_output(source).unwrap();
     assert_eq!(result, "numeric key");
 }
