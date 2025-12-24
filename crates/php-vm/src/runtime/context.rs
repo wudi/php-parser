@@ -867,6 +867,7 @@ pub struct RequestContext {
     pub timezone: String,
     pub strtok_string: Option<Vec<u8>>,
     pub strtok_pos: usize,
+    pub working_dir: Option<std::path::PathBuf>,
 }
 
 impl RequestContext {
@@ -900,6 +901,7 @@ impl RequestContext {
             timezone: "UTC".to_string(),            // Default timezone
             strtok_string: None,
             strtok_pos: 0,
+            working_dir: None,
         };
         ctx.register_builtin_classes();
         ctx.materialize_extension_classes();

@@ -41,4 +41,14 @@ impl Arena {
     pub fn free(&mut self, h: Handle) {
         self.free_slots.push(h.0 as usize);
     }
+
+    /// Get the number of allocated values (for memory estimation)
+    pub fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    /// Check if the arena is empty
+    pub fn is_empty(&self) -> bool {
+        self.storage.is_empty()
+    }
 }

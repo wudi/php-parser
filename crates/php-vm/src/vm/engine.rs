@@ -196,6 +196,23 @@ impl ErrorHandler for StderrErrorHandler {
     }
 }
 
+/// Capturing error handler for testing and output capture
+pub struct CapturingErrorHandler<F: FnMut(ErrorLevel, &str)> {
+    callback: F,
+}
+
+impl<F: FnMut(ErrorLevel, &str)> CapturingErrorHandler<F> {
+    pub fn new(callback: F) -> Self {
+        Self { callback }
+    }
+}
+
+impl<F: FnMut(ErrorLevel, &str)> ErrorHandler for CapturingErrorHandler<F> {
+    fn report(&mut self, level: ErrorLevel, message: &str) {
+        (self.callback)(level, message);
+    }
+}
+
 pub trait OutputWriter {
     fn write(&mut self, bytes: &[u8]) -> Result<(), VmError>;
     fn flush(&mut self) -> Result<(), VmError> {
@@ -311,6 +328,22 @@ pub struct VM {
     executing_finally: bool,
     /// Stores a return value from within a finally block to override the original return
     finally_return_value: Option<Handle>,
+    /// Profiling: count of opcodes executed
+    pub(crate) opcodes_executed: u64,
+    /// Profiling: count of function calls
+    pub(crate) function_calls: u64,
+    /// Memory limit in bytes (0 = unlimited)
+    pub(crate) memory_limit: usize,
+    /// Sandboxing: allow file I/O operations
+    pub(crate) allow_file_io: bool,
+    /// Sandboxing: allow network operations
+    pub(crate) allow_network: bool,
+    /// Sandboxing: allowed function names (None = all allowed)
+    pub(crate) allowed_functions: Option<std::collections::HashSet<String>>,
+    /// Sandboxing: disabled function names (blacklist)
+    pub(crate) disable_functions: std::collections::HashSet<String>,
+    /// Sandboxing: disabled class names (blacklist)
+    pub(crate) disable_classes: std::collections::HashSet<String>,
 }
 
 impl VM {
@@ -340,6 +373,14 @@ impl VM {
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
+            opcodes_executed: 0,
+            function_calls: 0,
+            memory_limit: 0, // Unlimited by default
+            allow_file_io: true, // Allow by default
+            allow_network: true, // Allow by default
+            allowed_functions: None, // All functions allowed by default
+            disable_functions: std::collections::HashSet::new(),
+            disable_classes: std::collections::HashSet::new(),
         };
         vm.initialize_superglobals();
         vm
@@ -746,6 +787,14 @@ impl VM {
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
+            opcodes_executed: 0,
+            function_calls: 0,
+            memory_limit: 0, // Unlimited by default
+            allow_file_io: true, // Allow by default
+            allow_network: true, // Allow by default
+            allowed_functions: None, // All functions allowed by default
+            disable_functions: std::collections::HashSet::new(),
+            disable_classes: std::collections::HashSet::new(),
         };
         vm.initialize_superglobals();
         vm
@@ -778,6 +827,91 @@ impl VM {
             )));
         }
 
+        Ok(())
+    }
+
+    /// Get approximate memory usage in bytes
+    /// This is a simplified estimate based on arena storage
+    fn get_memory_usage(&self) -> usize {
+        // Estimate: each Zval is approximately 64 bytes (rough estimate)
+        // This includes the Val enum discriminant and typical payloads
+        const ZVAL_SIZE: usize = 64;
+        self.arena.len() * ZVAL_SIZE
+    }
+
+    /// Check if memory limit has been exceeded
+    /// Returns an error if the limit is exceeded and not unlimited (0)
+    fn check_memory_limit(&self) -> Result<(), VmError> {
+        if self.memory_limit == 0 {
+            // 0 means unlimited
+            return Ok(());
+        }
+
+        let current_usage = self.get_memory_usage();
+        
+        if current_usage >= self.memory_limit {
+            return Err(VmError::RuntimeError(format!(
+                "Allowed memory size of {} bytes exhausted (tried to allocate {} bytes)",
+                self.memory_limit,
+                current_usage
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Check if a function call is allowed based on sandboxing rules
+    /// First checks whitelist (if present), then checks blacklist
+    pub(crate) fn check_function_allowed(&self, function_name: &str) -> Result<(), VmError> {
+        // If there's a whitelist, function must be in it
+        if let Some(ref allowed) = self.allowed_functions {
+            if !allowed.contains(function_name) {
+                return Err(VmError::RuntimeError(format!(
+                    "Call to '{}' has been disabled for security reasons",
+                    function_name
+                )));
+            }
+        }
+        
+        // Check blacklist
+        if self.disable_functions.contains(function_name) {
+            return Err(VmError::RuntimeError(format!(
+                "Call to '{}' has been disabled for security reasons",
+                function_name
+            )));
+        }
+        
+        Ok(())
+    }
+
+    /// Check if a class can be instantiated based on sandboxing rules
+    pub(crate) fn check_class_allowed(&self, class_name: &str) -> Result<(), VmError> {
+        if self.disable_classes.contains(class_name) {
+            return Err(VmError::RuntimeError(format!(
+                "Class '{}' has been disabled for security reasons",
+                class_name
+            )));
+        }
+        Ok(())
+    }
+
+    /// Check if file I/O is allowed based on sandboxing rules
+    pub(crate) fn check_file_io_allowed(&self) -> Result<(), VmError> {
+        if !self.allow_file_io {
+            return Err(VmError::RuntimeError(
+                "File operations have been disabled for security reasons".to_string()
+            ));
+        }
+        Ok(())
+    }
+
+    /// Check if network operations are allowed based on sandboxing rules
+    pub(crate) fn check_network_allowed(&self) -> Result<(), VmError> {
+        if !self.allow_network {
+            return Err(VmError::RuntimeError(
+                "Network operations have been disabled for security reasons".to_string()
+            ));
+        }
         Ok(())
     }
 
@@ -2300,13 +2434,25 @@ impl VM {
     fn run_loop(&mut self, target_depth: usize) -> Result<(), VmError> {
         const TIMEOUT_CHECK_INTERVAL: u64 = 1000; // Check every 1000 instructions
         let mut instructions_until_timeout_check = TIMEOUT_CHECK_INTERVAL;
+        const MEMORY_CHECK_INTERVAL: u64 = 5000; // Check every 5000 instructions (less frequent)
+        let mut instructions_until_memory_check = MEMORY_CHECK_INTERVAL;
 
         while self.frames.len() > target_depth {
+            // Increment opcode counter for profiling
+            self.opcodes_executed += 1;
+
             // Periodically check execution timeout (countdown is faster than modulo)
             instructions_until_timeout_check -= 1;
             if instructions_until_timeout_check == 0 {
                 self.check_execution_timeout()?;
                 instructions_until_timeout_check = TIMEOUT_CHECK_INTERVAL;
+            }
+
+            // Periodically check memory limit
+            instructions_until_memory_check -= 1;
+            if instructions_until_memory_check == 0 {
+                self.check_memory_limit()?;
+                instructions_until_memory_check = MEMORY_CHECK_INTERVAL;
             }
 
             let op = {
@@ -3439,6 +3585,9 @@ impl VM {
             }
 
             OpCode::Call(arg_count) => {
+                // Increment function call counter for profiling
+                self.function_calls += 1;
+
                 let args = self.collect_call_args(arg_count)?;
 
                 let func_handle = self
