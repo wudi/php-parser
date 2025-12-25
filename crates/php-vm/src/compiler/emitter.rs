@@ -182,11 +182,13 @@ impl<'src> Emitter<'src> {
                     let method_sym = self.interner.intern(method_name_str);
                     let visibility = self.get_visibility(modifiers);
                     let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
+                    let is_abstract = modifiers.iter().any(|t| t.kind == TokenKind::Abstract);
 
                     // 1. Collect param info
                     struct ParamInfo<'a> {
                         name_span: php_parser::span::Span,
                         by_ref: bool,
+                        ty: Option<&'a Type<'a>>,
                         default: Option<&'a Expr<'a>>,
                     }
 
@@ -195,6 +197,7 @@ impl<'src> Emitter<'src> {
                         param_infos.push(ParamInfo {
                             name_span: param.name.span,
                             by_ref: param.by_ref,
+                            ty: param.ty,
                             default: param.default.as_ref().map(|e| *e),
                         });
                     }
@@ -221,10 +224,12 @@ impl<'src> Emitter<'src> {
                         let p_name = method_emitter.get_text(info.name_span);
                         if p_name.starts_with(b"$") {
                             let sym = method_emitter.interner.intern(&p_name[1..]);
+                            let param_type = info.ty.and_then(|ty| method_emitter.convert_type(ty));
+                            
                             param_syms.push(FuncParam {
                                 name: sym,
                                 by_ref: info.by_ref,
-                                param_type: None, // TODO: Extract from AST params
+                                param_type,
                             });
 
                             if let Some(default_expr) = info.default {
@@ -265,13 +270,23 @@ impl<'src> Emitter<'src> {
                         const_idx as u32,
                         visibility,
                         is_static,
+                        is_abstract,
                     ));
                 }
                 ClassMember::Property {
-                    entries, modifiers, ..
+                    entries, modifiers, ty, ..
                 } => {
                     let visibility = self.get_visibility(modifiers);
                     let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
+                    let is_readonly = modifiers.iter().any(|t| t.kind == TokenKind::Readonly);
+
+                    // Extract type hint once for all properties in this declaration
+                    let type_hint_opt = ty.and_then(|t| self.convert_type(t));
+                    let type_hint_idx = if let Some(th) = type_hint_opt {
+                        self.add_constant(Val::Resource(Rc::new(th)))
+                    } else {
+                        self.add_constant(Val::Null)
+                    };
 
                     for entry in *entries {
                         let prop_name_str = self.get_text(entry.name.span);
@@ -295,6 +310,7 @@ impl<'src> Emitter<'src> {
                                 prop_sym,
                                 default_idx as u16,
                                 visibility,
+                                type_hint_idx as u32,
                             ));
                         } else {
                             self.chunk.code.push(OpCode::DefProp(
@@ -302,6 +318,7 @@ impl<'src> Emitter<'src> {
                                 prop_sym,
                                 default_idx as u16,
                                 visibility,
+                                type_hint_idx as u32,
                             ));
                         }
                     }
@@ -752,6 +769,7 @@ impl<'src> Emitter<'src> {
                 extends,
                 implements,
                 attributes,
+                modifiers,
                 ..
             } => {
                 let class_name_str = self.get_text(name.span);
@@ -767,6 +785,12 @@ impl<'src> Emitter<'src> {
                 self.chunk
                     .code
                     .push(OpCode::DefClass(class_sym, parent_sym));
+
+                // Check if class is abstract
+                let is_abstract = modifiers.iter().any(|m| m.kind == TokenKind::Abstract);
+                if is_abstract {
+                    self.chunk.code.push(OpCode::MarkAbstract(class_sym));
+                }
 
                 for interface in *implements {
                     let interface_str = self.get_text(interface.span);
@@ -797,6 +821,9 @@ impl<'src> Emitter<'src> {
                 self.current_class = Some(class_sym);
                 self.emit_members(class_sym, members);
                 self.current_class = prev_class;
+                
+                // Finalize class: validate interfaces, abstract methods, etc.
+                self.chunk.code.push(OpCode::FinalizeClass(class_sym));
             }
             Stmt::Interface {
                 name,
@@ -3364,4 +3391,72 @@ impl<'src> Emitter<'src> {
                 .map(|t| ReturnType::Nullable(Box::new(t))),
         }
     }
+
+    /// Convert AST Type to runtime TypeHint
+    fn extract_type_hint(&mut self, ty: &Type) -> crate::runtime::context::TypeHint {
+        use crate::runtime::context::TypeHint;
+        
+        match ty {
+            Type::Simple(tok) => match tok.kind {
+                TokenKind::TypeInt => TypeHint::Int,
+                TokenKind::TypeFloat => TypeHint::Float,
+                TokenKind::TypeString => TypeHint::String,
+                TokenKind::TypeBool => TypeHint::Bool,
+                TokenKind::Array => TypeHint::Array,
+                TokenKind::TypeObject => TypeHint::Object,
+                TokenKind::TypeCallable => TypeHint::Callable,
+                TokenKind::TypeIterable => TypeHint::Iterable,
+                TokenKind::TypeMixed => TypeHint::Mixed,
+                TokenKind::TypeVoid => TypeHint::Void,
+                TokenKind::TypeNever => TypeHint::Never,
+                TokenKind::TypeNull => TypeHint::Null,
+                _ => TypeHint::Mixed, // Fallback for unknown types
+            },
+            Type::Name(name) => {
+                let name_str = self.get_text(name.span);
+                let sym = self.interner.intern(name_str);
+                TypeHint::Class(sym)
+            }
+            Type::Union(types) => {
+                let hints: Vec<_> = types.iter().map(|t| self.extract_type_hint(t)).collect();
+                TypeHint::Union(hints)
+            }
+            Type::Intersection(types) => {
+                let hints: Vec<_> = types.iter().map(|t| self.extract_type_hint(t)).collect();
+                TypeHint::Intersection(hints)
+            }
+            Type::Nullable(inner) => {
+                // ?Type becomes Type|null union
+                let inner_hint = self.extract_type_hint(inner);
+                TypeHint::Union(vec![inner_hint, TypeHint::Null])
+            }
+        }
+    }
+
+    /// Extract parameter information for method signature validation
+    fn extract_parameter_info(&mut self, params: &[php_parser::ast::Param]) -> Vec<crate::runtime::context::ParameterInfo> {
+        use crate::runtime::context::ParameterInfo;
+        
+        params.iter().map(|param| {
+            let name_str = self.get_text(param.name.span);
+            let name = if name_str.starts_with(b"$") {
+                self.interner.intern(&name_str[1..])
+            } else {
+                self.interner.intern(name_str)
+            };
+            
+            let type_hint = param.ty.map(|ty| self.extract_type_hint(ty));
+            
+            let default_value = param.default.map(|expr| self.eval_constant_expr(expr));
+            
+            ParameterInfo {
+                name,
+                type_hint,
+                is_reference: param.by_ref,
+                is_variadic: param.variadic,
+                default_value,
+            }
+        }).collect()
+    }
 }
+

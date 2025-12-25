@@ -120,10 +120,12 @@ pub enum OpCode {
     AddInterface(Symbol, Symbol),     // (class_name, interface_name)
     UseTrait(Symbol, Symbol),         // (class_name, trait_name)
     AllowDynamicProperties(Symbol), // Mark class as allowing dynamic properties (for #[AllowDynamicProperties])
-    DefMethod(Symbol, Symbol, u32, Visibility, bool), // (class_name, method_name, func_idx, visibility, is_static)
-    DefProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
+    MarkAbstract(Symbol), // Mark class as abstract
+    FinalizeClass(Symbol), // Validate class after all methods are defined (interfaces, abstract methods)
+    DefMethod(Symbol, Symbol, u32, Visibility, bool, bool), // (class_name, method_name, func_idx, visibility, is_static, is_abstract)
+    DefProp(Symbol, Symbol, u16, Visibility, u32), // (class_name, prop_name, default_val_idx, visibility, type_hint_idx)
     DefClassConst(Symbol, Symbol, u16, Visibility), // (class_name, const_name, val_idx, visibility)
-    DefStaticProp(Symbol, Symbol, u16, Visibility), // (class_name, prop_name, default_val_idx, visibility)
+    DefStaticProp(Symbol, Symbol, u16, Visibility, u32), // (class_name, prop_name, default_val_idx, visibility, type_hint_idx)
     FetchClassConst(Symbol, Symbol),                // (class_name, const_name) -> [Val]
     FetchClassConstDynamic(Symbol),                 // [Class] -> [Val] (const_name is arg)
     FetchStaticProp(Symbol, Symbol),                // (class_name, prop_name) -> [Val]

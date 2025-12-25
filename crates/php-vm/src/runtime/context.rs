@@ -14,6 +14,40 @@ use std::sync::Arc;
 
 pub type NativeHandler = fn(&mut VM, args: &[Handle]) -> Result<Handle, String>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeHint {
+    Int,
+    Float,
+    String,
+    Bool,
+    Array,
+    Object,
+    Callable,
+    Iterable,
+    Mixed,
+    Void,
+    Never,
+    Null,
+    Class(Symbol),
+    Union(Vec<TypeHint>),
+    Intersection(Vec<TypeHint>),
+}
+
+#[derive(Debug, Clone)]
+pub struct ParameterInfo {
+    pub name: Symbol,
+    pub type_hint: Option<TypeHint>,
+    pub is_reference: bool,
+    pub is_variadic: bool,
+    pub default_value: Option<Val>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MethodSignature {
+    pub parameters: Vec<ParameterInfo>,
+    pub return_type: Option<TypeHint>,
+}
+
 #[derive(Debug, Clone)]
 pub struct MethodEntry {
     pub name: Symbol,
@@ -21,6 +55,8 @@ pub struct MethodEntry {
     pub visibility: Visibility,
     pub is_static: bool,
     pub declaring_class: Symbol,
+    pub is_abstract: bool,
+    pub signature: MethodSignature,
 }
 
 #[derive(Debug, Clone)]
@@ -33,18 +69,43 @@ pub struct NativeMethodEntry {
 }
 
 #[derive(Debug, Clone)]
+pub struct PropertyEntry {
+    pub default_value: Val,
+    pub visibility: Visibility,
+    pub type_hint: Option<TypeHint>,
+    pub is_readonly: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StaticPropertyEntry {
+    pub value: Val,
+    pub visibility: Visibility,
+    pub type_hint: Option<TypeHint>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ClassDef {
     pub name: Symbol,
     pub parent: Option<Symbol>,
     pub is_interface: bool,
     pub is_trait: bool,
+    pub is_abstract: bool,
+    pub is_enum: bool,
+    pub enum_backed_type: Option<EnumBackedType>,
     pub interfaces: Vec<Symbol>,
     pub traits: Vec<Symbol>,
     pub methods: HashMap<Symbol, MethodEntry>,
-    pub properties: IndexMap<Symbol, (Val, Visibility)>, // Default values
+    pub properties: IndexMap<Symbol, PropertyEntry>, // Instance properties with type hints
     pub constants: HashMap<Symbol, (Val, Visibility)>,
-    pub static_properties: HashMap<Symbol, (Val, Visibility)>,
+    pub static_properties: HashMap<Symbol, StaticPropertyEntry>, // Static properties with type hints
+    pub abstract_methods: HashSet<Symbol>,
     pub allows_dynamic_properties: bool, // Set by #[AllowDynamicProperties] attribute
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumBackedType {
+    Int,
+    String,
 }
 
 #[derive(Debug, Clone)]
@@ -275,12 +336,16 @@ impl RequestContext {
                     parent: parent_sym,
                     is_interface: native_class.is_interface,
                     is_trait: native_class.is_trait,
+                    is_abstract: false,
+                    is_enum: false,
+                    enum_backed_type: None,
                     interfaces,
                     traits: Vec::new(),
                     methods: HashMap::new(),
                     properties: IndexMap::new(),
                     constants,
                     static_properties: HashMap::new(),
+                    abstract_methods: HashSet::new(),
                     allows_dynamic_properties: true,
                 },
             );

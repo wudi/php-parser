@@ -70,8 +70,8 @@ impl VM {
         self.walk_class_hierarchy(class_name, |def, defining_class| {
             def.properties
                 .get(&prop_name)
-                .map(|(_, vis)| PropertyLookupResult {
-                    visibility: *vis,
+                .map(|entry| PropertyLookupResult {
+                    visibility: entry.visibility,
                     defining_class,
                 })
         })
@@ -182,12 +182,16 @@ mod tests {
             parent: None,
             is_interface: false,
             is_trait: false,
+            is_abstract: false,
+            is_enum: false,
+            enum_backed_type: None,
             interfaces: Vec::new(),
             traits: Vec::new(),
             methods: std::collections::HashMap::new(),
             properties: indexmap::IndexMap::new(),
             constants: std::collections::HashMap::new(),
             static_properties: std::collections::HashMap::new(),
+            abstract_methods: std::collections::HashSet::new(),
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(grandparent_sym, grandparent_def);
@@ -197,12 +201,16 @@ mod tests {
             parent: Some(grandparent_sym),
             is_interface: false,
             is_trait: false,
+            is_abstract: false,
+            is_enum: false,
+            enum_backed_type: None,
             interfaces: Vec::new(),
             traits: Vec::new(),
             methods: std::collections::HashMap::new(),
             properties: indexmap::IndexMap::new(),
             constants: std::collections::HashMap::new(),
             static_properties: std::collections::HashMap::new(),
+            abstract_methods: std::collections::HashSet::new(),
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(parent_sym, parent_def);
@@ -212,12 +220,16 @@ mod tests {
             parent: Some(parent_sym),
             is_interface: false,
             is_trait: false,
+            is_abstract: false,
+            is_enum: false,
+            enum_backed_type: None,
             interfaces: Vec::new(),
             traits: Vec::new(),
             methods: std::collections::HashMap::new(),
             properties: indexmap::IndexMap::new(),
             constants: std::collections::HashMap::new(),
             static_properties: std::collections::HashMap::new(),
+            abstract_methods: std::collections::HashSet::new(),
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(child_sym, child_def);
@@ -239,12 +251,16 @@ mod tests {
             parent: None,
             is_interface: false,
             is_trait: false,
+            is_abstract: false,
+            is_enum: false,
+            enum_backed_type: None,
             interfaces: Vec::new(),
             traits: Vec::new(),
             methods: std::collections::HashMap::new(),
             properties: indexmap::IndexMap::new(),
             constants: std::collections::HashMap::new(),
             static_properties: std::collections::HashMap::new(),
+            abstract_methods: std::collections::HashSet::new(),
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(parent_sym, parent_def);
@@ -254,12 +270,16 @@ mod tests {
             parent: Some(parent_sym),
             is_interface: false,
             is_trait: false,
+            is_abstract: false,
+            is_enum: false,
+            enum_backed_type: None,
             interfaces: Vec::new(),
             traits: Vec::new(),
             methods: std::collections::HashMap::new(),
             properties: indexmap::IndexMap::new(),
             constants: std::collections::HashMap::new(),
             static_properties: std::collections::HashMap::new(),
+            abstract_methods: std::collections::HashSet::new(),
             allows_dynamic_properties: false,
         };
         vm.context.classes.insert(child_sym, child_def);
