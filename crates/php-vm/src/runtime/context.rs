@@ -71,6 +71,17 @@ impl EngineContext {
     pub fn new() -> Self {
         let mut registry = ExtensionRegistry::new();
 
+        // Register Core extension (MUST BE FIRST - contains all built-in functions)
+        use crate::runtime::core_extension::CoreExtension;
+        registry
+            .register_extension(Box::new(CoreExtension))
+            .expect("Failed to register Core extension");
+
+        use crate::runtime::date_extension::DateExtension;
+        registry
+            .register_extension(Box::new(DateExtension))
+            .expect("Failed to register Date extension");
+
         // Register Hash extension
         use crate::runtime::hash_extension::HashExtension;
         registry
