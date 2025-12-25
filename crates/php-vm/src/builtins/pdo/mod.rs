@@ -215,6 +215,8 @@ pub fn register_pdo_extension_to_registry(registry: &mut ExtensionRegistry) {
     registry.register_class(NativeClassDef {
         name: b"PDO".to_vec(),
         parent: None,
+            is_interface: false,
+            is_trait: false,
         interfaces: Vec::new(),
         methods: pdo_methods,
         constants: pdo_constants,
@@ -326,6 +328,8 @@ pub fn register_pdo_extension_to_registry(registry: &mut ExtensionRegistry) {
     registry.register_class(NativeClassDef {
         name: b"PDOStatement".to_vec(),
         parent: None,
+            is_interface: false,
+            is_trait: false,
         interfaces: vec![b"Iterator".to_vec()],
         methods: st_methods,
         constants: HashMap::new(),
@@ -336,6 +340,8 @@ pub fn register_pdo_extension_to_registry(registry: &mut ExtensionRegistry) {
     registry.register_class(NativeClassDef {
         name: b"PDOException".to_vec(),
         parent: Some(b"Exception".to_vec()),
+            is_interface: false,
+            is_trait: false,
         interfaces: Vec::new(),
         methods: HashMap::new(),
         constants: HashMap::new(),
@@ -1146,3 +1152,4 @@ fn fetched_row_to_val(vm: &mut VM, row: types::FetchedRow) -> Handle {
 fn register_pdo_constants(_registry: &mut ExtensionRegistry) {
     // These are now registered as class constants in the PDO class.
 }
+

@@ -53,6 +53,8 @@ impl Extension for ZlibExtension {
         registry.register_class(NativeClassDef {
             name: b"DeflateContext".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: Vec::new(),
             methods: std::collections::HashMap::new(),
             constants: std::collections::HashMap::new(),
@@ -62,6 +64,8 @@ impl Extension for ZlibExtension {
         registry.register_class(NativeClassDef {
             name: b"InflateContext".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: Vec::new(),
             methods: std::collections::HashMap::new(),
             constants: std::collections::HashMap::new(),
@@ -119,3 +123,4 @@ impl Extension for ZlibExtension {
         ExtensionResult::Success
     }
 }
+

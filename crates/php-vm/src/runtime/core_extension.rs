@@ -3,6 +3,7 @@ use crate::builtins::{
     output_control, pcre, spl, string, url, variable,
 };
 use crate::core::value::{Symbol, Val, Visibility};
+use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::{ExtensionRegistry, NativeClassDef, NativeMethodEntry};
 use std::collections::HashMap;
@@ -252,207 +253,735 @@ impl Extension for CoreExtension {
         registry.register_function(b"proc_get_status", exec::php_proc_get_status);
         registry.register_function(b"set_time_limit", exec::php_set_time_limit);
 
-        // Date/Time functions
-        registry.register_function(b"date_default_timezone_get", datetime::php_date_default_timezone_get);
-        registry.register_function(b"date", datetime::php_date);
-        registry.register_function(b"gmdate", datetime::php_gmdate);
-        registry.register_function(b"time", datetime::php_time);
-        registry.register_function(b"microtime", datetime::php_microtime);
-        registry.register_function(b"gettimeofday", datetime::php_gettimeofday);
-        registry.register_function(b"localtime", datetime::php_localtime);
-        registry.register_function(b"strtotime", datetime::php_strtotime);
-        registry.register_function(b"mktime", datetime::php_mktime);
-        registry.register_function(b"gmmktime", datetime::php_gmmktime);
-        registry.register_function(b"getdate", datetime::php_getdate);
-        registry.register_function(b"idate", datetime::php_idate);
-        registry.register_function(b"date_parse", datetime::php_date_parse);
-        registry.register_function(b"date_parse_from_format", datetime::php_date_parse_from_format);
-        registry.register_function(b"date_create", datetime::php_date_create);
-        registry.register_function(b"date_create_from_format", datetime::php_datetime_create_from_format);
-        registry.register_function(b"date_format", datetime::php_date_format);
-        registry.register_function(b"date_modify", datetime::php_date_modify);
-        registry.register_function(b"date_add", datetime::php_date_add);
-        registry.register_function(b"date_sub", datetime::php_date_sub);
+        // ========================================
+        // CORE PHP INTERFACES
+        // ========================================
 
-        registry.register_function(b"date_diff", datetime::php_date_diff);
-        registry.register_function(b"date_interval_create_from_date_string", datetime::php_date_interval_create_from_date_string);
-        registry.register_function(b"date_interval_format", datetime::php_dateinterval_format);
-        registry.register_function(b"checkdate", datetime::php_checkdate);
-        registry.register_function(b"timezone_open", datetime::php_timezone_open);
+        // Stringable interface (PHP 8.0+)
+        registry.register_class(NativeClassDef {
+            name: b"Stringable".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
 
-        // Register DateTime classes
-        
-        // DateTime class
-        let mut datetime_methods = HashMap::new();
-        datetime_methods.insert(
-            b"__construct".to_vec(),
+        // Throwable interface (base for all exceptions/errors, extends Stringable)
+        registry.register_class(NativeClassDef {
+            name: b"Throwable".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![b"Stringable".to_vec()],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // Traversable interface (root iterator interface)
+        registry.register_class(NativeClassDef {
+            name: b"Traversable".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // Iterator interface
+        registry.register_class(NativeClassDef {
+            name: b"Iterator".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![b"Traversable".to_vec()],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // IteratorAggregate interface
+        registry.register_class(NativeClassDef {
+            name: b"IteratorAggregate".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![b"Traversable".to_vec()],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // Countable interface
+        registry.register_class(NativeClassDef {
+            name: b"Countable".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // ArrayAccess interface
+        registry.register_class(NativeClassDef {
+            name: b"ArrayAccess".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // Serializable interface (deprecated since PHP 8.1)
+        registry.register_class(NativeClassDef {
+            name: b"Serializable".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // UnitEnum interface (PHP 8.1+)
+        registry.register_class(NativeClassDef {
+            name: b"UnitEnum".to_vec(),
+            parent: None,
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // BackedEnum interface (PHP 8.1+)
+        registry.register_class(NativeClassDef {
+            name: b"BackedEnum".to_vec(),
+            parent: Some(b"UnitEnum".to_vec()),
+            is_interface: true,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // ========================================
+        // INTERNAL CLASSES
+        // ========================================
+
+        // Closure class (final)
+        let mut closure_methods = HashMap::new();
+        closure_methods.insert(
+            b"bind".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_datetime_construct,
+                handler: class::closure_bind,
+                visibility: Visibility::Public,
+                is_static: true,
+            },
+        );
+        closure_methods.insert(
+            b"bindTo".to_vec(),
+            NativeMethodEntry {
+                handler: class::closure_bind_to,
                 visibility: Visibility::Public,
                 is_static: false,
             },
         );
-        datetime_methods.insert(
-            b"format".to_vec(),
+        closure_methods.insert(
+            b"call".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_datetime_format,
+                handler: class::closure_call,
                 visibility: Visibility::Public,
                 is_static: false,
             },
         );
-        datetime_methods.insert(
-            b"setTimezone".to_vec(),
+        closure_methods.insert(
+            b"fromCallable".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_datetime_set_timezone,
+                handler: class::closure_from_callable,
                 visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        datetime_methods.insert(
-            b"add".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_datetime_add,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        datetime_methods.insert(
-            b"sub".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_datetime_sub,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        datetime_methods.insert(
-            b"diff".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_datetime_diff,
-                visibility: Visibility::Public,
-                is_static: false,
+                is_static: true,
             },
         );
         registry.register_class(NativeClassDef {
-            name: b"DateTime".to_vec(),
+            name: b"Closure".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: vec![],
-            methods: datetime_methods,
+            methods: closure_methods,
             constants: HashMap::new(),
-            constructor: Some(datetime::php_datetime_construct),
+            constructor: None,
         });
 
-        // DateTimeZone class
-        let mut datetimezone_methods = HashMap::new();
-        datetimezone_methods.insert(
-            b"__construct".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_datetimezone_construct,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        datetimezone_methods.insert(
-            b"getName".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_datetimezone_get_name,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
+        // stdClass - empty class for generic objects
         registry.register_class(NativeClassDef {
-            name: b"DateTimeZone".to_vec(),
+            name: b"stdClass".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: vec![],
-            methods: datetimezone_methods,
+            methods: HashMap::new(),
             constants: HashMap::new(),
-            constructor: Some(datetime::php_datetimezone_construct),
+            constructor: None,
         });
 
-        // DateInterval class
-        let mut dateinterval_methods = HashMap::new();
-        dateinterval_methods.insert(
-            b"__construct".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_dateinterval_construct,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        dateinterval_methods.insert(
-            b"format".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_dateinterval_format,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        registry.register_class(NativeClassDef {
-            name: b"DateInterval".to_vec(),
-            parent: None,
-            interfaces: vec![],
-            methods: dateinterval_methods,
-            constants: HashMap::new(),
-            constructor: Some(datetime::php_dateinterval_construct),
-        });
-
-        // DatePeriod class
-        let mut dateperiod_methods = HashMap::new();
-        dateperiod_methods.insert(
-            b"__construct".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_dateperiod_construct,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        // Iterator methods
-        dateperiod_methods.insert(
-            b"rewind".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_dateperiod_rewind,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        dateperiod_methods.insert(
-            b"valid".to_vec(),
-            NativeMethodEntry {
-                handler: datetime::php_dateperiod_valid,
-                visibility: Visibility::Public,
-                is_static: false,
-            },
-        );
-        dateperiod_methods.insert(
+        // Generator class (final, implements Iterator)
+        let mut generator_methods = HashMap::new();
+        generator_methods.insert(
             b"current".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_dateperiod_current,
+                handler: class::generator_current,
                 visibility: Visibility::Public,
                 is_static: false,
             },
         );
-        dateperiod_methods.insert(
+        generator_methods.insert(
             b"key".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_dateperiod_key,
+                handler: class::generator_key,
                 visibility: Visibility::Public,
                 is_static: false,
             },
         );
-        dateperiod_methods.insert(
+        generator_methods.insert(
             b"next".to_vec(),
             NativeMethodEntry {
-                handler: datetime::php_dateperiod_next,
+                handler: class::generator_next,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        generator_methods.insert(
+            b"rewind".to_vec(),
+            NativeMethodEntry {
+                handler: class::generator_rewind,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        generator_methods.insert(
+            b"valid".to_vec(),
+            NativeMethodEntry {
+                handler: class::generator_valid,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        generator_methods.insert(
+            b"send".to_vec(),
+            NativeMethodEntry {
+                handler: class::generator_send,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        generator_methods.insert(
+            b"throw".to_vec(),
+            NativeMethodEntry {
+                handler: class::generator_throw,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        generator_methods.insert(
+            b"getReturn".to_vec(),
+            NativeMethodEntry {
+                handler: class::generator_get_return,
                 visibility: Visibility::Public,
                 is_static: false,
             },
         );
         registry.register_class(NativeClassDef {
-            name: b"DatePeriod".to_vec(),
+            name: b"Generator".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: vec![b"Iterator".to_vec()],
-            methods: dateperiod_methods,
+            methods: generator_methods,
             constants: HashMap::new(),
-            constructor: Some(datetime::php_dateperiod_construct),
+            constructor: None,
+        });
+
+        // Fiber class (PHP 8.1+)
+        let mut fiber_methods = HashMap::new();
+        fiber_methods.insert(
+            b"__construct".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_construct,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"start".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_start,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"resume".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_resume,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"suspend".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_suspend,
+                visibility: Visibility::Public,
+                is_static: true,
+            },
+        );
+        fiber_methods.insert(
+            b"throw".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_throw,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"isStarted".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_is_started,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"isSuspended".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_is_suspended,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"isRunning".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_is_running,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"isTerminated".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_is_terminated,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"getReturn".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_get_return,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        fiber_methods.insert(
+            b"getCurrent".to_vec(),
+            NativeMethodEntry {
+                handler: class::fiber_get_current,
+                visibility: Visibility::Public,
+                is_static: true,
+            },
+        );
+        registry.register_class(NativeClassDef {
+            name: b"Fiber".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: fiber_methods,
+            constants: HashMap::new(),
+            constructor: Some(class::fiber_construct),
+        });
+
+        // WeakReference class (PHP 7.4+)
+        let mut weakref_methods = HashMap::new();
+        weakref_methods.insert(
+            b"__construct".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_reference_construct,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakref_methods.insert(
+            b"create".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_reference_create,
+                visibility: Visibility::Public,
+                is_static: true,
+            },
+        );
+        weakref_methods.insert(
+            b"get".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_reference_get,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        registry.register_class(NativeClassDef {
+            name: b"WeakReference".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: weakref_methods,
+            constants: HashMap::new(),
+            constructor: Some(class::weak_reference_construct),
+        });
+
+        // WeakMap class (PHP 8.0+, implements ArrayAccess, Countable, IteratorAggregate)
+        let mut weakmap_methods = HashMap::new();
+        weakmap_methods.insert(
+            b"offsetExists".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_offset_exists,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakmap_methods.insert(
+            b"offsetGet".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_offset_get,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakmap_methods.insert(
+            b"offsetSet".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_offset_set,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakmap_methods.insert(
+            b"offsetUnset".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_offset_unset,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakmap_methods.insert(
+            b"count".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_count,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        weakmap_methods.insert(
+            b"getIterator".to_vec(),
+            NativeMethodEntry {
+                handler: class::weak_map_get_iterator,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        registry.register_class(NativeClassDef {
+            name: b"WeakMap".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![b"ArrayAccess".to_vec(), b"Countable".to_vec(), b"IteratorAggregate".to_vec()],
+            methods: weakmap_methods,
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // SensitiveParameterValue class (PHP 8.2+)
+        let mut sensitive_methods = HashMap::new();
+        sensitive_methods.insert(
+            b"__construct".to_vec(),
+            NativeMethodEntry {
+                handler: class::sensitive_parameter_value_construct,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        sensitive_methods.insert(
+            b"getValue".to_vec(),
+            NativeMethodEntry {
+                handler: class::sensitive_parameter_value_get_value,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        sensitive_methods.insert(
+            b"__debugInfo".to_vec(),
+            NativeMethodEntry {
+                handler: class::sensitive_parameter_value_debug_info,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        registry.register_class(NativeClassDef {
+            name: b"SensitiveParameterValue".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: sensitive_methods,
+            constants: HashMap::new(),
+            constructor: Some(class::sensitive_parameter_value_construct),
+        });
+
+        // __PHP_Incomplete_Class (used during unserialization)
+        registry.register_class(NativeClassDef {
+            name: b"__PHP_Incomplete_Class".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: None,
+        });
+
+        // ========================================
+        // EXCEPTION HIERARCHY
+        // ========================================
+
+        // Exception class
+        let mut exception_methods = HashMap::new();
+        exception_methods.insert(
+            b"__construct".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_construct,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getMessage".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_message,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getCode".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_code,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getFile".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_file,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getLine".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_line,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getTrace".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_trace,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getTraceAsString".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_trace_as_string,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"getPrevious".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_get_previous,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        exception_methods.insert(
+            b"__toString".to_vec(),
+            NativeMethodEntry {
+                handler: exception::exception_to_string,
+                visibility: Visibility::Public,
+                is_static: false,
+            },
+        );
+        registry.register_class(NativeClassDef {
+            name: b"Exception".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![b"Throwable".to_vec()],
+            methods: exception_methods.clone(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // RuntimeException
+        registry.register_class(NativeClassDef {
+            name: b"RuntimeException".to_vec(),
+            parent: Some(b"Exception".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // LogicException
+        registry.register_class(NativeClassDef {
+            name: b"LogicException".to_vec(),
+            parent: Some(b"Exception".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // Error class (PHP 7+)
+        registry.register_class(NativeClassDef {
+            name: b"Error".to_vec(),
+            parent: None,
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![b"Throwable".to_vec()],
+            methods: exception_methods.clone(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // TypeError
+        registry.register_class(NativeClassDef {
+            name: b"TypeError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // ArithmeticError
+        registry.register_class(NativeClassDef {
+            name: b"ArithmeticError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // DivisionByZeroError
+        registry.register_class(NativeClassDef {
+            name: b"DivisionByZeroError".to_vec(),
+            parent: Some(b"ArithmeticError".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // ParseError
+        registry.register_class(NativeClassDef {
+            name: b"ParseError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // AssertionError
+        registry.register_class(NativeClassDef {
+            name: b"AssertionError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // CompileError (PHP 7.3+)
+        registry.register_class(NativeClassDef {
+            name: b"CompileError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // ValueError (PHP 8.0+)
+        registry.register_class(NativeClassDef {
+            name: b"ValueError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
+        });
+
+        // UnhandledMatchError (PHP 8.0+)
+        registry.register_class(NativeClassDef {
+            name: b"UnhandledMatchError".to_vec(),
+            parent: Some(b"Error".to_vec()),
+            is_interface: false,
+            is_trait: false,
+            interfaces: vec![],
+            methods: HashMap::new(),
+            constants: HashMap::new(),
+            constructor: Some(exception::exception_construct),
         });
 
         // Output Control functions
@@ -479,4 +1008,17 @@ impl Extension for CoreExtension {
 
         ExtensionResult::Success
     }
+
+    fn request_init(&self, _ctx: &mut RequestContext) -> ExtensionResult {
+        ExtensionResult::Success
+    }
+
+    fn request_shutdown(&self, _ctx: &mut RequestContext) -> ExtensionResult {
+        ExtensionResult::Success
+    }
+
+    fn module_shutdown(&self) -> ExtensionResult {
+        ExtensionResult::Success
+    }
 }
+

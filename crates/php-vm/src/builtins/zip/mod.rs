@@ -384,6 +384,8 @@ pub fn register_zip_extension_to_registry(registry: &mut ExtensionRegistry) {
     registry.register_class(NativeClassDef {
         name: b"ZipArchive".to_vec(),
         parent: None,
+            is_interface: false,
+            is_trait: false,
         interfaces: Vec::new(),
         methods: zip_methods,
         constants: zip_constants,
@@ -1498,3 +1500,4 @@ pub fn php_zip_entry_compressedsize(vm: &mut VM, args: &[Handle]) -> Result<Hand
 
     Ok(vm.arena.alloc(Val::Int(0)))
 }
+

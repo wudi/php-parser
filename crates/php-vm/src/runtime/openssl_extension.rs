@@ -352,6 +352,8 @@ impl Extension for OpenSSLExtension {
         registry.register_class(NativeClassDef {
             name: b"OpenSSLAsymmetricKey".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: Vec::new(),
             methods: HashMap::new(),
             constants: HashMap::new(),
@@ -361,6 +363,8 @@ impl Extension for OpenSSLExtension {
         registry.register_class(NativeClassDef {
             name: b"OpenSSLCertificate".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: Vec::new(),
             methods: HashMap::new(),
             constants: HashMap::new(),
@@ -370,6 +374,8 @@ impl Extension for OpenSSLExtension {
         registry.register_class(NativeClassDef {
             name: b"OpenSSLCertificateSigningRequest".to_vec(),
             parent: None,
+            is_interface: false,
+            is_trait: false,
             interfaces: Vec::new(),
             methods: HashMap::new(),
             constants: HashMap::new(),
@@ -379,3 +385,4 @@ impl Extension for OpenSSLExtension {
         ExtensionResult::Success
     }
 }
+
