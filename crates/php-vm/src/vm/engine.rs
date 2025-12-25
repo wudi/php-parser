@@ -1571,12 +1571,16 @@ impl VM {
     /// 
     /// Type preference order: int -> float -> string -> bool
     /// Returns Some(new_val) if coercion happened, None if already matches, Err if cannot coerce
-    fn coerce_to_type_hint(&self, val_handle: Handle, hint: &TypeHint) -> Result<Option<Val>, VmError> {
-        let val = &self.arena.get(val_handle).value;
-        
+    fn coerce_to_type_hint(
+        &mut self,
+        val_handle: Handle,
+        hint: &TypeHint,
+    ) -> Result<Option<Val>, VmError> {
+        let val = self.arena.get(val_handle).value.clone();
+
         match hint {
             TypeHint::Int => {
-                match val {
+                match &val {
                     Val::Int(_) => Ok(None), // Already int
                     Val::Float(f) => Ok(Some(Val::Int(*f as i64))), // float -> int
                     Val::String(s) => {
@@ -1587,15 +1591,15 @@ impl VM {
                         } else if let Ok(f) = s_str.trim().parse::<f64>() {
                             Ok(Some(Val::Int(f as i64)))
                         } else {
-                            Err(self.type_error_for_property(val, hint))
+                            Err(self.type_error_for_property(&val, hint))
                         }
                     }
                     Val::Bool(b) => Ok(Some(Val::Int(if *b { 1 } else { 0 }))), // bool -> int
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::Float => {
-                match val {
+                match &val {
                     Val::Float(_) => Ok(None), // Already float
                     Val::Int(i) => Ok(Some(Val::Float(*i as f64))), // int -> float (always allowed)
                     Val::String(s) => {
@@ -1603,25 +1607,25 @@ impl VM {
                         if let Ok(f) = s_str.trim().parse::<f64>() {
                             Ok(Some(Val::Float(f)))
                         } else {
-                            Err(self.type_error_for_property(val, hint))
+                            Err(self.type_error_for_property(&val, hint))
                         }
                     }
                     Val::Bool(b) => Ok(Some(Val::Float(if *b { 1.0 } else { 0.0 }))),
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::String => {
-                match val {
+                match &val {
                     Val::String(_) => Ok(None), // Already string
                     Val::Int(i) => Ok(Some(Val::String(i.to_string().into_bytes().into()))),
                     Val::Float(f) => Ok(Some(Val::String(f.to_string().into_bytes().into()))),
                     Val::Bool(b) => Ok(Some(Val::String((if *b { "1" } else { "" }).as_bytes().to_vec().into()))),
                     Val::Null => Ok(Some(Val::String(b"".to_vec().into()))),
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::Bool => {
-                match val {
+                match &val {
                     Val::Bool(_) => Ok(None), // Already bool
                     Val::Int(i) => Ok(Some(Val::Bool(*i != 0))),
                     Val::Float(f) => Ok(Some(Val::Bool(*f != 0.0))),
@@ -1635,48 +1639,56 @@ impl VM {
                 }
             }
             TypeHint::Array => {
-                match val {
+                match &val {
                     Val::Array(_) | Val::ConstArray(_) => Ok(None),
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::Object => {
-                match val {
+                match &val {
                     Val::Object(_) => Ok(None),
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::Null => {
-                match val {
+                match &val {
                     Val::Null => Ok(None),
-                    _ => Err(self.type_error_for_property(val, hint)),
+                    _ => Err(self.type_error_for_property(&val, hint)),
                 }
             }
             TypeHint::Mixed => Ok(None), // Mixed accepts anything, no coercion
             TypeHint::Callable => {
-                // Callable: string, array, or object with __invoke
-                match val {
-                    Val::String(_) | Val::Array(_) => Ok(None),
-                    Val::Object(_) => Ok(None), // TODO: check for __invoke
-                    _ => Err(self.type_error_for_property(val, hint)),
+                if self.is_callable(val_handle) {
+                    Ok(None)
+                } else {
+                    Err(self.type_error_for_property(&val, hint))
                 }
             }
-            TypeHint::Iterable => {
-                match val {
-                    Val::Array(_) | Val::ConstArray(_) => Ok(None),
-                    Val::Object(_) => Ok(None), // TODO: check for Traversable
-                    _ => Err(self.type_error_for_property(val, hint)),
+            TypeHint::Iterable => match &val {
+                Val::Array(_) | Val::ConstArray(_) => Ok(None),
+                Val::Object(_) => {
+                    if let Ok(obj_class) = self.extract_object_class(val_handle) {
+                        let traversable_sym = self.context.interner.intern(b"Traversable");
+                        if self.is_subclass_of(obj_class, traversable_sym) {
+                            Ok(None)
+                        } else {
+                            Err(self.type_error_for_property(&val, hint))
+                        }
+                    } else {
+                        Err(self.type_error_for_property(&val, hint))
+                    }
                 }
-            }
+                _ => Err(self.type_error_for_property(&val, hint)),
+            },
             TypeHint::Class(class_sym) => {
-                if let Val::Object(obj_handle) = val {
-                    if let Val::ObjPayload(obj_data) = &self.arena.get(*obj_handle).value {
-                        if self.is_subclass_of(obj_data.class, *class_sym) {
+                if let Val::Object(_) = &val {
+                    if let Ok(obj_class) = self.extract_object_class(val_handle) {
+                        if self.is_subclass_of(obj_class, *class_sym) {
                             return Ok(None);
                         }
                     }
                 }
-                Err(self.type_error_for_property(val, hint))
+                Err(self.type_error_for_property(&val, hint))
             }
             TypeHint::Union(types) => {
                 // Try each type in the union
@@ -1685,16 +1697,19 @@ impl VM {
                         return Ok(result);
                     }
                 }
-                Err(self.type_error_for_property(val, hint))
+                Err(self.type_error_for_property(&val, hint))
             }
-            TypeHint::Intersection(_types) => {
-                // Intersection types are only for objects, no coercion
-                match val {
-                    Val::Object(_) => Ok(None), // TODO: check all types
-                    _ => Err(self.type_error_for_property(val, hint)),
+            TypeHint::Intersection(types) => {
+                if types
+                    .iter()
+                    .all(|t| self.matches_type_hint_without_coercion(val_handle, t))
+                {
+                    Ok(None)
+                } else {
+                    Err(self.type_error_for_property(&val, hint))
                 }
             }
-            _ => Err(self.type_error_for_property(val, hint)),
+            _ => Err(self.type_error_for_property(&val, hint)),
         }
     }
 
@@ -1751,6 +1766,51 @@ impl VM {
             Val::ConstArray(_) => "array",
             Val::AppendPlaceholder => "unknown",
             Val::Uninitialized => "uninitialized",
+        }
+    }
+
+    fn matches_type_hint_without_coercion(&mut self, val_handle: Handle, hint: &TypeHint) -> bool {
+        let val = self.arena.get(val_handle).value.clone();
+
+        match hint {
+            TypeHint::Int => matches!(val, Val::Int(_)),
+            TypeHint::Float => matches!(val, Val::Float(_)),
+            TypeHint::String => matches!(val, Val::String(_)),
+            TypeHint::Bool => matches!(val, Val::Bool(_)),
+            TypeHint::Null => matches!(val, Val::Null),
+            TypeHint::Array => matches!(val, Val::Array(_) | Val::ConstArray(_)),
+            TypeHint::Object => matches!(val, Val::Object(_)),
+            TypeHint::Mixed => true,
+            TypeHint::Callable => self.is_callable(val_handle),
+            TypeHint::Iterable => match val {
+                Val::Array(_) | Val::ConstArray(_) => true,
+                Val::Object(_) => {
+                    if let Ok(obj_class) = self.extract_object_class(val_handle) {
+                        let traversable_sym = self.context.interner.intern(b"Traversable");
+                        self.is_subclass_of(obj_class, traversable_sym)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            },
+            TypeHint::Class(class_sym) => match val {
+                Val::Object(_) => {
+                    if let Ok(obj_class) = self.extract_object_class(val_handle) {
+                        self.is_subclass_of(obj_class, *class_sym)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            },
+            TypeHint::Union(types) => types
+                .iter()
+                .any(|t| self.matches_type_hint_without_coercion(val_handle, t)),
+            TypeHint::Intersection(types) => types
+                .iter()
+                .all(|t| self.matches_type_hint_without_coercion(val_handle, t)),
+            TypeHint::Void | TypeHint::Never => false,
         }
     }
 
@@ -5945,7 +6005,7 @@ impl VM {
                     }
                 }
             }
-            OpCode::DefProp(class_name, prop_name, default_idx, visibility, type_hint_idx) => {
+            OpCode::DefProp(class_name, prop_name, default_idx, visibility, type_hint_idx, is_readonly) => {
                 let val = {
                     let frame = self.frames.last().unwrap();
                     frame.chunk.constants[default_idx as usize].clone()
@@ -5964,7 +6024,7 @@ impl VM {
                         default_value: val,
                         visibility,
                         type_hint,
-                        is_readonly: false, // TODO: extract from modifiers
+                        is_readonly,
                     });
                 }
             }
@@ -6657,26 +6717,54 @@ impl VM {
 
                         self.operand_stack.push(val_handle);
                         self.push_frame(frame);
-                    } else {
-                        if let Err(e) = visibility_check {
-                            return Err(e);
-                        }
-
-                        // Check for dynamic property deprecation (PHP 8.2+)
-                        if !prop_exists {
-                            self.check_dynamic_property_write(obj_handle, prop_name);
-                        }
-
-                        // Validate property type (check class definition for type hint)
-                        self.validate_property_type(class_name, prop_name, val_handle)?;
-
-                        let payload_zval = self.arena.get_mut(payload_handle);
-                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
-                            obj_data.properties.insert(prop_name, val_handle);
-                        }
-                        self.operand_stack.push(val_handle);
-                    }
-                } else {
+                                    } else {
+                                        if let Err(e) = visibility_check {
+                                            return Err(e);
+                                        }
+                    
+                                        // Check for dynamic property deprecation (PHP 8.2+)
+                                        if !prop_exists {
+                                            self.check_dynamic_property_write(obj_handle, prop_name);
+                                        }
+                    
+                                        // Check readonly constraint
+                                        let prop_info = self.walk_inheritance_chain(class_name, |def, cls| {
+                                            def.properties.get(&prop_name).map(|entry| (entry.is_readonly, cls))
+                                        });
+                    
+                                        if let Some((is_readonly, defining_class)) = prop_info {
+                                            if is_readonly {
+                                                // Check if already initialized in object
+                                                let payload_zval = self.arena.get(payload_handle);
+                                                if let Val::ObjPayload(obj_data) = &payload_zval.value {
+                                                    if let Some(current_handle) = obj_data.properties.get(&prop_name) {
+                                                        let current_val = &self.arena.get(*current_handle).value;
+                                                        if !matches!(current_val, Val::Uninitialized) {
+                                                            let class_str = String::from_utf8_lossy(
+                                                                self.context.interner.lookup(defining_class).unwrap_or(b"???")
+                                                            );
+                                                            let prop_str = String::from_utf8_lossy(
+                                                                self.context.interner.lookup(prop_name).unwrap_or(b"???")
+                                                            );
+                                                            return Err(VmError::RuntimeError(format!(
+                                                                "Cannot modify readonly property {}::${}", 
+                                                                class_str, prop_str
+                                                            )));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                    
+                                        // Validate property type (check class definition for type hint)
+                                        self.validate_property_type(class_name, prop_name, val_handle)?;
+                    
+                                        let payload_zval = self.arena.get_mut(payload_handle);
+                                        if let Val::ObjPayload(obj_data) = &mut payload_zval.value {
+                                            obj_data.properties.insert(prop_name, val_handle);
+                                        }
+                                        self.operand_stack.push(val_handle);
+                                    }                } else {
                     // Check for dynamic property deprecation (PHP 8.2+)
                     if !prop_exists {
                         self.check_dynamic_property_write(obj_handle, prop_name);

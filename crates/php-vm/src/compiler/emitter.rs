@@ -282,8 +282,8 @@ impl<'src> Emitter<'src> {
 
                     // Extract type hint once for all properties in this declaration
                     let type_hint_opt = ty.and_then(|t| self.convert_type(t));
-                    let type_hint_idx = if let Some(th) = type_hint_opt {
-                        self.add_constant(Val::Resource(Rc::new(th)))
+                    let type_hint_idx = if let Some(ref th) = type_hint_opt {
+                        self.add_constant(Val::Resource(Rc::new(th.clone())))
                     } else {
                         self.add_constant(Val::Null)
                     };
@@ -301,7 +301,11 @@ impl<'src> Emitter<'src> {
                             let val = self.eval_constant_expr(default_expr);
                             self.add_constant(val)
                         } else {
-                            self.add_constant(Val::Null)
+                            if type_hint_opt.is_some() || is_readonly {
+                                self.add_constant(Val::Uninitialized)
+                            } else {
+                                self.add_constant(Val::Null)
+                            }
                         };
 
                         if is_static {
@@ -319,6 +323,7 @@ impl<'src> Emitter<'src> {
                                 default_idx as u16,
                                 visibility,
                                 type_hint_idx as u32,
+                                is_readonly,
                             ));
                         }
                     }

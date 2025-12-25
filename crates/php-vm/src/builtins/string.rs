@@ -1680,7 +1680,7 @@ fn value_to_string_bytes(val: &Val) -> Vec<u8> {
         Val::Array(_) | Val::ConstArray(_) => b"Array".to_vec(),
         Val::Object(_) | Val::ObjPayload(_) => b"Object".to_vec(),
         Val::Resource(_) => b"Resource".to_vec(),
-        Val::AppendPlaceholder => Vec::new(),
+        Val::AppendPlaceholder | Val::Uninitialized => Vec::new(),
     }
 }
 

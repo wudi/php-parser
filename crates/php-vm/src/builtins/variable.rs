@@ -136,6 +136,9 @@ fn dump_value(vm: &VM, handle: Handle, depth: usize) {
         Val::AppendPlaceholder => {
             println!("{}AppendPlaceholder", indent);
         }
+        Val::Uninitialized => {
+            println!("{}uninitialized", indent);
+        }
     }
 }
 

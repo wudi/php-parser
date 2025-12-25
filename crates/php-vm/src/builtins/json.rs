@@ -216,6 +216,7 @@ impl<'a> EncodeContext<'a> {
                 Err(JsonError::UnsupportedType)
             }
             Val::AppendPlaceholder => Err(JsonError::UnsupportedType),
+            Val::Uninitialized => Err(JsonError::UnsupportedType),
         }
     }
 

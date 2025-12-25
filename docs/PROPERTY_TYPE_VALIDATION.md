@@ -110,6 +110,9 @@ OpCode::AssignProp(prop_name) => {
 - **Nullable Types**: Implemented as `Union[Type, Null]`
 - **Object Types**: Check instanceof with inheritance
 - **Array**: No coercion (strict)
+- **Callable**: Uses callable validation (string functions, array callables, closures, `__invoke`)
+- **Iterable**: Accepts arrays or `Traversable` objects
+- **Intersection Types**: Require all object types to match (no coercion)
 - **Mixed**: Accepts anything
 
 ## Test Coverage
@@ -145,10 +148,10 @@ OpCode::AssignProp(prop_name) => {
 - Inheritance support
 - Static properties
 - All scalar coercions
+- Readonly property immutability (single initialization)
 
 ### Not Yet Implemented
 - `declare(strict_types=1)` support (always uses weak mode)
-- Readonly properties enforcement
 - Property hooks (PHP 8.4)
 - Exception wrapping (errors as RuntimeError instead of TypeError exception objects)
 
