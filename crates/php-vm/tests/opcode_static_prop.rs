@@ -46,6 +46,8 @@ fn run_fetch(op: OpCode) -> (VM, i64) {
     chunk.constants.push(Val::String(b"Foo".to_vec().into()));
     let prop_idx = chunk.constants.len();
     chunk.constants.push(Val::String(b"bar".to_vec().into()));
+    let type_hint_idx = chunk.constants.len();
+    chunk.constants.push(Val::Null);
 
     chunk.code.push(OpCode::DefClass(foo_sym, None));
     chunk.code.push(OpCode::DefStaticProp(
@@ -53,6 +55,7 @@ fn run_fetch(op: OpCode) -> (VM, i64) {
         bar_sym,
         default_idx as u16,
         Visibility::Public,
+        type_hint_idx as u32,
     ));
     chunk.code.push(OpCode::Const(class_idx as u16));
     chunk.code.push(OpCode::Const(prop_idx as u16));

@@ -1750,6 +1750,7 @@ impl VM {
             Val::ObjPayload(_) => "object",
             Val::ConstArray(_) => "array",
             Val::AppendPlaceholder => "unknown",
+            Val::Uninitialized => "uninitialized",
         }
     }
 

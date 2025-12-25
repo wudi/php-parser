@@ -22,6 +22,8 @@ pub fn increment_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result
 
         // NULL: becomes 1
         Val::Null => Ok(Val::Int(1)),
+        // UNINITIALIZED: treat like NULL
+        Val::Uninitialized => Ok(Val::Int(1)),
 
         // STRING: special handling
         Val::String(s) => increment_string(s, error_handler),
@@ -72,6 +74,14 @@ pub fn decrement_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result
         // But actually PHP keeps it as NULL in some versions, check exact behavior
         // Reference shows NULL-- stays NULL but emits warning in PHP 8.3
         Val::Null => {
+            error_handler.report(
+                ErrorLevel::Warning,
+                "Decrement on type null has no effect, this will change in the next major version of PHP",
+            );
+            Ok(Val::Null)
+        }
+        // UNINITIALIZED: treat like NULL
+        Val::Uninitialized => {
             error_handler.report(
                 ErrorLevel::Warning,
                 "Decrement on type null has no effect, this will change in the next major version of PHP",

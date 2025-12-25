@@ -98,6 +98,7 @@ impl VM {
             Val::ObjPayload(_) => "object",
             Val::Resource(_) => "resource",
             Val::AppendPlaceholder => "unknown",
+            Val::Uninitialized => "uninitialized",
         }
     }
 }
