@@ -76,6 +76,8 @@ fn send_ref_mutates_caller() {
             name: sym_x,
             by_ref: true,
             param_type: None,
+            is_variadic: false,
+            default_value: None,
         }],
         uses: Vec::new(),
         chunk: Rc::new(func_chunk),

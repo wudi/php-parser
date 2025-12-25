@@ -50,6 +50,8 @@ pub struct FuncParam {
     pub name: Symbol,
     pub by_ref: bool,
     pub param_type: Option<ReturnType>,
+    pub is_variadic: bool,
+    pub default_value: Option<Val>,
 }
 
 #[derive(Debug, Clone)]

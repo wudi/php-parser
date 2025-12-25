@@ -5956,8 +5956,8 @@ impl VM {
                                 name: p.name,
                                 type_hint: p.param_type.clone().and_then(|rt| self.return_type_to_type_hint(&rt)),
                                 is_reference: p.by_ref,
-                                is_variadic: false, // TODO: extract from FuncParam if needed
-                                default_value: None, // TODO: extract from chunk if needed
+                                is_variadic: p.is_variadic,
+                                default_value: p.default_value.clone(),
                             }).collect(),
                             return_type: func.return_type.as_ref().and_then(|rt| self.return_type_to_type_hint(rt)),
                         };
@@ -11295,32 +11295,86 @@ impl VM {
             .ok_or_else(|| VmError::RuntimeError("Class not found".into()))?;
         
         // 5. Validate each required method is implemented
-        for (method_name, _interface_method) in &required_methods {
-            if !class_def.methods.contains_key(method_name) {
-                let class_name_str = self.context.interner.lookup(class_name)
-                    .map(|b| String::from_utf8_lossy(b).to_string())
-                    .unwrap_or_else(|| format!("{:?}", class_name));
-                let iface_name_str = self.context.interner.lookup(interface_name)
-                    .map(|b| String::from_utf8_lossy(b).to_string())
-                    .unwrap_or_else(|| format!("{:?}", interface_name));
-                let method_name_str = self.context.interner.lookup(*method_name)
-                    .map(|b| String::from_utf8_lossy(b).to_string())
-                    .unwrap_or_else(|| format!("{:?}", method_name));
+        for (method_name, iface_method) in &required_methods {
+            let class_name_str = self.context.interner.lookup(class_name)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_else(|| format!("{:?}", class_name));
+            let iface_name_str = self.context.interner.lookup(interface_name)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_else(|| format!("{:?}", interface_name));
+            let method_name_str = self.context.interner.lookup(*method_name)
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_else(|| format!("{:?}", method_name));
                 
+            if !class_def.methods.contains_key(method_name) {
                 return Err(VmError::RuntimeError(format!(
                     "Class {} contains 1 abstract method and must therefore be declared abstract or implement the remaining method ({}::{})",
                     class_name_str, iface_name_str, method_name_str
                 )));
             }
             
-            // TODO: Validate signature compatibility
+            // Validate signature compatibility (parameter and return types)
+            if let Some(class_method) = class_def.methods.get(method_name) {
+                // Validate parameter types (contravariance)
+                for (i, iface_param) in iface_method.signature.parameters.iter().enumerate() {
+                    if i >= class_method.signature.parameters.len() {
+                        return Err(VmError::RuntimeError(format!(
+                            "Declaration of {}::{}() must be compatible with {}::{}()",
+                            class_name_str, method_name_str, iface_name_str, method_name_str
+                        )));
+                    }
+                    let class_param = &class_method.signature.parameters[i];
+                    
+                    // Interface parameter types must match exactly or be contravariant
+                    if let Some(iface_type) = &iface_param.type_hint {
+                        match &class_param.type_hint {
+                            None => {
+                                let param_name = self.context.interner.lookup(class_param.name)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_else(|| format!("{:?}", class_param.name));
+                                return Err(VmError::RuntimeError(format!(
+                                    "Type of parameter ${} must be compatible with interface in {}::{}()",
+                                    param_name, class_name_str, method_name_str
+                                )));
+                            }
+                            Some(class_type) => {
+                                if !self.types_equal(class_type, iface_type) && !self.is_type_contravariant(class_type, iface_type) {
+                                    return Err(VmError::RuntimeError(format!(
+                                        "Declaration of {}::{}() must be compatible with {}::{}()",
+                                        class_name_str, method_name_str, iface_name_str, method_name_str
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Validate return type (covariance)
+                match (&iface_method.signature.return_type, &class_method.signature.return_type) {
+                    (Some(iface_ret), None) => {
+                        return Err(VmError::RuntimeError(format!(
+                            "Declaration of {}::{}() must be compatible with interface return type",
+                            class_name_str, method_name_str
+                        )));
+                    }
+                    (Some(iface_ret), Some(class_ret)) => {
+                        if !self.types_equal(class_ret, iface_ret) && !self.is_type_covariant(class_ret, iface_ret) {
+                            return Err(VmError::RuntimeError(format!(
+                                "Declaration of {}::{}() must be compatible with interface return type",
+                                class_name_str, method_name_str
+                            )));
+                        }
+                    }
+                    _ => {} // Interface has no return type, class can have any
+                }
+            }
         }
         
         Ok(())
     }
 
     /// Collect all method signatures required by an interface (including parent interfaces)
-    fn collect_interface_methods(&self, interface_sym: Symbol) -> HashMap<Symbol, ()> {
+    fn collect_interface_methods(&self, interface_sym: Symbol) -> HashMap<Symbol, MethodEntry> {
         let mut methods = HashMap::new();
         
         if let Some(interface_def) = self.context.classes.get(&interface_sym) {
@@ -11329,8 +11383,8 @@ impl VM {
             }
             
             // Collect methods from this interface
-            for method_name in interface_def.methods.keys() {
-                methods.insert(*method_name, ());
+            for (method_name, method_entry) in &interface_def.methods {
+                methods.insert(*method_name, method_entry.clone());
             }
             
             // Recursively collect from parent interfaces
@@ -11469,8 +11523,8 @@ impl VM {
                 name: p.name,
                 type_hint: p.param_type.as_ref().and_then(|rt| self.return_type_to_type_hint(rt)),
                 is_reference: p.by_ref,
-                is_variadic: false,
-                default_value: None,
+                is_variadic: p.is_variadic,
+                default_value: p.default_value.clone(),
             }).collect(),
             return_type: parent_func.return_type.as_ref().and_then(|rt| self.return_type_to_type_hint(rt)),
         };
@@ -11709,11 +11763,15 @@ mod tests {
                     name: sym_a,
                     by_ref: false,
                     param_type: None,
+                    is_variadic: false,
+                    default_value: None,
                 },
                 FuncParam {
                     name: sym_b,
                     by_ref: false,
                     param_type: None,
+                    is_variadic: false,
+                    default_value: None,
                 },
             ],
             uses: Vec::new(),

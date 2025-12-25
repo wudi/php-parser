@@ -190,6 +190,7 @@ impl<'src> Emitter<'src> {
                         by_ref: bool,
                         ty: Option<&'a Type<'a>>,
                         default: Option<&'a Expr<'a>>,
+                        variadic: bool,
                     }
 
                     let mut param_infos = Vec::new();
@@ -199,6 +200,7 @@ impl<'src> Emitter<'src> {
                             by_ref: param.by_ref,
                             ty: param.ty,
                             default: param.default.as_ref().map(|e| *e),
+                            variadic: param.variadic,
                         });
                     }
 
@@ -225,11 +227,14 @@ impl<'src> Emitter<'src> {
                         if p_name.starts_with(b"$") {
                             let sym = method_emitter.interner.intern(&p_name[1..]);
                             let param_type = info.ty.and_then(|ty| method_emitter.convert_type(ty));
+                            let default_value = info.default.map(|expr| method_emitter.eval_constant_expr(expr));
                             
                             param_syms.push(FuncParam {
                                 name: sym,
                                 by_ref: info.by_ref,
                                 param_type,
+                                is_variadic: info.variadic,
+                                default_value,
                             });
 
                             if let Some(default_expr) = info.default {
@@ -702,7 +707,9 @@ impl<'src> Emitter<'src> {
                 struct ParamInfo<'a> {
                     name_span: php_parser::span::Span,
                     by_ref: bool,
+                    ty: Option<&'a Type<'a>>,
                     default: Option<&'a Expr<'a>>,
+                    variadic: bool,
                 }
 
                 let mut param_infos = Vec::new();
@@ -710,7 +717,9 @@ impl<'src> Emitter<'src> {
                     param_infos.push(ParamInfo {
                         name_span: param.name.span,
                         by_ref: param.by_ref,
+                        ty: param.ty,
                         default: param.default.as_ref().map(|e| *e),
+                        variadic: param.variadic,
                     });
                 }
 
@@ -726,10 +735,15 @@ impl<'src> Emitter<'src> {
                     let p_name = func_emitter.get_text(info.name_span);
                     if p_name.starts_with(b"$") {
                         let sym = func_emitter.interner.intern(&p_name[1..]);
+                        let param_type = info.ty.and_then(|ty| func_emitter.convert_type(ty));
+                        let default_value = info.default.map(|expr| func_emitter.eval_constant_expr(expr));
+                        
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
-                            param_type: None, // TODO: Extract from AST params
+                            param_type,
+                            is_variadic: info.variadic,
+                            default_value,
                         });
 
                         if let Some(default_expr) = info.default {
@@ -2141,7 +2155,9 @@ impl<'src> Emitter<'src> {
                 struct ParamInfo<'a> {
                     name_span: php_parser::span::Span,
                     by_ref: bool,
+                    ty: Option<&'a Type<'a>>,
                     default: Option<&'a Expr<'a>>,
+                    variadic: bool,
                 }
 
                 let mut param_infos = Vec::new();
@@ -2149,7 +2165,9 @@ impl<'src> Emitter<'src> {
                     param_infos.push(ParamInfo {
                         name_span: param.name.span,
                         by_ref: param.by_ref,
+                        ty: param.ty,
                         default: param.default.as_ref().map(|e| *e),
+                        variadic: param.variadic,
                     });
                 }
 
@@ -2167,10 +2185,15 @@ impl<'src> Emitter<'src> {
                     let p_name = func_emitter.get_text(info.name_span);
                     if p_name.starts_with(b"$") {
                         let sym = func_emitter.interner.intern(&p_name[1..]);
+                        let param_type = info.ty.and_then(|ty| func_emitter.convert_type(ty));
+                        let default_value = info.default.map(|expr| func_emitter.eval_constant_expr(expr));
+                        
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
-                            param_type: None, // TODO: Extract from AST params
+                            param_type,
+                            is_variadic: info.variadic,
+                            default_value,
                         });
 
                         if let Some(default_expr) = info.default {
