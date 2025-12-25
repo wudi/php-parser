@@ -947,55 +947,6 @@ impl RequestContext {
         self.register_builtin_constants();
     }
 
-    /// Get or lazily load a builtin class by name
-    ///
-    /// This is the primary optimization for request initialization - builtin classes
-    /// are not materialized into the request context until first access.
-    ///
-    /// # Performance
-    /// - First access: O(1) symbol intern + O(1) HashMap insert  
-    /// - Subsequent access: O(1) HashMap lookup
-    /// - Saves ~1594 lines of eager initialization per request
-    ///
-    /// # Implementation Status
-    /// Currently returns None (stub). Full implementation requires:
-    /// 1. Static class definition registry (OnceLock<HashMap>)
-    /// 2. Materialization logic to convert definitions to ClassDef
-    /// 3. Integration with autoload system
-    ///
-    /// # Testing Note
-    /// All 260 VM tests pass without any builtin classes loaded, proving
-    /// the optimization is effective - current tests don't use Exception,
-    /// Throwable, DateTime, etc.
-    pub fn get_or_materialize_builtin_class(&mut self, name: &[u8]) -> Option<Symbol> {
-        // Fast path: already materialized
-        let sym = self.interner.intern(name);
-        if self.classes.contains_key(&sym) {
-            return Some(sym);
-        }
-
-        // Slow path: materialize from static definition
-        // Currently unimplemented - would load from static registry
-        // and call register_builtin_classes() for specific class
-        lazy_materialize_builtin_class(self, name)
-    }
-    
-    /// Force-load all builtin classes (for compatibility or debugging)
-    ///
-    /// This method exists for scenarios that need all builtin classes loaded,
-    /// such as reflection APIs (get_declared_classes) or debugging tools.
-    ///
-    /// # Performance Impact
-    /// Calling this defeats the lazy loading optimization:
-    /// - 1594 lines of code execution
-    /// - 43 HashMap insert operations
-    /// - ~30+ classes materialized
-    ///
-    /// Use sparingly - prefer `get_or_materialize_builtin_class()` when possible.
-    pub fn materialize_all_builtin_classes(&mut self) {
-        self.register_builtin_classes();
-    }
-
     fn materialize_extension_classes(&mut self) {
         let native_classes: Vec<_> = self.engine.registry.classes().values().cloned().collect();
         for native_class in native_classes {
@@ -1121,27 +1072,6 @@ impl RequestContext {
     }
 }
 
-/// Lazy materialization helper for builtin classes
-///
-/// This function is called only when a builtin class is first accessed,
-/// avoiding the O(n) cost of eagerly loading all classes on request init.
-///
-/// # Implementation Note
-/// Currently a stub that returns None. The full implementation would:
-/// 1. Check a static HashMap of class definitions
-/// 2. Materialize the requested class into the RequestContext
-/// 3. Return the interned symbol
-///
-/// TODO: Implement static class definition registry
-fn lazy_materialize_builtin_class(_ctx: &mut RequestContext, _name: &[u8]) -> Option<Symbol> {
-    // Placeholder: In a full implementation, this would:
-    // - Look up class definition from static OnceLock<HashMap>
-    // - Intern symbols and insert into ctx.classes
-    // - Register native methods into ctx.native_methods
-    // - Return the class symbol
-    None
-}
-
 impl RequestContext {
     /// DEPRECATED: Eager loading of all builtin classes
     ///
@@ -1153,11 +1083,6 @@ impl RequestContext {
     /// - Each class requires symbol interning + HashMap inserts
     /// - Total cost: O(classes * methods) per request
     ///
-    /// # Migration Path
-    /// Use `get_or_materialize_builtin_class()` for lazy loading instead.
-    /// This is currently still called to maintain compatibility.
-    ///
-    /// TODO: Remove once all VM code paths use lazy class access
     fn register_builtin_classes(&mut self) {
         // Helper to register a native method
         let register_native_method = |ctx: &mut RequestContext,
