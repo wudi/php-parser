@@ -178,6 +178,35 @@ impl ExtensionRegistry {
         }
     }
 
+    /// Call RINIT on all registered extensions for request initialization
+    pub fn request_init_all(&self, context: &mut crate::runtime::context::RequestContext) {
+        for ext in &self.extensions {
+            if let ExtensionResult::Failure(msg) = ext.request_init(context) {
+                eprintln!("Warning: Extension '{}' RINIT failed: {}", ext.info().name, msg);
+            }
+        }
+    }
+
+    /// Call RSHUTDOWN on all registered extensions for request cleanup
+    pub fn request_shutdown_all(&self, context: &mut crate::runtime::context::RequestContext) {
+        // Call in reverse order (LIFO) for proper cleanup
+        for ext in self.extensions.iter().rev() {
+            if let ExtensionResult::Failure(msg) = ext.request_shutdown(context) {
+                eprintln!("Warning: Extension '{}' RSHUTDOWN failed: {}", ext.info().name, msg);
+            }
+        }
+    }
+
+    /// Call module_shutdown on all registered extensions (called on engine drop)
+    pub fn module_shutdown_all(&mut self) {
+        // Call in reverse order (LIFO) for proper cleanup
+        for ext in self.extensions.iter_mut().rev() {
+            if let ExtensionResult::Failure(msg) = ext.module_shutdown() {
+                eprintln!("Warning: Extension '{}' MSHUTDOWN failed: {}", ext.info().name, msg);
+            }
+        }
+    }
+
     /// Invoke RINIT for all extensions
     pub fn invoke_request_init(&self, context: &mut RequestContext) -> Result<(), String> {
         for ext in &self.extensions {

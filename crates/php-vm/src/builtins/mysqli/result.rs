@@ -8,6 +8,7 @@ use mysql::{Row, Value as MySqlValue};
 use std::collections::HashMap;
 
 /// MySQLi result set wrapper
+#[derive(Debug)]
 pub struct MysqliResult {
     rows: Vec<Row>,
     field_names: Vec<String>,

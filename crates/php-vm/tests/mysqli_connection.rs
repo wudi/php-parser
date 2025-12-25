@@ -1,16 +1,19 @@
-//! MySQLi Connection Tests
-//!
-//! Tests for connection management functions.
+use std::rc::Rc;
+// MySQLi Connection Tests
+//
+// Tests for connection management functions.
 
 use php_vm::builtins::mysqli;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn create_test_vm() -> VM {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::mysqli_extension::MysqliExtension)
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 
@@ -141,17 +144,22 @@ fn test_mysqli_error_functions() {
         Ok(conn_handle) => {
             // Initially should have no error
             let error_result = mysqli::php_mysqli_error(&mut vm, &[conn_handle]);
-            assert!(error_result.is_ok());
+            assert!(error_result.is_ok(), "mysqli_error failed: {:?}", error_result.err());
 
             let error_handle = error_result.unwrap();
             match &vm.arena.get(error_handle).value {
                 Val::String(s) if s.is_empty() => { /* OK - no error */ }
-                _ => {}
+                Val::String(s) => {
+                    eprintln!("Unexpected error string: {}", String::from_utf8_lossy(s));
+                }
+                v => {
+                    eprintln!("Expected string, got: {:?}", v);
+                }
             }
 
             // Errno should be 0
             let errno_result = mysqli::php_mysqli_errno(&mut vm, &[conn_handle]);
-            assert!(errno_result.is_ok());
+            assert!(errno_result.is_ok(), "mysqli_errno failed: {:?}", errno_result.err());
 
             let errno_handle = errno_result.unwrap();
             match &vm.arena.get(errno_handle).value {

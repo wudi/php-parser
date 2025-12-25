@@ -1,9 +1,9 @@
+use std::rc::Rc;
 use php_vm::core::value::{Handle, Val};
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::{VmError, VM};
 use std::process::Command;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn php_out(code: &str) -> (String, bool) {
     // `php -r` expects code without opening tags.
@@ -18,7 +18,7 @@ fn php_out(code: &str) -> (String, bool) {
 }
 
 fn run_vm(expr: &str) -> Result<(VM, Handle), VmError> {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut vm = VM::new(engine);
     let source = format!("<?php return {};", expr);
 

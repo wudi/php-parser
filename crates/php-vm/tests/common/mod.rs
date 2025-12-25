@@ -43,8 +43,7 @@ pub fn create_test_vm() -> ExecutionConfig {
 /// Useful for tests that need to inspect VM internals after execution.
 pub fn run_code_with_vm(code: &str) -> Result<(Val, VM), VmError> {
     use php_vm::compiler::emitter::Emitter;
-    use php_vm::runtime::context::{EngineContext, RequestContext};
-    use std::sync::Arc;
+    use php_vm::runtime::context::{EngineBuilder, RequestContext};
 
     let arena = bumpalo::Bump::new();
     let lexer = php_parser::lexer::Lexer::new(code.as_bytes());
@@ -58,7 +57,14 @@ pub fn run_code_with_vm(code: &str) -> Result<(Val, VM), VmError> {
         )));
     }
 
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::hash_extension::HashExtension)
+        .with_extension(php_vm::runtime::json_extension::JsonExtension)
+        .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
+        .with_extension(php_vm::runtime::zlib_extension::ZlibExtension)
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
     let emitter = Emitter::new(code.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);
@@ -80,7 +86,7 @@ pub fn run_code_vm_only(code: &str) -> VM {
 // Result<Val, VmError>, String
 pub fn run_code_capture_output(code: &str) -> Result<(Val, String), VmError> {
     use php_vm::compiler::emitter::Emitter;
-    use php_vm::runtime::context::{EngineContext, RequestContext};
+    use php_vm::runtime::context::{EngineBuilder, RequestContext};
     use php_vm::vm::engine::{OutputWriter, VmError, VM};
     use std::sync::{Arc, Mutex};
 
@@ -104,7 +110,14 @@ pub fn run_code_capture_output(code: &str) -> Result<(Val, String), VmError> {
         panic!("Parse errors: {:?}", program.errors);
     }
 
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::hash_extension::HashExtension)
+        .with_extension(php_vm::runtime::json_extension::JsonExtension)
+        .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
+        .with_extension(php_vm::runtime::zlib_extension::ZlibExtension)
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
     let emitter = Emitter::new(code.as_bytes(), &mut request_context.interner);
     let (chunk, _) = emitter.compile(&program.statements);

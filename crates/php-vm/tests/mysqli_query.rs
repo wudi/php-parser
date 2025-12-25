@@ -1,16 +1,20 @@
-//! MySQLi Query Tests
-//!
-//! Tests for query execution and result fetching.
+use std::rc::Rc;
+// MySQLi Query Tests
+//
+// Tests for query execution and result fetching.
 
 use php_vm::builtins::mysqli;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::{ArrayKey, Val};
-use php_vm::runtime::context::EngineContext;
+
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn create_test_vm() -> VM {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::mysqli_extension::MysqliExtension)
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 

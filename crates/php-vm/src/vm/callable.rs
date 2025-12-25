@@ -111,7 +111,7 @@ impl VM {
         let name_bytes = self.context.interner.lookup(name).unwrap_or(b"");
         let lower_name = name_bytes.to_ascii_lowercase();
 
-        // Check extension registry first (new way)
+        // Check extension registry
         if let Some(handler) = self.context.engine.registry.get_function(&lower_name) {
             let by_ref = self
                 .context
@@ -134,15 +134,6 @@ impl VM {
                     }
                 }
             }
-            let res = handler(self, &args).map_err(VmError::RuntimeError)?;
-            self.operand_stack.push(res);
-            return Ok(());
-        }
-
-        // Fall back to legacy functions HashMap (backward compatibility)
-        let legacy_handler = self.context.engine.functions.get(&lower_name).copied();
-        if let Some(handler) = legacy_handler {
-            self.handle_pending_undefined_for_call(&args, None);
             let res = handler(self, &args).map_err(VmError::RuntimeError)?;
             self.operand_stack.push(res);
             return Ok(());

@@ -1,12 +1,15 @@
+use std::rc::Rc;
 /// Tests for incremental hashing (hash_init, hash_update, hash_final, hash_copy)
 use php_vm::core::value::Val;
-use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn create_test_vm() -> VM {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::hash_extension::HashExtension)
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 

@@ -11,7 +11,7 @@
 //!
 //! - **Encoding**: Val → JSON (handles arrays, objects, primitives)
 //! - **Decoding**: JSON → Val (recursive descent parser)
-//! - **Error State**: Stored in RequestContext.json_last_error
+//! - **Error State**: Stored in generic extension storage
 //! - **No Panics**: All errors return Result or set error state
 //!
 //! # References
@@ -25,6 +25,12 @@ use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use std::collections::HashSet;
 use std::rc::Rc;
+
+/// Extension-specific data for JSON module
+#[derive(Debug, Default)]
+pub struct JsonExtensionData {
+    pub last_error: JsonError,
+}
 
 /// JSON error codes matching PHP constants
 /// Reference: $PHP_SRC_PATH/ext/json/php_json.h
@@ -456,7 +462,7 @@ pub fn php_json_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     // Reset error state
-    vm.context.json_last_error = JsonError::None;
+    vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = JsonError::None;
 
     // Parse options
     let options = if args.len() > 1 {
@@ -486,7 +492,7 @@ pub fn php_json_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     match ctx.encode_value(args[0]) {
         Ok(json_str) => Ok(vm.arena.alloc(Val::String(json_str.into_bytes().into()))),
         Err(err) => {
-            vm.context.json_last_error = err;
+            vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = err;
             if options.throw_on_error {
                 // TODO: Throw JsonException
                 Err(format!("json_encode error: {}", err.message()))
@@ -518,14 +524,14 @@ pub fn php_json_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     // Reset error state
-    vm.context.json_last_error = JsonError::None;
+    vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = JsonError::None;
 
     // Get JSON string
     let json_val = &vm.arena.get(args[0]).value;
     let json_bytes = match json_val {
         Val::String(s) => s,
         _ => {
-            vm.context.json_last_error = JsonError::Syntax;
+            vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = JsonError::Syntax;
             return Ok(vm.arena.alloc(Val::Null));
         }
     };
@@ -533,7 +539,7 @@ pub fn php_json_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let json_str = match std::str::from_utf8(json_bytes) {
         Ok(s) => s,
         Err(_) => {
-            vm.context.json_last_error = JsonError::Utf8;
+            vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = JsonError::Utf8;
             return Ok(vm.arena.alloc(Val::Null));
         }
     };
@@ -572,7 +578,7 @@ pub fn php_json_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // TODO: Implement actual JSON parser
     // For now, return a placeholder
     let _ = (json_str, assoc);
-    vm.context.json_last_error = JsonError::Syntax;
+    vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error = JsonError::Syntax;
     Ok(vm.arena.alloc(Val::Null))
 }
 
@@ -590,7 +596,7 @@ pub fn php_json_last_error(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         return Err("json_last_error() expects exactly 0 parameters".into());
     }
 
-    let error_code = vm.context.json_last_error.code();
+    let error_code = vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error.code();
     Ok(vm.arena.alloc(Val::Int(error_code)))
 }
 
@@ -608,7 +614,7 @@ pub fn php_json_last_error_msg(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
         return Err("json_last_error_msg() expects exactly 0 parameters".into());
     }
 
-    let error_msg = vm.context.json_last_error.message();
+    let error_msg = vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error.message();
     Ok(vm
         .arena
         .alloc(Val::String(error_msg.as_bytes().to_vec().into())))
@@ -766,7 +772,7 @@ mod tests {
 
         // Should return false on error
         assert!(matches!(result_val, Val::Bool(false)));
-        assert_eq!(vm.context.json_last_error, JsonError::Depth);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::Depth);
     }
 
     // ========================================================================
@@ -836,7 +842,7 @@ mod tests {
 
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
-        assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::InfOrNan);
     }
 
     #[test]
@@ -848,7 +854,7 @@ mod tests {
 
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
-        assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::InfOrNan);
     }
 
     // ========================================================================
@@ -1241,14 +1247,14 @@ mod tests {
         // First, trigger an error
         let inf_handle = vm.arena.alloc(Val::Float(f64::INFINITY));
         php_json_encode(&mut vm, &[inf_handle]).unwrap();
-        assert_eq!(vm.context.json_last_error, JsonError::InfOrNan);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::InfOrNan);
 
         // Now encode successfully
         let null_handle = vm.arena.alloc(Val::Null);
         php_json_encode(&mut vm, &[null_handle]).unwrap();
 
         // Error should be reset
-        assert_eq!(vm.context.json_last_error, JsonError::None);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::None);
     }
 
     // ========================================================================
@@ -1339,7 +1345,7 @@ mod tests {
 
         // Should return false on error
         assert!(matches!(vm.arena.get(result).value, Val::Bool(false)));
-        assert_eq!(vm.context.json_last_error, JsonError::UnsupportedType);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::UnsupportedType);
     }
 
     #[test]
@@ -1449,7 +1455,7 @@ mod tests {
 
         // Should succeed (not return false)
         assert!(matches!(vm.arena.get(result).value, Val::String(_)));
-        assert_eq!(vm.context.json_last_error, JsonError::None);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::None);
     }
 
     #[test]
@@ -1480,7 +1486,7 @@ mod tests {
         // This should succeed - referencing the same value multiple times is OK
         let result = php_json_encode(&mut vm, &[arr_handle]).unwrap();
         assert!(matches!(vm.arena.get(result).value, Val::String(_)));
-        assert_eq!(vm.context.json_last_error, JsonError::None);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::None);
 
         // Note: True circular reference testing will be added when we have
         // objects with mutable properties that can reference themselves
@@ -1513,7 +1519,7 @@ mod tests {
             panic!("Expected string result");
         }
 
-        assert_eq!(vm.context.json_last_error, JsonError::None);
+        assert_eq!(vm.context.get_or_init_extension_data(|| JsonExtensionData::default()).last_error, JsonError::None);
     }
 
     #[test]

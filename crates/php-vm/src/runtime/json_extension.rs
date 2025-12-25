@@ -84,8 +84,10 @@ impl Extension for JsonExtension {
     }
 
     fn request_init(&self, context: &mut RequestContext) -> ExtensionResult {
-        // Reset JSON error state for new request
-        context.json_last_error = json::JsonError::None;
+        // Initialize JSON error state for new request
+        context.set_extension_data(json::JsonExtensionData {
+            last_error: json::JsonError::None,
+        });
         ExtensionResult::Success
     }
 
@@ -185,19 +187,24 @@ mod tests {
 
         let mut request_ctx = RequestContext::new(engine.clone());
 
-        // Set an error
-        request_ctx.json_last_error = json::JsonError::Depth;
+        // Set an error in extension data
+        request_ctx
+            .get_or_init_extension_data(|| crate::builtins::json::JsonExtensionData::default())
+            .last_error = crate::builtins::json::JsonError::Depth;
 
-        // Invoke RINIT
+        // Invoke RINIT again to test that it clears the error
         engine
             .registry
             .invoke_request_init(&mut request_ctx)
             .expect("RINIT should succeed");
 
         // Verify error was reset
+        let error_code = request_ctx
+            .get_extension_data::<crate::builtins::json::JsonExtensionData>()
+            .map(|data| data.last_error.code())
+            .unwrap_or(0);
         assert_eq!(
-            request_ctx.json_last_error.code(),
-            0,
+            error_code, 0,
             "JSON error should be reset to None on request init"
         );
     }

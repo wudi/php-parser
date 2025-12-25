@@ -1,15 +1,17 @@
 use std::rc::Rc;
-use std::sync::Arc;
+use php_vm::runtime::context::EngineBuilder;
 
 use bumpalo::Bump;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
 
-fn compile_into_vm(vm: &mut VM, source: &str) {
+fn run_php_and_get_result(source: &str) -> Val {
+    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let mut vm = VM::new(engine);
+
     let arena = Bump::new();
     let lexer = Lexer::new(source.as_bytes());
     let mut parser = PhpParser::new(lexer, &arena);
@@ -23,56 +25,35 @@ fn compile_into_vm(vm: &mut VM, source: &str) {
     let emitter = Emitter::new(source.as_bytes(), &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
     vm.run(Rc::new(chunk)).expect("script execution failed");
+
+    match vm.last_return_value {
+        Some(handle) => vm.arena.get(handle).value.clone(),
+        None => Val::Null,
+    }
 }
 
 #[test]
 fn detects_builtin_and_user_functions() {
-    let engine = Arc::new(EngineContext::new());
-    let mut vm = VM::new(engine);
+    // Test builtin function
+    let result = run_php_and_get_result("<?php return function_exists('strlen');");
+    assert!(matches!(result, Val::Bool(true)));
 
-    compile_into_vm(&mut vm, "<?php function SampleFn() {}");
+    // Test user-defined function
+    let result = run_php_and_get_result("<?php function SampleFn() {} return function_exists('SampleFn');");
+    assert!(matches!(result, Val::Bool(true)));
 
-    let handler_key = b"function_exists".to_vec();
-    let handler = *vm
-        .context
-        .engine
-        .functions
-        .get(&handler_key)
-        .expect("function_exists not registered");
-
-    let builtin_arg = vm.arena.alloc(Val::String(Rc::new(b"strlen".to_vec())));
-    let builtin_res = handler(&mut vm, &[builtin_arg]).expect("builtin check failed");
-    assert!(matches!(vm.arena.get(builtin_res).value, Val::Bool(true)));
-
-    let user_arg = vm.arena.alloc(Val::String(Rc::new(b"SampleFn".to_vec())));
-    let user_res = handler(&mut vm, &[user_arg]).expect("user check failed");
-    assert!(matches!(vm.arena.get(user_res).value, Val::Bool(true)));
-
-    let missing_arg = vm
-        .arena
-        .alloc(Val::String(Rc::new(b"does_not_exist".to_vec())));
-    let missing_res = handler(&mut vm, &[missing_arg]).expect("missing check failed");
-    assert!(matches!(vm.arena.get(missing_res).value, Val::Bool(false)));
+    // Test missing function
+    let result = run_php_and_get_result("<?php return function_exists('does_not_exist');");
+    assert!(matches!(result, Val::Bool(false)));
 }
 
 #[test]
 fn reports_extension_loaded_status() {
-    let engine = Arc::new(EngineContext::new());
-    let mut vm = VM::new(engine);
+    // Test core extension
+    let result = run_php_and_get_result("<?php return extension_loaded('core');");
+    assert!(matches!(result, Val::Bool(true)));
 
-    let handler_key = b"extension_loaded".to_vec();
-    let handler = *vm
-        .context
-        .engine
-        .functions
-        .get(&handler_key)
-        .expect("extension_loaded not registered");
-
-    let core_arg = vm.arena.alloc(Val::String(Rc::new(b"core".to_vec())));
-    let core_res = handler(&mut vm, &[core_arg]).expect("core check failed");
-    assert!(matches!(vm.arena.get(core_res).value, Val::Bool(true)));
-
-    let mb_arg = vm.arena.alloc(Val::String(Rc::new(b"mbstring".to_vec())));
-    let mb_res = handler(&mut vm, &[mb_arg]).expect("mbstring check failed");
-    assert!(matches!(vm.arena.get(mb_res).value, Val::Bool(false)));
+    // Test missing extension
+    let result = run_php_and_get_result("<?php return extension_loaded('mbstring');");
+    assert!(matches!(result, Val::Bool(false)));
 }

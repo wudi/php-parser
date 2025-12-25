@@ -3,7 +3,32 @@ use crate::core::value::Val;
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Extension-specific data for Hash module
+pub struct HashExtensionData {
+    pub registry: Arc<hash::HashRegistry>,
+    pub states: HashMap<u64, Box<dyn hash::HashState>>,  // Use u64 for resource IDs
+}
+
+impl std::fmt::Debug for HashExtensionData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HashExtensionData")
+            .field("registry", &"<HashRegistry>")
+            .field("states", &format!("{} states", self.states.len()))
+            .finish()
+    }
+}
+
+impl Default for HashExtensionData {
+    fn default() -> Self {
+        Self {
+            registry: Arc::new(hash::HashRegistry::new()),
+            states: HashMap::new(),
+        }
+    }
+}
 
 /// Hash extension - Cryptographic Hashing Functions
 pub struct HashExtension;
@@ -47,8 +72,10 @@ impl Extension for HashExtension {
 
     fn request_init(&self, context: &mut RequestContext) -> ExtensionResult {
         // Initialize hash registry and states for new request
-        context.hash_registry = Some(Arc::new(hash::HashRegistry::new()));
-        context.hash_states = Some(Default::default());
+        context.set_extension_data(HashExtensionData {
+            registry: Arc::new(hash::HashRegistry::new()),
+            states: HashMap::new(),
+        });
         ExtensionResult::Success
     }
 

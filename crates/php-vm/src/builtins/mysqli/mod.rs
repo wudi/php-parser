@@ -28,6 +28,7 @@ pub mod types;
 
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use connection::MysqliConnection;
@@ -94,13 +95,14 @@ pub fn php_mysqli_connect(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     // Create connection
     match MysqliConnection::new(&host, &username, &password, &database, port) {
         Ok(conn) => {
-            // Store connection in context
+            // Store connection in unified resource manager
             let conn_id = vm.context.next_resource_id;
             vm.context.next_resource_id += 1;
 
-            vm.context
-                .mysqli_connections
-                .insert(conn_id, Rc::new(std::cell::RefCell::new(conn)));
+            vm.context.resource_manager.register(
+                conn_id,
+                Rc::new(std::cell::RefCell::new(conn))
+            );
 
             // Return resource handle
             let resource_val = Val::Resource(Rc::new(conn_id));
@@ -131,8 +133,10 @@ pub fn php_mysqli_close(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         _ => return Err("mysqli_close(): Argument #1 must be mysqli link".into()),
     };
 
-    // Remove connection from context (triggers Drop/cleanup)
-    let removed = vm.context.mysqli_connections.remove(&conn_id).is_some();
+    // Remove connection from resource manager (triggers Drop/cleanup)
+    let removed = vm.context.resource_manager
+        .remove::<MysqliConnection>(conn_id)
+        .is_some();
 
     Ok(vm.arena.alloc(Val::Bool(removed)))
 }
@@ -161,25 +165,28 @@ pub fn php_mysqli_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         _ => return Err("mysqli_query(): Argument #2 must be string".into()),
     };
 
-    // Get connection
+    // Get connection from ResourceManager - returns Rc<RefCell<T>>
     let conn_ref = vm
         .context
-        .mysqli_connections
-        .get(&conn_id)
+        .resource_manager
+        .get::<MysqliConnection>(conn_id)
         .ok_or_else(|| "mysqli_query(): Invalid mysqli link".to_string())?;
 
     let query_str = String::from_utf8_lossy(&query);
 
-    // Execute query
-    match conn_ref.borrow_mut().query(&query_str) {
+    // Execute query - borrow before match to extend lifetime
+    let query_result = conn_ref.borrow_mut().query(&query_str);
+    match query_result {
         Ok(result) => {
-            // Store result
+            // Store result - capture resource ID first to avoid borrow conflicts
             let result_id = vm.context.next_resource_id;
             vm.context.next_resource_id += 1;
-
+            
+            let result_rc = Rc::new(std::cell::RefCell::new(result));
             vm.context
-                .mysqli_results
-                .insert(result_id, Rc::new(std::cell::RefCell::new(result)));
+                .get_or_init_extension_data(|| crate::runtime::mysqli_extension::MysqliExtensionData::default())
+                .results
+                .insert(result_id, result_rc);
 
             // Return result resource
             Ok(vm.arena.alloc(Val::Resource(Rc::new(result_id))))
@@ -212,8 +219,8 @@ pub fn php_mysqli_fetch_assoc(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
     // Get result
     let result_ref = vm
         .context
-        .mysqli_results
-        .get(&result_id)
+        .get_extension_data::<crate::runtime::mysqli_extension::MysqliExtensionData>()
+        .and_then(|data| data.results.get(&result_id))
         .ok_or_else(|| "mysqli_fetch_assoc(): Invalid mysqli_result".to_string())?;
 
     // Fetch next row (release borrow immediately)
@@ -261,8 +268,8 @@ pub fn php_mysqli_fetch_row(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     // Get result
     let result_ref = vm
         .context
-        .mysqli_results
-        .get(&result_id)
+        .get_extension_data::<crate::runtime::mysqli_extension::MysqliExtensionData>()
+        .and_then(|data| data.results.get(&result_id))
         .ok_or_else(|| "mysqli_fetch_row(): Invalid mysqli_result".to_string())?;
 
     // Fetch next row (release borrow immediately)
@@ -309,8 +316,8 @@ pub fn php_mysqli_num_rows(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     // Get result
     let result_ref = vm
         .context
-        .mysqli_results
-        .get(&result_id)
+        .get_extension_data::<crate::runtime::mysqli_extension::MysqliExtensionData>()
+        .and_then(|data| data.results.get(&result_id))
         .ok_or_else(|| "mysqli_num_rows(): Invalid mysqli_result".to_string())?;
 
     let num_rows = result_ref.borrow().num_rows() as i64;
@@ -336,11 +343,11 @@ pub fn php_mysqli_affected_rows(vm: &mut VM, args: &[Handle]) -> Result<Handle, 
         _ => return Err("mysqli_affected_rows(): Argument #1 must be mysqli link".into()),
     };
 
-    // Get connection
+    // Get connection from ResourceManager
     let conn_ref = vm
         .context
-        .mysqli_connections
-        .get(&conn_id)
+        .resource_manager
+        .get::<MysqliConnection>(conn_id)
         .ok_or_else(|| "mysqli_affected_rows(): Invalid mysqli link".to_string())?;
 
     let affected = conn_ref.borrow().affected_rows() as i64;
@@ -366,11 +373,11 @@ pub fn php_mysqli_error(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         _ => return Err("mysqli_error(): Argument #1 must be mysqli link".into()),
     };
 
-    // Get connection
+    // Get connection from ResourceManager
     let conn_ref = vm
         .context
-        .mysqli_connections
-        .get(&conn_id)
+        .resource_manager
+        .get::<MysqliConnection>(conn_id)
         .ok_or_else(|| "mysqli_error(): Invalid mysqli link".to_string())?;
 
     let error_msg = conn_ref.borrow().last_error_message();
@@ -396,11 +403,11 @@ pub fn php_mysqli_errno(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         _ => return Err("mysqli_errno(): Argument #1 must be mysqli link".into()),
     };
 
-    // Get connection
+    // Get connection from ResourceManager
     let conn_ref = vm
         .context
-        .mysqli_connections
-        .get(&conn_id)
+        .resource_manager
+        .get::<MysqliConnection>(conn_id)
         .ok_or_else(|| "mysqli_errno(): Invalid mysqli link".to_string())?;
 
     let errno = conn_ref.borrow().last_error_code() as i64;

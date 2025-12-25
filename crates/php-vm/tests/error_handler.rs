@@ -1,9 +1,9 @@
+use std::rc::Rc;
 use php_vm::core::interner::Interner;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::{ErrorHandler, ErrorLevel, VM};
 use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
 
 /// Custom error handler that collects errors for testing
 struct CollectingErrorHandler {
@@ -33,7 +33,7 @@ fn test_custom_error_handler() {
 
     assert!(program.errors.is_empty());
 
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut interner = Interner::default();
     let emitter = php_vm::compiler::emitter::Emitter::new(source, &mut interner);
     let (chunk, _) = emitter.compile(program.statements);
@@ -66,7 +66,7 @@ fn test_undefined_variable_notice() {
 
     assert!(program.errors.is_empty());
 
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut interner = Interner::default();
     let emitter = php_vm::compiler::emitter::Emitter::new(source, &mut interner);
     let (chunk, _) = emitter.compile(program.statements);

@@ -1,8 +1,8 @@
+use std::rc::Rc;
 use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
 
 struct BufferWriter {
     buffer: Rc<RefCell<Vec<u8>>>,
@@ -22,7 +22,7 @@ impl OutputWriter for BufferWriter {
 }
 
 fn php_out(code: &str) -> String {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     let buffer = Rc::new(RefCell::new(Vec::new()));
@@ -52,7 +52,7 @@ fn php_out(code: &str) -> String {
 }
 
 fn php_run(code: &str) -> Result<String, String> {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     let buffer = Rc::new(RefCell::new(Vec::new()));

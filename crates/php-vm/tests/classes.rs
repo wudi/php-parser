@@ -1,10 +1,9 @@
+use std::rc::Rc;
 use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 #[test]
 fn test_class_definition_and_instantiation() {
@@ -24,7 +23,7 @@ fn test_class_definition_and_instantiation() {
         return $res;
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();
@@ -64,7 +63,7 @@ fn test_inheritance() {
         return $d->makeSound();
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();
@@ -103,7 +102,7 @@ fn test_method_argument_binding() {
         return $a . '|' . $b;
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();
@@ -142,7 +141,7 @@ fn test_static_method_argument_binding() {
         return $first . '|' . $second . '|' . $third;
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();
@@ -179,7 +178,7 @@ fn test_magic_call_func_get_args_metadata() {
         return $d->alpha(10, 20);
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();
@@ -215,7 +214,7 @@ fn test_magic_call_static_func_get_args_metadata() {
         return DemoStatic::beta(42);
     ";
 
-    let context = Arc::new(EngineContext::new());
+    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();

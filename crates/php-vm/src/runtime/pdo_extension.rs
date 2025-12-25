@@ -2,6 +2,15 @@ use crate::builtins::pdo;
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;use std::sync::Arc;
+/// Extension-specific data for PDO module
+#[derive(Debug, Default)]
+pub struct PdoExtensionData {
+    pub connections: HashMap<u64, Rc<RefCell<Box<dyn pdo::driver::PdoConnection>>>>,
+    pub statements: HashMap<u64, Rc<RefCell<Box<dyn pdo::driver::PdoStatement>>>>,
+}
 
 /// PDO extension - PHP Data Objects
 pub struct PdoExtension;
@@ -17,6 +26,7 @@ impl Extension for PdoExtension {
 
     fn module_init(&self, registry: &mut ExtensionRegistry) -> ExtensionResult {
         pdo::register_pdo_extension_to_registry(registry);
+        // PDO driver registry is now a global singleton, initialized on first use
         ExtensionResult::Success
     }
 
@@ -24,8 +34,9 @@ impl Extension for PdoExtension {
         ExtensionResult::Success
     }
 
-    fn request_init(&self, _context: &mut RequestContext) -> ExtensionResult {
-        // Initialize per-request PDO state if needed
+    fn request_init(&self, context: &mut RequestContext) -> ExtensionResult {
+        // Initialize per-request PDO connections and statements
+        context.set_extension_data(PdoExtensionData::default());
         ExtensionResult::Success
     }
 

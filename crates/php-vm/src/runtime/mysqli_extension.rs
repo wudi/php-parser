@@ -2,6 +2,19 @@ use crate::builtins::mysqli;
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+/// Extension-specific data for MySQLi module
+///
+/// Note: In the future, resources (connections, results) will be stored in
+/// RequestContext::resource_manager for unified, type-safe resource handling.
+#[derive(Debug, Default)]
+pub struct MysqliExtensionData {
+    pub connections: HashMap<u64, Rc<RefCell<mysqli::MysqliConnection>>>,
+    pub results: HashMap<u64, Rc<RefCell<mysqli::result::MysqliResult>>>,
+}
 
 /// MySQLi extension - MySQL Improved Extension
 pub struct MysqliExtension;
@@ -34,9 +47,9 @@ impl Extension for MysqliExtension {
         ExtensionResult::Success
     }
 
-    fn request_init(&self, _context: &mut RequestContext) -> ExtensionResult {
-        // MySQLi connections and results are managed per-request in RequestContext
-        // No additional initialization needed here
+    fn request_init(&self, context: &mut RequestContext) -> ExtensionResult {
+        // Initialize MySQLi connections and results for new request
+        context.set_extension_data(MysqliExtensionData::default());
         ExtensionResult::Success
     }
 

@@ -10658,12 +10658,11 @@ mod tests {
     use std::sync::Arc;
 
     fn create_vm() -> VM {
-        let mut functions = HashMap::new();
-        functions.insert(
-            b"strlen".to_vec(),
-            php_strlen as crate::runtime::context::NativeHandler,
-        );
-        let engine = Arc::new(EngineContext::new());
+        // Use EngineBuilder to properly register core extensions
+        let engine = crate::runtime::context::EngineBuilder::new()
+            .with_core_extensions()
+            .build()
+            .expect("Failed to build engine");
 
         VM::new(engine)
     }

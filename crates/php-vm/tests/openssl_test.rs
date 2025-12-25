@@ -1,11 +1,15 @@
+use std::rc::Rc;
 use php_vm::core::value::{ArrayData, ObjectData, Val};
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn create_test_vm() -> VM {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 

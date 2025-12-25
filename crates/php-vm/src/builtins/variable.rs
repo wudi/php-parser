@@ -438,7 +438,12 @@ pub fn php_define(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let sym = vm.context.interner.intern(&name);
 
-    if vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym) {
+    // Check if constant already defined (in request context or registry)
+    if vm.context.constants.contains_key(&sym) {
+        // Notice: Constant already defined
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+    if vm.context.engine.registry.get_constant(&name).is_some() {
         // Notice: Constant already defined
         return Ok(vm.arena.alloc(Val::Bool(false)));
     }
@@ -461,8 +466,9 @@ pub fn php_defined(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let sym = vm.context.interner.intern(&name);
 
-    let exists =
-        vm.context.constants.contains_key(&sym) || vm.context.engine.constants.contains_key(&sym);
+    // Check if constant exists (in request context or registry)
+    let exists = vm.context.constants.contains_key(&sym)
+        || vm.context.engine.registry.get_constant(&name).is_some();
 
     Ok(vm.arena.alloc(Val::Bool(exists)))
 }
@@ -480,11 +486,13 @@ pub fn php_constant(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let sym = vm.context.interner.intern(&name);
 
+    // Check request context constants first
     if let Some(val) = vm.context.constants.get(&sym) {
         return Ok(vm.arena.alloc(val.clone()));
     }
 
-    if let Some(val) = vm.context.engine.constants.get(&sym) {
+    // Check registry constants
+    if let Some(val) = vm.context.engine.registry.get_constant(&name) {
         return Ok(vm.arena.alloc(val.clone()));
     }
 

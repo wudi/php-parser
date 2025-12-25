@@ -153,11 +153,6 @@ fn function_exists_case_insensitive(vm: &VM, name_bytes: &[u8]) -> bool {
         return true;
     }
 
-    // Check legacy functions (backward compatibility)
-    if vm.context.engine.functions.contains_key(&lower_name) {
-        return true;
-    }
-
     // Check user-defined functions
     vm.context
         .user_functions

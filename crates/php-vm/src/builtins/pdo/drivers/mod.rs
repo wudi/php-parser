@@ -10,6 +10,10 @@ pub mod sqlite;
 use super::driver::PdoDriver;
 use super::types::PdoError;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// Global PDO driver registry (initialized once, shared across all contexts)
+static DRIVER_REGISTRY: OnceLock<DriverRegistry> = OnceLock::new();
 
 /// Registry of PDO drivers
 pub struct DriverRegistry {
@@ -30,6 +34,11 @@ impl DriverRegistry {
         registry.register(Box::new(oci::OciDriver));
 
         registry
+    }
+
+    /// Get the global driver registry (lazy-initialized on first access)
+    pub fn global() -> &'static DriverRegistry {
+        DRIVER_REGISTRY.get_or_init(|| DriverRegistry::new())
     }
 
     /// Register a driver

@@ -42,7 +42,85 @@ impl ExtensionResult {
 /// | CLI  | Once per script | Once per script |
 /// | FPM  | Once per worker | Every request   |
 ///
-pub trait Extension: Send + Sync {
+/// # Invocation Order
+///
+/// **Startup (EngineBuilder::build)**:
+/// 1. For each extension: MINIT (forward order)
+///
+/// **Request Start (RequestContext::new)**:
+/// 1. Initialize builtin classes, constants
+/// 2. For each extension: RINIT (forward order)
+///
+/// **Request End (RequestContext::drop)**:
+/// 1. For each extension: RSHUTDOWN (reverse order, LIFO)
+///
+/// **Shutdown (EngineContext::drop)**:
+/// 1. For each extension: MSHUTDOWN (reverse order, LIFO)
+///
+/// # Example Extension
+///
+/// ```rust,ignore
+/// use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
+/// use std::any::TypeId;
+/// use std::collections::HashMap;
+///
+/// // Per-request extension data
+/// #[derive(Default)]
+/// struct MyExtensionData {
+///     counter: i64,
+///     cache: HashMap<String, String>,
+/// }
+///
+/// pub struct MyExtension;
+///
+/// impl Extension for MyExtension {
+///     fn info(&self) -> ExtensionInfo {
+///         ExtensionInfo {
+///             name: "myext",
+///             version: "1.0.0",
+///             dependencies: &[],
+///         }
+///     }
+///
+///     fn module_init(&self, registry: &mut ExtensionRegistry) -> ExtensionResult {
+///         // Called once per worker - register functions/constants
+///         registry.register_function("my_function", my_function_impl);
+///         ExtensionResult::Success
+///     }
+///
+///     fn request_init(&self, context: &mut RequestContext) -> ExtensionResult {
+///         // Called per request - initialize extension data
+///         context.set_extension_data::<MyExtensionData>(
+///             TypeId::of::<MyExtensionData>(),
+///             Box::new(MyExtensionData::default())
+///         );
+///         ExtensionResult::Success
+///     }
+///
+///     fn request_shutdown(&self, context: &mut RequestContext) -> ExtensionResult {
+///         // Called per request - cleanup resources (automatically dropped)
+///         ExtensionResult::Success
+///     }
+///
+///     fn module_shutdown(&self) -> ExtensionResult {
+///         // Called once at worker shutdown - cleanup persistent resources
+///         ExtensionResult::Success
+///     }
+/// }
+/// ```
+///
+/// # Thread Safety
+///
+/// This trait does NOT require `Send + Sync`. Extensions are used within single-threaded
+/// execution contexts:
+/// - **CLI SAPI**: Extensions are created and used on the main thread
+/// - **FPM SAPI**: Each worker thread owns its extensions; never shared across threads
+/// - **Async Tasks**: tokio `spawn_local` ensures tasks run on the same thread
+///
+/// This allows extensions to safely use `Rc`, `RefCell`, and other !Send types for
+/// internal state management.
+///
+pub trait Extension {
     /// Extension metadata
     fn info(&self) -> ExtensionInfo;
 

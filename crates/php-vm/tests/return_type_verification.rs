@@ -1,10 +1,10 @@
+use std::rc::Rc;
 use php_parser::lexer::Lexer;
+use php_vm::runtime::context::EngineBuilder;
 use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn compile_and_run(code: &str) -> Result<(), String> {
     let arena = bumpalo::Bump::new();
@@ -17,7 +17,7 @@ fn compile_and_run(code: &str) -> Result<(), String> {
     }
 
     // Create VM first so we can use its interner
-    let engine_context = Arc::new(EngineContext::new());
+    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
 
     // Compile using the VM's interner

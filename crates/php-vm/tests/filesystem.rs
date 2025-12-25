@@ -1,10 +1,9 @@
+use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::runtime::context::{EngineContext, RequestContext};
+use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::VM;
 use std::fs;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 fn compile_and_run(vm: &mut VM, code: &str) -> Result<(), php_vm::vm::engine::VmError> {
     let arena = bumpalo::Bump::new();
@@ -23,7 +22,7 @@ fn compile_and_run(vm: &mut VM, code: &str) -> Result<(), php_vm::vm::engine::Vm
 }
 
 fn create_test_vm() -> VM {
-    let engine = Arc::new(EngineContext::new());
+    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
     let request_context = RequestContext::new(engine);
     VM::new_with_context(request_context)
 }

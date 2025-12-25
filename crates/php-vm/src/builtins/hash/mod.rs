@@ -192,13 +192,12 @@ pub fn php_hash(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Get algorithm from registry
-    let registry = vm
+    let hash_data = vm
         .context
-        .hash_registry
-        .as_ref()
+        .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
         .ok_or("Hash extension not initialized")?;
 
-    let algo = registry
+    let algo = hash_data.registry
         .get(&algo_name)
         .ok_or_else(|| format!("hash(): Unknown hashing algorithm: {}", algo_name))?;
 
@@ -261,13 +260,12 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         hmac::new_hmac_state(&algo_name, &key)?
     } else {
         // Get algorithm from registry
-        let registry = vm
+        let hash_data = vm
             .context
-            .hash_registry
-            .as_ref()
+            .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
             .ok_or("Hash extension not initialized")?;
 
-        let algo = registry
+        let algo = hash_data.registry
             .get(&algo_name)
             .ok_or_else(|| format!("hash_init(): Unknown hashing algorithm: {}", algo_name))?;
         
@@ -294,14 +292,10 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let finalized_prop = vm.context.interner.intern(b"__finalized");
 
-    // Store the BoxedHashState in the VM's hash_states map
-    if vm.context.hash_states.is_none() {
-        vm.context.hash_states = Some(HashMap::new());
-    }
+    // Store the BoxedHashState in the extension data
     vm.context
-        .hash_states
-        .as_mut()
-        .unwrap()
+        .get_or_init_extension_data(|| crate::runtime::hash_extension::HashExtensionData::default())
+        .states
         .insert(resource_id, state);
 
     // Create HashContext object
@@ -370,16 +364,17 @@ pub fn php_hash_update(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Update the hash
-    if let Some(states) = vm.context.hash_states.as_mut() {
-        if let Some(state) = states.get_mut(&resource_id) {
-            println!("DEBUG: hash_update data = {:?}", data);
-            state.update(&data);
-            Ok(vm.arena.alloc(Val::Bool(true)))
-        } else {
-            Err("hash_update(): Invalid hash context state".into())
-        }
+    let hash_data = vm
+        .context
+        .get_extension_data_mut::<crate::runtime::hash_extension::HashExtensionData>()
+        .ok_or("Hash extension not initialized")?;
+
+    if let Some(state) = hash_data.states.get_mut(&resource_id) {
+        println!("DEBUG: hash_update data = {:?}", data);
+        state.update(&data);
+        Ok(vm.arena.alloc(Val::Bool(true)))
     } else {
-        Err("hash_update(): Hash states not initialized".into())
+        Err("hash_update(): Invalid hash context state".into())
     }
 }
 
@@ -438,15 +433,16 @@ pub fn php_hash_update_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
         .map_err(|e| format!("hash_update_file(): Failed to open '{}': {}", filename, e))?;
 
     // Update the hash
-    if let Some(states) = vm.context.hash_states.as_mut() {
-        if let Some(state) = states.get_mut(&resource_id) {
-            state.update(&data);
-            Ok(vm.arena.alloc(Val::Bool(true)))
-        } else {
-            Err("hash_update_file(): Invalid hash context state".into())
-        }
+    let hash_data = vm
+        .context
+        .get_extension_data_mut::<crate::runtime::hash_extension::HashExtensionData>()
+        .ok_or("Hash extension not initialized")?;
+
+    if let Some(state) = hash_data.states.get_mut(&resource_id) {
+        state.update(&data);
+        Ok(vm.arena.alloc(Val::Bool(true)))
     } else {
-        Err("hash_update_file(): Hash states not initialized".into())
+        Err("hash_update_file(): Invalid hash context state".into())
     }
 }
 
@@ -518,63 +514,65 @@ pub fn php_hash_update_stream(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
     let mut total_read = 0;
     let mut buffer = vec![0u8; 8192];
 
+    // Get hash extension data
+    let hash_data = vm
+        .context
+        .get_extension_data_mut::<crate::runtime::hash_extension::HashExtensionData>()
+        .ok_or("Hash extension not initialized")?;
+
     // We need to update the hash state in a loop
-    if let Some(states) = vm.context.hash_states.as_mut() {
-        if let Some(state) = states.get_mut(&resource_id) {
-            loop {
-                let to_read = if length < 0 {
-                    buffer.len()
-                } else {
-                    let remaining = length as usize - total_read;
-                    if remaining == 0 {
-                        break;
-                    }
-                    std::cmp::min(buffer.len(), remaining)
-                };
-
-                let bytes_read = if let Some(fh) = stream_rc.downcast_ref::<FileHandle>() {
-                    fh.file
-                        .borrow_mut()
-                        .read(&mut buffer[..to_read])
-                        .map_err(|e| format!("hash_update_stream(): {}", e))?
-                } else if let Some(pr) = stream_rc.downcast_ref::<PipeResource>() {
-                    let mut pipe = pr.pipe.borrow_mut();
-                    match &mut *pipe {
-                        PipeKind::Stdout(stdout) => stdout
-                            .read(&mut buffer[..to_read])
-                            .map_err(|e| format!("hash_update_stream(): {}", e))?,
-                        PipeKind::Stderr(stderr) => stderr
-                            .read(&mut buffer[..to_read])
-                            .map_err(|e| format!("hash_update_stream(): {}", e))?,
-                        _ => {
-                            return Err(
-                                "hash_update_stream(): Cannot read from stdin pipe".into(),
-                            )
-                        }
-                    }
-                } else if let Some(gz) = stream_rc.downcast_ref::<GzFile>() {
-                    gz.inner
-                        .borrow_mut()
-                        .read(&mut buffer[..to_read])
-                        .map_err(|e| format!("hash_update_stream(): {}", e))?
-                } else {
-                    return Err("hash_update_stream(): Unsupported resource type".into());
-                };
-
-                if bytes_read == 0 {
+    if let Some(state) = hash_data.states.get_mut(&resource_id) {
+        loop {
+            let to_read = if length < 0 {
+                buffer.len()
+            } else {
+                let remaining = length as usize - total_read;
+                if remaining == 0 {
                     break;
                 }
+                std::cmp::min(buffer.len(), remaining)
+            };
 
-                state.update(&buffer[..bytes_read]);
-                total_read += bytes_read;
+            let bytes_read = if let Some(fh) = stream_rc.downcast_ref::<FileHandle>() {
+                fh.file
+                    .borrow_mut()
+                    .read(&mut buffer[..to_read])
+                    .map_err(|e| format!("hash_update_stream(): {}", e))?
+            } else if let Some(pr) = stream_rc.downcast_ref::<PipeResource>() {
+                let mut pipe = pr.pipe.borrow_mut();
+                match &mut *pipe {
+                    PipeKind::Stdout(stdout) => stdout
+                        .read(&mut buffer[..to_read])
+                        .map_err(|e| format!("hash_update_stream(): {}", e))?,
+                    PipeKind::Stderr(stderr) => stderr
+                        .read(&mut buffer[..to_read])
+                        .map_err(|e| format!("hash_update_stream(): {}", e))?,
+                    _ => {
+                        return Err(
+                            "hash_update_stream(): Cannot read from stdin pipe".into(),
+                        )
+                    }
+                }
+            } else if let Some(gz) = stream_rc.downcast_ref::<GzFile>() {
+                gz.inner
+                    .borrow_mut()
+                    .read(&mut buffer[..to_read])
+                    .map_err(|e| format!("hash_update_stream(): {}", e))?
+            } else {
+                return Err("hash_update_stream(): Unsupported resource type".into());
+            };
+
+            if bytes_read == 0 {
+                break;
             }
 
-            Ok(vm.arena.alloc(Val::Int(total_read as i64)))
-        } else {
-            Err("hash_update_stream(): Invalid hash context state".into())
+            state.update(&buffer[..bytes_read]);
+            total_read += bytes_read;
         }
+
+        Ok(vm.arena.alloc(Val::Int(total_read as i64)))
     } else {
-        Err("hash_update_stream(): Hash states not initialized".into())
+        Err("hash_update_stream(): Invalid hash context state".into())
     }
 }
 
@@ -628,14 +626,15 @@ pub fn php_hash_final(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Remove and finalize the hash
-    let digest = if let Some(states) = vm.context.hash_states.as_mut() {
-        if let Some(state) = states.remove(&resource_id) {
-            state.finalize()
-        } else {
-            return Err("hash_final(): Invalid hash context state".into());
-        }
+    let hash_data = vm
+        .context
+        .get_extension_data_mut::<crate::runtime::hash_extension::HashExtensionData>()
+        .ok_or("Hash extension not initialized")?;
+
+    let digest = if let Some(state) = hash_data.states.remove(&resource_id) {
+        state.finalize()
     } else {
-        return Err("hash_final(): Hash states not initialized".into());
+        return Err("hash_final(): Invalid hash context state".into());
     };
 
     // Mark as finalized
@@ -705,14 +704,15 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     };
 
     // Clone the state
-    let new_state = if let Some(states) = vm.context.hash_states.as_ref() {
-        if let Some(state) = states.get(&resource_id) {
-            state.clone_state()
-        } else {
-            return Err("hash_copy(): Invalid hash context state".into());
-        }
+    let hash_data = vm
+        .context
+        .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
+        .ok_or("Hash extension not initialized")?;
+
+    let new_state = if let Some(state) = hash_data.states.get(&resource_id) {
+        state.clone_state()
     } else {
-        return Err("hash_copy(): Hash states not initialized".into());
+        return Err("hash_copy(): Invalid hash context state".into());
     };
 
     // Create new resource ID and store cloned state
@@ -721,9 +721,10 @@ pub fn php_hash_copy(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let new_state_handle = vm.arena.alloc(Val::Resource(Rc::new(new_resource_id)));
 
-    if let Some(states) = vm.context.hash_states.as_mut() {
-        states.insert(new_resource_id, new_state);
-    }
+    vm.context
+        .get_or_init_extension_data(|| crate::runtime::hash_extension::HashExtensionData::default())
+        .states
+        .insert(new_resource_id, new_state);
 
     // Create new HashContext object
     use indexmap::IndexMap;
@@ -755,13 +756,12 @@ pub fn php_hash_algos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Err("hash_algos() expects no parameters".into());
     }
 
-    let registry = vm
+    let hash_data = vm
         .context
-        .hash_registry
-        .as_ref()
+        .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
         .ok_or("Hash extension not initialized")?;
 
-    let algos = registry.list_algorithms();
+    let algos = hash_data.registry.list_algorithms();
 
     // Build PHP array
     let mut arr = ArrayData::new();
@@ -808,13 +808,12 @@ pub fn php_hash_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .map_err(|e| format!("hash_file(): Failed to open '{}': {}", filename_str, e))?;
 
     // Get algorithm
-    let registry = vm
+    let hash_data = vm
         .context
-        .hash_registry
-        .as_ref()
+        .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
         .ok_or("Hash extension not initialized")?;
 
-    let algo = registry
+    let algo = hash_data.registry
         .get(&algo_name)
         .ok_or_else(|| format!("hash_file(): Unknown hashing algorithm: {}", algo_name))?;
 

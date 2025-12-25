@@ -460,12 +460,7 @@ pub fn php_pdo_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     let (driver_name, _conn_str) =
         DriverRegistry::parse_dsn(&dsn).map_err(|e| format!("PDO::__construct(): {}", e))?;
 
-    let registry = vm
-        .context
-        .engine
-        .pdo_driver_registry
-        .as_ref()
-        .ok_or("PDO driver registry not initialized")?;
+    let registry = drivers::DriverRegistry::global();
 
     let driver = registry
         .get(driver_name)
@@ -479,7 +474,7 @@ pub fn php_pdo_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
     let conn_id = vm.context.next_resource_id;
     vm.context.next_resource_id += 1;
     vm.context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .insert(conn_id, Rc::new(std::cell::RefCell::new(conn)));
 
     // Store ID in object
@@ -520,7 +515,7 @@ pub fn php_pdo_prepare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .cloned()
         .ok_or("PDO::prepare(): Invalid connection")?;
@@ -546,7 +541,7 @@ pub fn php_pdo_prepare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let stmt_id = vm.context.next_resource_id;
     vm.context.next_resource_id += 1;
     vm.context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .insert(stmt_id, Rc::new(std::cell::RefCell::new(stmt)));
 
     // Store ID and default fetch mode in PDOStatement object
@@ -585,7 +580,7 @@ pub fn php_pdo_exec(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("PDO::exec(): Invalid connection")?;
 
@@ -602,7 +597,7 @@ pub fn php_pdo_begin_transaction(vm: &mut VM, _args: &[Handle]) -> Result<Handle
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     conn_ref
@@ -617,7 +612,7 @@ pub fn php_pdo_commit(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     conn_ref.borrow_mut().commit().map_err(|e| e.to_string())?;
@@ -629,7 +624,7 @@ pub fn php_pdo_rollback(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     conn_ref
@@ -644,7 +639,7 @@ pub fn php_pdo_in_transaction(vm: &mut VM, _args: &[Handle]) -> Result<Handle, S
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     let in_tx = conn_ref.borrow().in_transaction();
@@ -665,7 +660,7 @@ pub fn php_pdo_last_insert_id(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
 
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     let id = conn_ref
@@ -694,7 +689,7 @@ pub fn php_pdo_set_attribute(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
 
@@ -725,7 +720,7 @@ pub fn php_pdo_get_attribute(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
 
@@ -747,7 +742,7 @@ pub fn php_pdo_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let stmt_id = get_pdo_statement_id(vm, stmt)?;
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("query(): Statement vanished")?;
 
@@ -764,7 +759,7 @@ pub fn php_pdo_error_code(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Strin
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     let (state, _, _) = conn_ref.borrow().error_info();
@@ -776,7 +771,7 @@ pub fn php_pdo_error_info(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Strin
     let conn_id = get_pdo_connection_id(vm, this_handle)?;
     let conn_ref = vm
         .context
-        .pdo_connections
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).connections
         .get(&conn_id)
         .ok_or("Invalid connection")?;
     let (state, code, msg) = conn_ref.borrow().error_info();
@@ -828,7 +823,7 @@ pub fn php_pdo_stmt_execute(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     stmt_ref
@@ -864,7 +859,7 @@ pub fn php_pdo_stmt_bind_param(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     let stmt_id = get_pdo_statement_id(vm, this_handle)?;
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
 
@@ -899,7 +894,7 @@ pub fn php_pdo_stmt_bind_value(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     let stmt_id = get_pdo_statement_id(vm, this_handle)?;
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
 
@@ -939,7 +934,7 @@ pub fn php_pdo_stmt_fetch(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let row_opt = stmt_ref
@@ -981,7 +976,7 @@ pub fn php_pdo_stmt_fetch_all(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let rows = stmt_ref
@@ -1007,7 +1002,7 @@ pub fn php_pdo_stmt_row_count(vm: &mut VM, _args: &[Handle]) -> Result<Handle, S
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let count = stmt_ref.borrow().row_count();
@@ -1025,7 +1020,7 @@ pub fn php_pdo_stmt_column_count(vm: &mut VM, _args: &[Handle]) -> Result<Handle
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let count = stmt_ref.borrow().column_count();
@@ -1038,7 +1033,7 @@ pub fn php_pdo_stmt_error_code(vm: &mut VM, _args: &[Handle]) -> Result<Handle, 
     let stmt_id = get_pdo_statement_id(vm, this_handle)?;
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let (state, _, _) = stmt_ref.borrow().error_info();
@@ -1055,7 +1050,7 @@ pub fn php_pdo_stmt_error_info(vm: &mut VM, _args: &[Handle]) -> Result<Handle, 
 
     let stmt_ref = vm
         .context
-        .pdo_statements
+        .get_or_init_extension_data(|| crate::runtime::pdo_extension::PdoExtensionData::default()).statements
         .get(&stmt_id)
         .ok_or("Invalid statement")?;
     let (state, code, msg) = stmt_ref.borrow().error_info();
