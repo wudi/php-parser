@@ -981,7 +981,7 @@ impl VM {
             Val::String(name) => {
                 // Function name as string
                 let name_bytes = name.as_ref();
-                if let Some(func) = self.context.engine.functions.get(name_bytes) {
+                if let Some(func) = self.context.engine.registry.get_function(name_bytes) {
                     func(self, args)
                 } else {
                     Err(format!(
@@ -5531,9 +5531,6 @@ impl VM {
             }
             OpCode::FetchGlobalConst(name) => {
                 if let Some(val) = self.context.constants.get(&name) {
-                    let handle = self.arena.alloc(val.clone());
-                    self.operand_stack.push(handle);
-                } else if let Some(val) = self.context.engine.constants.get(&name) {
                     let handle = self.arena.alloc(val.clone());
                     self.operand_stack.push(handle);
                 } else {
@@ -10204,7 +10201,7 @@ impl VM {
                     let func_sym = self.context.interner.intern(s);
                     // Check if it's a registered function
                     self.context.user_functions.contains_key(&func_sym)
-                        || self.context.engine.functions.contains_key(&s.to_vec())
+                        || self.context.engine.registry.get_function(s).is_some()
                 } else {
                     false
                 }
