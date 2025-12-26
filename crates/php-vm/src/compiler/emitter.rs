@@ -101,6 +101,8 @@ pub struct Emitter<'src> {
     current_trait: Option<Symbol>,
     current_function: Option<Symbol>,
     current_namespace: Option<Symbol>,
+    // For eval(): inherit strict_types from parent scope if not explicitly declared
+    inherited_strict_types: Option<bool>,
 }
 
 impl<'src> Emitter<'src> {
@@ -117,12 +119,19 @@ impl<'src> Emitter<'src> {
             current_trait: None,
             current_function: None,
             current_namespace: None,
+            inherited_strict_types: None,
         }
     }
 
     /// Create an emitter with a file path for accurate __FILE__ and __DIR__
     pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
         self.file_path = Some(path.into());
+        self
+    }
+
+    /// Set inherited strict_types for eval() - applies only if no explicit declare
+    pub fn with_inherited_strict_types(mut self, strict: bool) -> Self {
+        self.inherited_strict_types = Some(strict);
         self
     }
 
@@ -139,6 +148,21 @@ impl<'src> Emitter<'src> {
     }
 
     pub fn compile(mut self, stmts: &[StmtId]) -> (CodeChunk, bool) {
+        // Check if any statement is an explicit declare(strict_types=...)
+        let has_explicit_strict_types = stmts.iter().any(|stmt| {
+            matches!(stmt, Stmt::Declare { declares, .. } if declares.iter().any(|item| {
+                let key = self.get_text(item.key.span);
+                key.eq_ignore_ascii_case(b"strict_types")
+            }))
+        });
+
+        // Apply inherited strictness only if no explicit declare
+        if !has_explicit_strict_types {
+            if let Some(inherited) = self.inherited_strict_types {
+                self.chunk.strict_types = inherited;
+            }
+        }
+
         for stmt in stmts {
             self.emit_stmt(stmt);
         }
@@ -209,6 +233,7 @@ impl<'src> Emitter<'src> {
                     method_emitter.file_path = self.file_path.clone();
                     method_emitter.current_class = Some(class_sym);
                     method_emitter.current_namespace = self.current_namespace;
+                    method_emitter.chunk.strict_types = self.chunk.strict_types;
 
                     // Build method name after creating method_emitter to avoid borrow issues
                     let method_name_full = {
@@ -365,6 +390,36 @@ impl<'src> Emitter<'src> {
 
     fn emit_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::Declare { declares, body, .. } => {
+                // PHP: declare(strict_types=1) is per-file and affects calls made from this file.
+                // The parser already validates strict_types is an integer literal 0/1.
+                for item in *declares {
+                    let key = self.get_text(item.key.span);
+                    if key.eq_ignore_ascii_case(b"strict_types") {
+                        if let Expr::Integer { value, .. } = item.value {
+                            // Integers may contain '_' separators.
+                            let mut num: u64 = 0;
+                            for b in *value {
+                                if *b == b'_' {
+                                    continue;
+                                }
+                                if !b.is_ascii_digit() {
+                                    num = 0;
+                                    break;
+                                }
+                                num = num
+                                    .saturating_mul(10)
+                                    .saturating_add((b - b'0') as u64);
+                            }
+                            self.chunk.strict_types = num == 1;
+                        }
+                    }
+                }
+
+                for s in *body {
+                    self.emit_stmt(s);
+                }
+            }
             Stmt::Echo { exprs, .. } => {
                 for expr in *exprs {
                     self.emit_expr(expr);
@@ -728,6 +783,7 @@ impl<'src> Emitter<'src> {
                 func_emitter.file_path = self.file_path.clone();
                 func_emitter.current_function = Some(func_sym);
                 func_emitter.current_namespace = self.current_namespace;
+                func_emitter.chunk.strict_types = self.chunk.strict_types;
 
                 // 3. Process params using func_emitter
                 let mut param_syms = Vec::new();
@@ -2178,6 +2234,7 @@ impl<'src> Emitter<'src> {
                 func_emitter.current_class = self.current_class;
                 func_emitter.current_function = Some(closure_sym);
                 func_emitter.current_namespace = self.current_namespace;
+                func_emitter.chunk.strict_types = self.chunk.strict_types;
 
                 // 3. Process params
                 let mut param_syms = Vec::new();

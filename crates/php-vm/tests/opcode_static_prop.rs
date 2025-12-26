@@ -33,6 +33,7 @@ fn run_fetch(op: OpCode) -> (VM, i64) {
     let mut chunk = CodeChunk {
         name: vm.context.interner.intern(b"static_prop_fetch"),
         returns_ref: false,
+        strict_types: false,
         code: Vec::new(),
         constants: Vec::new(),
         lines: Vec::new(),

@@ -328,6 +328,9 @@ pub struct VM {
     executing_finally: bool,
     /// Stores a return value from within a finally block to override the original return
     finally_return_value: Option<Handle>,
+    /// Strict types mode of the current builtin call's caller (for parameter validation)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_compile.h - ZEND_ARG_USES_STRICT_TYPES()
+    pub(crate) builtin_call_strict: bool,
     /// Profiling: count of opcodes executed
     pub(crate) opcodes_executed: u64,
     /// Profiling: count of function calls
@@ -373,6 +376,7 @@ impl VM {
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
+            builtin_call_strict: false,
             opcodes_executed: 0,
             function_calls: 0,
             memory_limit: 0,         // Unlimited by default
@@ -781,6 +785,7 @@ impl VM {
             execution_start_time: SystemTime::now(),
             executing_finally: false,
             finally_return_value: None,
+            builtin_call_strict: false,
             opcodes_executed: 0,
             function_calls: 0,
             memory_limit: 0,         // Unlimited by default
@@ -1124,6 +1129,12 @@ impl VM {
     }
 
     fn trigger_autoload(&mut self, class_name: Symbol) -> Result<(), VmError> {
+        let callsite_strict_types = self
+            .frames
+            .last()
+            .map(|frame| frame.chunk.strict_types)
+            .unwrap_or(false);
+
         // Get class name bytes
         let class_name_bytes = self
             .context
@@ -1141,7 +1152,9 @@ impl VM {
         for autoloader_handle in autoloaders {
             let args = smallvec::smallvec![class_name_handle];
             // Try to invoke the autoloader
-            if let Ok(()) = self.invoke_callable_value(autoloader_handle, args) {
+            if let Ok(()) =
+                self.invoke_callable_value(autoloader_handle, args, callsite_strict_types)
+            {
                 // Run until the frame completes
                 let depth = self.frames.len();
                 if depth > 0 {
@@ -2058,6 +2071,7 @@ impl VM {
         class_scope: Symbol,
         called_scope: Symbol,
         args: ArgList,
+        callsite_strict_types: bool,
     ) {
         let mut frame = CallFrame::new(func.chunk.clone());
         frame.func = Some(func);
@@ -2065,27 +2079,35 @@ impl VM {
         frame.class_scope = Some(class_scope);
         frame.called_scope = Some(called_scope);
         frame.args = args;
+        frame.callsite_strict_types = callsite_strict_types;
         self.push_frame(frame);
     }
 
     /// Create and push a function frame (no class scope)
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c
     #[inline]
-    fn push_function_frame(&mut self, func: Rc<UserFunc>, args: ArgList) {
+    fn push_function_frame(&mut self, func: Rc<UserFunc>, args: ArgList, callsite_strict_types: bool) {
         let mut frame = CallFrame::new(func.chunk.clone());
         frame.func = Some(func);
         frame.args = args;
+        frame.callsite_strict_types = callsite_strict_types;
         self.push_frame(frame);
     }
 
     /// Create and push a closure frame with captures
     /// Reference: $PHP_SRC_PATH/Zend/zend_closures.c
     #[inline]
-    pub(super) fn push_closure_frame(&mut self, closure: &ClosureData, args: ArgList) {
+    pub(super) fn push_closure_frame(
+        &mut self,
+        closure: &ClosureData,
+        args: ArgList,
+        callsite_strict_types: bool,
+    ) {
         let mut frame = CallFrame::new(closure.func.chunk.clone());
         frame.func = Some(closure.func.clone());
         frame.args = args;
         frame.this = closure.this;
+        frame.callsite_strict_types = callsite_strict_types;
 
         for (sym, handle) in &closure.captures {
             frame.locals.insert(*sym, *handle);
@@ -2486,11 +2508,12 @@ impl VM {
     /// Complete the return after finally blocks have executed
     fn complete_return(
         &mut self,
-        ret_val: Handle,
+        mut ret_val: Handle,
         force_by_ref: bool,
         target_depth: usize,
     ) -> Result<(), VmError> {
         // Verify return type BEFORE popping the frame
+        // Extract return type info AND the callee's strict_types flag
         let return_type_check = {
             let frame = self.current_frame()?;
             frame.func.as_ref().and_then(|f| {
@@ -2501,20 +2524,41 @@ impl VM {
                         .lookup(f.chunk.name)
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_else(|| "unknown".to_string());
-                    (rt.clone(), func_name)
+                    let callee_strict = f.chunk.strict_types;
+                    (rt.clone(), func_name, callee_strict)
                 })
             })
         };
 
-        if let Some((ret_type, func_name)) = return_type_check {
+        if let Some((ret_type, func_name, callee_strict)) = return_type_check {
+            // Check return type with callee's strictness (not caller's!)
             if !self.check_return_type(ret_val, &ret_type)? {
-                let val_type = self.get_type_name(ret_val);
-                let expected_type = self.return_type_to_string(&ret_type);
+                // Type mismatch - attempt coercion in weak mode
+                if !callee_strict {
+                    // Weak mode: try coercion
+                    if let Some(coerced_handle) = self.coerce_parameter_value(ret_val, &ret_type)? {
+                        // Coercion succeeded, use coerced value
+                        ret_val = coerced_handle;
+                    } else {
+                        // Coercion failed in weak mode - still throw error
+                        let val_type = self.get_type_name(ret_val);
+                        let expected_type = self.return_type_to_string(&ret_type);
 
-                return Err(VmError::RuntimeError(format!(
-                    "{}(): Return value must be of type {}, {} returned",
-                    func_name, expected_type, val_type
-                )));
+                        return Err(VmError::RuntimeError(format!(
+                            "{}(): Return value must be of type {}, {} returned",
+                            func_name, expected_type, val_type
+                        )));
+                    }
+                } else {
+                    // Strict mode: throw TypeError
+                    let val_type = self.get_type_name(ret_val);
+                    let expected_type = self.return_type_to_string(&ret_type);
+
+                    return Err(VmError::RuntimeError(format!(
+                        "{}(): Return value must be of type {}, {} returned",
+                        func_name, expected_type, val_type
+                    )));
+                }
             }
         }
 
@@ -2611,10 +2655,15 @@ impl VM {
         callable_handle: Handle,
         args: ArgList,
     ) -> Result<Handle, VmError> {
+        let callsite_strict_types = self
+            .frames
+            .last()
+            .map(|frame| frame.chunk.strict_types)
+            .unwrap_or(false);
         let initial_depth = self.frames.len();
         let stack_before = self.operand_stack.len();
 
-        self.invoke_callable_value(callable_handle, args)?;
+        self.invoke_callable_value(callable_handle, args, callsite_strict_types)?;
 
         if self.frames.len() > initial_depth {
             self.run_loop(initial_depth)?;
@@ -3936,6 +3985,12 @@ impl VM {
                 // Increment function call counter for profiling
                 self.function_calls += 1;
 
+                let callsite_strict_types = self
+                    .frames
+                    .last()
+                    .map(|frame| frame.chunk.strict_types)
+                    .unwrap_or(false);
+
                 let args = self.collect_call_args(arg_count)?;
 
                 let func_handle = self
@@ -3943,7 +3998,7 @@ impl VM {
                     .pop()
                     .ok_or(VmError::RuntimeError("Stack underflow".into()))?;
 
-                self.invoke_callable_value(func_handle, args)?;
+                self.invoke_callable_value(func_handle, args, callsite_strict_types)?;
             }
 
             OpCode::Return => self.handle_return(false, target_depth)?,
@@ -3958,19 +4013,53 @@ impl VM {
                 ));
             }
             OpCode::Recv(arg_idx) => {
-                let frame = self.frames.last_mut().unwrap();
-                if let Some(func) = &frame.func {
+                let (func_clone, callsite_strict, func_name_str) = {
+                    let frame = self.frames.last().unwrap();
+                    let name_str = String::from_utf8_lossy(
+                        self.context.interner.lookup(frame.chunk.name).unwrap_or(b"?"),
+                    ).to_string();
+                    (
+                        frame.func.clone(),
+                        frame.callsite_strict_types,
+                        name_str,
+                    )
+                };
+
+                if let Some(func) = func_clone {
                     if (arg_idx as usize) < func.params.len() {
-                        let param = &func.params[arg_idx as usize];
-                        if (arg_idx as usize) < frame.args.len() {
-                            let arg_handle = frame.args[arg_idx as usize];
-                            if param.by_ref {
-                                if !self.arena.get(arg_handle).is_ref {
-                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                }
-                                frame.locals.insert(param.name, arg_handle);
+                        let param = func.params[arg_idx as usize].clone();
+                        
+                        // Get arg_handle first
+                        let has_arg = {
+                            let frame = self.frames.last().unwrap();
+                            (arg_idx as usize) < frame.args.len()
+                        };
+
+                        if has_arg {
+                            let arg_handle = self.frames.last().unwrap().args[arg_idx as usize];
+                            
+                            // Type check and coerce if needed (this may mutate self)
+                            let checked_handle = if let Some(ref param_type) = param.param_type {
+                                self.check_parameter_type(
+                                    arg_handle,
+                                    param_type,
+                                    callsite_strict,
+                                    param.name,
+                                    &func_name_str,
+                                )?
                             } else {
-                                let val = self.arena.get(arg_handle).value.clone();
+                                arg_handle
+                            };
+
+                            // Now insert into frame locals
+                            let frame = self.frames.last_mut().unwrap();
+                            if param.by_ref {
+                                if !self.arena.get(checked_handle).is_ref {
+                                    self.arena.get_mut(checked_handle).is_ref = true;
+                                }
+                                frame.locals.insert(param.name, checked_handle);
+                            } else {
+                                let val = self.arena.get(checked_handle).value.clone();
                                 let final_handle = self.arena.alloc(val);
                                 frame.locals.insert(param.name, final_handle);
                             }
@@ -3979,23 +4068,59 @@ impl VM {
                 }
             }
             OpCode::RecvInit(arg_idx, default_val_idx) => {
-                let frame = self.frames.last_mut().unwrap();
-                if let Some(func) = &frame.func {
+                let (func_clone, callsite_strict, func_name_str) = {
+                    let frame = self.frames.last().unwrap();
+                    let name_str = String::from_utf8_lossy(
+                        self.context.interner.lookup(frame.chunk.name).unwrap_or(b"?"),
+                    ).to_string();
+                    (
+                        frame.func.clone(),
+                        frame.callsite_strict_types,
+                        name_str,
+                    )
+                };
+
+                if let Some(func) = func_clone {
                     if (arg_idx as usize) < func.params.len() {
-                        let param = &func.params[arg_idx as usize];
-                        if (arg_idx as usize) < frame.args.len() {
-                            let arg_handle = frame.args[arg_idx as usize];
-                            if param.by_ref {
-                                if !self.arena.get(arg_handle).is_ref {
-                                    self.arena.get_mut(arg_handle).is_ref = true;
-                                }
-                                frame.locals.insert(param.name, arg_handle);
+                        let param = func.params[arg_idx as usize].clone();
+                        
+                        // Check if arg was supplied
+                        let has_arg = {
+                            let frame = self.frames.last().unwrap();
+                            (arg_idx as usize) < frame.args.len()
+                        };
+
+                        if has_arg {
+                            let arg_handle = self.frames.last().unwrap().args[arg_idx as usize];
+                            
+                            // Type check and coerce if needed
+                            let checked_handle = if let Some(ref param_type) = param.param_type {
+                                self.check_parameter_type(
+                                    arg_handle,
+                                    param_type,
+                                    callsite_strict,
+                                    param.name,
+                                    &func_name_str,
+                                )?
                             } else {
-                                let val = self.arena.get(arg_handle).value.clone();
+                                arg_handle
+                            };
+
+                            // Insert into frame locals
+                            let frame = self.frames.last_mut().unwrap();
+                            if param.by_ref {
+                                if !self.arena.get(checked_handle).is_ref {
+                                    self.arena.get_mut(checked_handle).is_ref = true;
+                                }
+                                frame.locals.insert(param.name, checked_handle);
+                            } else {
+                                let val = self.arena.get(checked_handle).value.clone();
                                 let final_handle = self.arena.alloc(val);
                                 frame.locals.insert(param.name, final_handle);
                             }
                         } else {
+                            // Use default value
+                            let frame = self.frames.last_mut().unwrap();
                             let default_val =
                                 frame.chunk.constants[default_val_idx as usize].clone();
                             let default_handle = self.arena.alloc(default_val);
@@ -4005,27 +4130,56 @@ impl VM {
                 }
             }
             OpCode::RecvVariadic(arg_idx) => {
-                let frame = self.frames.last_mut().unwrap();
-                if let Some(func) = &frame.func {
+                let (func_clone, callsite_strict, func_name_str, args_to_check) = {
+                    let frame = self.frames.last().unwrap();
+                    let name_str = String::from_utf8_lossy(
+                        self.context.interner.lookup(frame.chunk.name).unwrap_or(b"?"),
+                    ).to_string();
+                    let args: Vec<Handle> = if frame.args.len() > arg_idx as usize {
+                        frame.args[arg_idx as usize..].to_vec()
+                    } else {
+                        vec![]
+                    };
+                    (
+                        frame.func.clone(),
+                        frame.callsite_strict_types,
+                        name_str,
+                        args,
+                    )
+                };
+
+                if let Some(func) = func_clone {
                     if (arg_idx as usize) < func.params.len() {
-                        let param = &func.params[arg_idx as usize];
+                        let param = func.params[arg_idx as usize].clone();
                         let mut arr = IndexMap::new();
-                        let args_len = frame.args.len();
-                        if args_len > arg_idx as usize {
-                            for (i, handle) in frame.args[arg_idx as usize..].iter().enumerate() {
-                                if param.by_ref {
-                                    if !self.arena.get(*handle).is_ref {
-                                        self.arena.get_mut(*handle).is_ref = true;
-                                    }
-                                    arr.insert(ArrayKey::Int(i as i64), *handle);
-                                } else {
-                                    let val = self.arena.get(*handle).value.clone();
-                                    let h = self.arena.alloc(val);
-                                    arr.insert(ArrayKey::Int(i as i64), h);
+                        
+                        for (i, handle) in args_to_check.iter().enumerate() {
+                            let mut arg_handle = *handle;
+
+                            // Type check each variadic argument
+                            if let Some(ref param_type) = param.param_type {
+                                arg_handle = self.check_parameter_type(
+                                    arg_handle,
+                                    param_type,
+                                    callsite_strict,
+                                    param.name,
+                                    &func_name_str,
+                                )?;
+                            }
+
+                            if param.by_ref {
+                                if !self.arena.get(arg_handle).is_ref {
+                                    self.arena.get_mut(arg_handle).is_ref = true;
                                 }
+                                arr.insert(ArrayKey::Int(i as i64), arg_handle);
+                            } else {
+                                let val = self.arena.get(arg_handle).value.clone();
+                                let h = self.arena.alloc(val);
+                                arr.insert(ArrayKey::Int(i as i64), h);
                             }
                         }
                         let arr_handle = self.arena.alloc(Val::Array(ArrayData::from(arr).into()));
+                        let frame = self.frames.last_mut().unwrap();
                         frame.locals.insert(param.name, arr_handle);
                     }
                 }
@@ -6990,10 +7144,17 @@ impl VM {
                         )));
                     }
 
+                    // Get caller's strict_types to inherit
+                    // The caller is the current frame that's executing this OpCode
+                    let caller_strict = self.frames.last()
+                        .map(|f| f.chunk.strict_types)
+                        .unwrap_or(false);
+
                     let emitter = crate::compiler::emitter::Emitter::new(
                         &wrapped_source,
                         &mut self.context.interner,
-                    );
+                    )
+                    .with_inherited_strict_types(caller_strict);
                     let (chunk, _) = emitter.compile(program.statements);
 
                     let caller_frame_idx = self.frames.len() - 1;
@@ -10861,6 +11022,329 @@ impl VM {
                 }
             }
             _ => false,
+        }
+    }
+
+    /// Check and coerce parameter type based on strictness
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_verify_arg_type
+    fn check_parameter_type(
+        &mut self,
+        arg_handle: Handle,
+        param_type: &ReturnType,
+        strict: bool,
+        param_name: Symbol,
+        func_name: &str,
+    ) -> Result<Handle, VmError> {
+        // Check if type matches
+        let matches = self.check_return_type(arg_handle, param_type)?;
+
+        if matches {
+            return Ok(arg_handle);
+        }
+
+        // Type doesn't match - decide whether to coerce or error
+        if strict {
+            // Strict mode: no coercion, throw TypeError
+            let param_name_str = String::from_utf8_lossy(
+                self.context.interner.lookup(param_name).unwrap_or(b"?"),
+            );
+            let expected = self.return_type_name(param_type);
+            let val_type = self.arena.get(arg_handle).value.type_name();
+            return Err(VmError::RuntimeError(format!(
+                "{}(): Argument #{} (${}
+) must be of type {}, {} given",
+                func_name, param_name_str, param_name_str, expected, val_type
+            )));
+        }
+
+        // Weak mode: attempt coercion for scalar types
+        let coerced = self.coerce_parameter_value(arg_handle, param_type)?;
+        if let Some(coerced_handle) = coerced {
+            Ok(coerced_handle)
+        } else {
+            // Coercion failed - emit warning and use original value
+            let param_name_str = String::from_utf8_lossy(
+                self.context.interner.lookup(param_name).unwrap_or(b"?"),
+            );
+            let expected = self.return_type_name(param_type);
+            let val_type = self.arena.get(arg_handle).value.type_name();
+            let message = format!(
+                "{}(): Argument #{} (${}
+) must be of type {}, {} given",
+                func_name, param_name_str, param_name_str, expected, val_type
+            );
+            self.trigger_error(ErrorLevel::Warning, &message);
+            Ok(arg_handle)
+        }
+    }
+
+    /// Attempt to coerce a parameter value to the expected type (weak mode only)
+    /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - zend_verify_scalar_type_hint
+    fn coerce_parameter_value(
+        &mut self,
+        arg_handle: Handle,
+        target_type: &ReturnType,
+    ) -> Result<Option<Handle>, VmError> {
+        let val = &self.arena.get(arg_handle).value;
+
+        match target_type {
+            ReturnType::Int => {
+                // Attempt to convert to int
+                match val {
+                    Val::Int(_) => Ok(Some(arg_handle)),
+                    Val::Float(f) => Ok(Some(self.arena.alloc(Val::Int(*f as i64)))),
+                    Val::Bool(b) => Ok(Some(self.arena.alloc(Val::Int(if *b { 1 } else { 0 })))),
+                    Val::String(s) => {
+                        // Try to parse string as int
+                        if let Ok(text) = std::str::from_utf8(s) {
+                            let trimmed = text.trim();
+                            if let Ok(int_val) = trimmed.parse::<i64>() {
+                                return Ok(Some(self.arena.alloc(Val::Int(int_val))));
+                            }
+                        }
+                        Ok(None) // Cannot coerce
+                    }
+                    Val::Null => Ok(Some(self.arena.alloc(Val::Int(0)))),
+                    _ => Ok(None),
+                }
+            }
+            ReturnType::Float => {
+                // Attempt to convert to float
+                match val {
+                    Val::Float(_) => Ok(Some(arg_handle)),
+                    Val::Int(i) => Ok(Some(self.arena.alloc(Val::Float(*i as f64)))),
+                    Val::Bool(b) => Ok(Some(self.arena.alloc(Val::Float(if *b { 1.0 } else { 0.0 })))),
+                    Val::String(s) => {
+                        if let Ok(text) = std::str::from_utf8(s) {
+                            let trimmed = text.trim();
+                            if let Ok(float_val) = trimmed.parse::<f64>() {
+                                return Ok(Some(self.arena.alloc(Val::Float(float_val))));
+                            }
+                        }
+                        Ok(None)
+                    }
+                    Val::Null => Ok(Some(self.arena.alloc(Val::Float(0.0)))),
+                    _ => Ok(None),
+                }
+            }
+            ReturnType::String => {
+                // Attempt to convert to string
+                match val {
+                    Val::String(_) => Ok(Some(arg_handle)),
+                    Val::Int(i) => Ok(Some(self.arena.alloc(Val::String(Rc::new(i.to_string().into_bytes()))))),
+                    Val::Float(f) => Ok(Some(self.arena.alloc(Val::String(Rc::new(f.to_string().into_bytes()))))),
+                    Val::Bool(b) => Ok(Some(self.arena.alloc(Val::String(Rc::new(if *b { b"1".to_vec() } else { vec![] }))))),
+                    Val::Null => Ok(Some(self.arena.alloc(Val::String(Rc::new(vec![]))))),
+                    _ => Ok(None),
+                }
+            }
+            ReturnType::Bool => {
+                // Convert to bool
+                let bool_val = self.value_to_bool(arg_handle);
+                Ok(Some(self.arena.alloc(Val::Bool(bool_val))))
+            }
+            ReturnType::Nullable(inner) => {
+                // Nullable accepts null or the inner type
+                if matches!(val, Val::Null) {
+                    Ok(Some(arg_handle))
+                } else {
+                    self.coerce_parameter_value(arg_handle, inner)
+                }
+            }
+            // Union types: try each type in order
+            ReturnType::Union(types) => {
+                for ty in types {
+                    if let Ok(Some(coerced)) = self.coerce_parameter_value(arg_handle, ty) {
+                        return Ok(Some(coerced));
+                    }
+                }
+                Ok(None)
+            }
+            // Non-scalar types cannot be coerced
+            _ => Ok(None),
+        }
+    }
+
+    /// Get a human-readable type name from ReturnType
+    fn return_type_name(&self, ty: &ReturnType) -> String {
+        match ty {
+            ReturnType::Int => "int".to_string(),
+            ReturnType::Float => "float".to_string(),
+            ReturnType::String => "string".to_string(),
+            ReturnType::Bool => "bool".to_string(),
+            ReturnType::Array => "array".to_string(),
+            ReturnType::Object => "object".to_string(),
+            ReturnType::Void => "void".to_string(),
+            ReturnType::Never => "never".to_string(),
+            ReturnType::Mixed => "mixed".to_string(),
+            ReturnType::Null => "null".to_string(),
+            ReturnType::True => "true".to_string(),
+            ReturnType::False => "false".to_string(),
+            ReturnType::Callable => "callable".to_string(),
+            ReturnType::Iterable => "iterable".to_string(),
+            ReturnType::Static => "static".to_string(),
+            ReturnType::Named(sym) => {
+                String::from_utf8_lossy(self.context.interner.lookup(*sym).unwrap_or(b"?")).to_string()
+            }
+            ReturnType::Union(types) => {
+                let names: Vec<String> = types.iter().map(|t| self.return_type_name(t)).collect();
+                names.join("|")
+            }
+            ReturnType::Intersection(types) => {
+                let names: Vec<String> = types.iter().map(|t| self.return_type_name(t)).collect();
+                names.join("&")
+            }
+            ReturnType::Nullable(inner) => format!("?{}", self.return_type_name(inner)),
+        }
+    }
+
+    /// Get a human-readable type name for a value
+    /// Check if a class is a subclass of another (or the same class)
+
+    // ========================================
+    // Built-in Function Type Validation Helpers
+    // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_parse_arg_*
+    // ========================================
+
+    /// Validate and coerce a parameter to string for built-in functions
+    /// Respects the caller's strict_types mode
+    /// Note: Arrays and objects should be handled separately by the caller
+    /// (PHP emits Warning and returns null, not TypeError)
+    pub(crate) fn check_builtin_param_string(
+        &mut self,
+        arg: Handle,
+        param_num: usize,
+        func_name: &str,
+    ) -> Result<Vec<u8>, String> {
+        let val = &self.arena.get(arg).value;
+        match val {
+            Val::String(s) => Ok(s.to_vec()),
+            Val::Int(_) | Val::Float(_) | Val::Bool(_) | Val::Null => {
+                if self.builtin_call_strict {
+                    // Strict mode: reject coercion
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type string, {} given",
+                        func_name, param_num, val.type_name()
+                    ));
+                }
+                // Weak mode: coerce to string
+                Ok(val.to_php_string_bytes())
+            }
+            Val::Array(_) | Val::ConstArray(_) | Val::Object(_) | Val::ObjPayload(_) => {
+                // Arrays/Objects should be handled by caller with warnings
+                // Don't use TypeError here - PHP uses Warning + null
+                Err(format!(
+                    "{}(): Argument #{} must be of type string, {} given",
+                    func_name, param_num, val.type_name()
+                ))
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    /// Validate and coerce a parameter to int for built-in functions
+    /// Respects the caller's strict_types mode
+    pub(crate) fn check_builtin_param_int(
+        &mut self,
+        arg: Handle,
+        param_num: usize,
+        func_name: &str,
+    ) -> Result<i64, String> {
+        let val = &self.arena.get(arg).value;
+        match val {
+            Val::Int(i) => Ok(*i),
+            Val::Float(f) => {
+                if self.builtin_call_strict {
+                    // Strict mode: reject float to int (unlike int->float)
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type int, float given",
+                        func_name, param_num
+                    ));
+                }
+                // Weak mode: truncate float to int
+                Ok(*f as i64)
+            }
+            Val::Bool(b) => {
+                if self.builtin_call_strict {
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type int, bool given",
+                        func_name, param_num
+                    ));
+                }
+                Ok(if *b { 1 } else { 0 })
+            }
+            Val::String(s) => {
+                if self.builtin_call_strict {
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type int, string given",
+                        func_name, param_num
+                    ));
+                }
+                // Weak mode: parse string to int
+                if let Ok(text) = std::str::from_utf8(s) {
+                    if let Ok(int_val) = text.trim().parse::<i64>() {
+                        return Ok(int_val);
+                    }
+                }
+                Ok(0) // Non-numeric strings become 0
+            }
+            Val::Null => {
+                if self.builtin_call_strict {
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type int, null given",
+                        func_name, param_num
+                    ));
+                }
+                Ok(0)
+            }
+            _ => Err(format!(
+                "{}(): Argument #{} must be of type int, {} given",
+                func_name, param_num, val.type_name()
+            )),
+        }
+    }
+
+    /// Validate and coerce a parameter to bool for built-in functions
+    /// Respects the caller's strict_types mode
+    pub(crate) fn check_builtin_param_bool(
+        &mut self,
+        arg: Handle,
+        param_num: usize,
+        func_name: &str,
+    ) -> Result<bool, String> {
+        let val = &self.arena.get(arg).value;
+        match val {
+            Val::Bool(b) => Ok(*b),
+            _ => {
+                if self.builtin_call_strict {
+                    // Strict mode: only bool accepted
+                    return Err(format!(
+                        "{}(): Argument #{} must be of type bool, {} given",
+                        func_name, param_num, val.type_name()
+                    ));
+                }
+                // Weak mode: convert to bool using PHP rules
+                Ok(val.to_bool())
+            }
+        }
+    }
+
+    /// Validate and coerce a parameter to array for built-in functions
+    /// Arrays cannot be coerced, so this only validates
+    pub(crate) fn check_builtin_param_array(
+        &self,
+        arg: Handle,
+        param_num: usize,
+        func_name: &str,
+    ) -> Result<(), String> {
+        let val = &self.arena.get(arg).value;
+        if matches!(val, Val::Array(_) | Val::ConstArray(_)) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{}(): Argument #{} must be of type array, {} given",
+                func_name, param_num, val.type_name()
+            ))
         }
     }
 

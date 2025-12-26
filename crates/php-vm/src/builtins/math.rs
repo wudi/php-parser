@@ -11,7 +11,11 @@ pub fn php_abs(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Val::Int(i) => Ok(vm.arena.alloc(Val::Int(i.abs()))),
         Val::Float(f) => Ok(vm.arena.alloc(Val::Float(f.abs()))),
         Val::String(s) => {
-            // Try to parse as number
+            // String coercion: only in weak mode
+            if vm.builtin_call_strict {
+                return Err("abs(): Argument #1 must be of type int|float, string given".into());
+            }
+            // Weak mode: try to parse as number
             let s_str = String::from_utf8_lossy(s);
             if let Ok(i) = s_str.parse::<i64>() {
                 Ok(vm.arena.alloc(Val::Int(i.abs())))
@@ -21,7 +25,28 @@ pub fn php_abs(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
                 Ok(vm.arena.alloc(Val::Int(0)))
             }
         }
-        _ => Ok(vm.arena.alloc(Val::Int(0))),
+        Val::Bool(b) => {
+            if vm.builtin_call_strict {
+                return Err("abs(): Argument #1 must be of type int|float, bool given".into());
+            }
+            Ok(vm.arena.alloc(Val::Int(if *b { 1 } else { 0 })))
+        }
+        Val::Null => {
+            if vm.builtin_call_strict {
+                return Err("abs(): Argument #1 must be of type int|float, null given".into());
+            }
+            Ok(vm.arena.alloc(Val::Int(0)))
+        }
+        _ => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "abs(): Argument #1 must be of type int|float, {} given",
+                    val.value.type_name()
+                ))
+            } else {
+                Ok(vm.arena.alloc(Val::Int(0)))
+            }
+        }
     }
 }
 

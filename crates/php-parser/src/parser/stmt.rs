@@ -11,7 +11,21 @@ impl<'src, 'ast> Parser<'src, 'ast> {
     }
 
     pub(super) fn parse_top_stmt(&mut self) -> StmtId<'ast> {
-        self.parse_stmt_impl(true)
+        let stmt = self.parse_stmt_impl(true);
+        
+        // Track non-declare statements for strict_types position enforcement
+        // Ignore Nop (opening tags) and Declare statements
+        match stmt {
+            crate::ast::Stmt::Nop { .. } | crate::ast::Stmt::Declare { .. } => {
+                // Don't set the flag for Nop or Declare
+            }
+            _ => {
+                // Any other statement means strict_types can no longer be first
+                self.seen_non_declare_stmt = true;
+            }
+        }
+        
+        stmt
     }
 
     fn parse_stmt_impl(&mut self, top_level: bool) -> StmtId<'ast> {

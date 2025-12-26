@@ -11,6 +11,8 @@ pub fn php_count(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let count = match &val.value {
         Val::Array(arr) => arr.map.len(),
         Val::Null => 0,
+        Val::ConstArray(map) => map.len(),
+        // In PHP, count() on non-array/non-Countable returns 1 (no strict mode for count)
         _ => 1,
     };
 

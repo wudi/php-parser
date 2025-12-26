@@ -20,6 +20,9 @@ pub struct CallFrame {
     pub generator: Option<Handle>,
     pub discard_return: bool,
     pub args: ArgList,
+    /// Caller-side strict typing mode (declare(strict_types=1) in the *calling* file).
+    /// This controls scalar parameter/return coercion.
+    pub callsite_strict_types: bool,
     pub stack_base: Option<usize>,
     pub pending_finally: Option<usize>,
 }
@@ -38,6 +41,7 @@ impl CallFrame {
             generator: None,
             discard_return: false,
             args: ArgList::new(),
+            callsite_strict_types: false,
             stack_base: None,
             pending_finally: None,
         }

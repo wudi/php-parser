@@ -586,6 +586,14 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     fn validate_declare_item(&mut self, key: &Token, value: ExprId<'ast>) {
         if self.token_eq_ident(key, b"strict_types") {
+            // Check position: strict_types must be the first statement
+            if self.seen_non_declare_stmt {
+                self.errors.push(crate::ast::ParseError {
+                    span: key.span,
+                    message: "strict_types declaration must be the first statement in the file",
+                });
+            }
+            
             if let Some(num) = self.int_literal_value(value) {
                 if num != 0 && num != 1 {
                     self.errors.push(crate::ast::ParseError {

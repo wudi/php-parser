@@ -25,6 +25,7 @@ fn verify_never_type_errors_on_return() {
     let chunk = CodeChunk {
         name: vm.context.interner.intern(b"verify_never"),
         returns_ref: false,
+        strict_types: false,
         code: vec![OpCode::Const(0), OpCode::VerifyNeverType, OpCode::Return],
         constants: vec![php_vm::core::value::Val::Null],
         lines: vec![],

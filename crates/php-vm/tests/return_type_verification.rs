@@ -76,6 +76,7 @@ fn test_string_return_type_valid() {
 #[test]
 fn test_string_return_type_invalid() {
     let code = r#"<?php
+        declare(strict_types=1);
         function foo(): string {
             return 123;
         }
@@ -104,6 +105,7 @@ fn test_bool_return_type_valid() {
 #[test]
 fn test_bool_return_type_invalid() {
     let code = r#"<?php
+        declare(strict_types=1);
         function foo(): bool {
             return 1;
         }
@@ -785,6 +787,7 @@ fn test_never_return_type_invalid_with_return() {
 #[test]
 fn test_missing_return_with_non_nullable_type() {
     let code = r#"<?php
+        declare(strict_types=1);
         function foo(): int {
             // No return statement
         }

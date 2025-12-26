@@ -12,31 +12,30 @@ pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         return Ok(vm.arena.alloc(Val::Null));
     }
 
-    let val = vm.arena.get(args[0]);
-    let len = match &val.value {
-        Val::String(s) => s.len(),
-        Val::Int(_) | Val::Float(_) | Val::Bool(_) | Val::Null => {
-            val.value.to_php_string_bytes().len()
-        }
-        Val::Array(_) => {
+    // Type check with strict mode support (string parameter required)
+    // Reference: $PHP_SRC_PATH/Zend/zend_API.c - zend_parse_arg_string_slow
+    // Arrays and objects emit warnings and return null (cannot be coerced)
+    let val = &vm.arena.get(args[0]).value;
+    match val {
+        Val::Array(_) | Val::ConstArray(_) => {
             vm.report_error(
                 crate::vm::engine::ErrorLevel::Warning,
                 "strlen() expects parameter 1 to be string, array given",
             );
             return Ok(vm.arena.alloc(Val::Null));
         }
-        Val::Object(_) => {
+        Val::Object(_) | Val::ObjPayload(_) => {
             vm.report_error(
                 crate::vm::engine::ErrorLevel::Warning,
                 "strlen() expects parameter 1 to be string, object given",
             );
             return Ok(vm.arena.alloc(Val::Null));
         }
-        _ => {
-            // Should not be reached if all types are handled, but as a fallback
-            return Err("strlen() expects string or scalar".into());
-        }
-    };
+        _ => {}
+    }
+
+    let bytes = vm.check_builtin_param_string(args[0], 1, "strlen")?;
+    let len = bytes.len();
 
     Ok(vm.arena.alloc(Val::Int(len as i64)))
 }
