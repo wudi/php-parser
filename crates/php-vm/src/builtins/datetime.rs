@@ -787,18 +787,13 @@ pub fn php_datetime_get_timezone(vm: &mut VM, _args: &[Handle]) -> Result<Handle
         .ok_or("DateTime::getTimezone() called outside object context")?;
     let data = get_internal_data::<DateTimeData>(vm, this_handle)?;
 
-    // Create a new DateTimeZone object
+    // Create a new DateTimeZone object with the timezone name
     let dtz_sym = vm.context.interner.intern(b"DateTimeZone");
-    let dtz_handle = vm.instantiate_class(dtz_sym, &[])?;
-
-    if let Val::Object(payload_handle) = &vm.arena.get(dtz_handle).value {
-        let payload = vm.arena.get_mut(*payload_handle);
-        if let Val::ObjPayload(ref mut obj_data) = payload.value {
-            obj_data.internal = Some(Rc::new(DateTimeZoneData {
-                tz: data.dt.timezone(),
-            }));
-        }
-    }
+    let tz_name = data.dt.timezone().name().as_bytes().to_vec();
+    let tz_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(tz_name)));
+    let dtz_handle = vm.instantiate_class(dtz_sym, &[tz_handle])?;
 
     Ok(dtz_handle)
 }
@@ -2253,4 +2248,158 @@ pub fn php_date_interval_create_from_date_string(
     }
     let interval_sym = vm.context.interner.intern(b"DateInterval");
     vm.instantiate_class(interval_sym, args)
+}
+
+// ============================================================================
+// Additional Procedural Wrappers
+// ============================================================================
+
+/// date_create_immutable_from_format(string $format, string $datetime, ?DateTimeZone $timezone = null): DateTimeImmutable|false
+pub fn php_date_create_immutable_from_format(
+    vm: &mut VM,
+    args: &[Handle],
+) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_create_immutable_from_format() expects at least 2 parameters".into());
+    }
+
+    let format = String::from_utf8_lossy(&get_string_arg(vm, args[0])?).to_string();
+    let datetime_str = String::from_utf8_lossy(&get_string_arg(vm, args[1])?).to_string();
+
+    let chrono_format = convert_php_to_chrono_format(&format);
+
+    let tz: Tz = if args.len() > 2 {
+        let tz_data = get_internal_data::<DateTimeZoneData>(vm, args[2])?;
+        tz_data.tz
+    } else {
+        vm.context.timezone.parse().unwrap_or(Tz::UTC)
+    };
+
+    // Try parsing as NaiveDateTime first, if that fails try NaiveDate
+    let dt = if let Ok(naive) = NaiveDateTime::parse_from_str(&datetime_str, &chrono_format) {
+        tz.from_utc_datetime(&naive)
+    } else if let Ok(naive_date) = NaiveDate::parse_from_str(&datetime_str, &chrono_format) {
+        let naive = naive_date.and_hms_opt(0, 0, 0).unwrap();
+        tz.from_utc_datetime(&naive)
+    } else {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    };
+
+    let datetime_sym = vm.context.interner.intern(b"DateTimeImmutable");
+    let obj_handle = vm.instantiate_class(datetime_sym, &[])?;
+
+    let payload_handle = match &vm.arena.get(obj_handle).value {
+        Val::Object(h) => *h,
+        _ => return Err("Failed to create DateTimeImmutable".into()),
+    };
+
+    if let Val::ObjPayload(obj_data) = &mut vm.arena.get_mut(payload_handle).value {
+        obj_data.internal = Some(Rc::new(DateTimeData { dt }));
+    }
+
+    Ok(obj_handle)
+}
+
+/// date_timestamp_get(DateTimeInterface $object): int
+pub fn php_date_timestamp_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("date_timestamp_get() expects exactly 1 parameter".into());
+    }
+
+    let data = get_internal_data::<DateTimeData>(vm, args[0])?;
+    Ok(vm.arena.alloc(Val::Int(data.dt.timestamp())))
+}
+
+/// date_timestamp_set(DateTime $object, int $timestamp): DateTime
+pub fn php_date_timestamp_set(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_timestamp_set() expects exactly 2 parameters".into());
+    }
+
+    let obj = args[0];
+    let timestamp = get_int_arg(vm, args[1])?;
+
+    let data = get_internal_data::<DateTimeData>(vm, obj)?;
+    let new_dt = data.dt.timezone().timestamp_opt(timestamp, 0).unwrap();
+
+    if let Val::Object(payload_handle) = &vm.arena.get(obj).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+        }
+    }
+
+    Ok(obj)
+}
+
+/// date_timezone_get(DateTimeInterface $object): DateTimeZone|false
+pub fn php_date_timezone_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("date_timezone_get() expects exactly 1 parameter".into());
+    }
+
+    let data = get_internal_data::<DateTimeData>(vm, args[0])?;
+
+    // Create a new DateTimeZone object with the timezone name
+    let dtz_sym = vm.context.interner.intern(b"DateTimeZone");
+    let tz_name = data.dt.timezone().name().as_bytes().to_vec();
+    let tz_handle = vm
+        .arena
+        .alloc(Val::String(Rc::new(tz_name)));
+    let dtz_handle = vm.instantiate_class(dtz_sym, &[tz_handle])?;
+
+    Ok(dtz_handle)
+}
+
+/// date_timezone_set(DateTime $object, DateTimeZone $timezone): DateTime
+pub fn php_date_timezone_set(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("date_timezone_set() expects exactly 2 parameters".into());
+    }
+
+    let obj = args[0];
+    let tz_data = get_internal_data::<DateTimeZoneData>(vm, args[1])?;
+
+    let data = get_internal_data::<DateTimeData>(vm, obj)?;
+    let new_dt = data.dt.with_timezone(&tz_data.tz);
+
+    if let Val::Object(payload_handle) = &vm.arena.get(obj).value {
+        let payload = vm.arena.get_mut(*payload_handle);
+        if let Val::ObjPayload(ref mut obj_data) = payload.value {
+            obj_data.internal = Some(Rc::new(DateTimeData { dt: new_dt }));
+        }
+    }
+
+    Ok(obj)
+}
+
+/// timezone_name_get(DateTimeZone $object): string
+pub fn php_timezone_name_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() {
+        return Err("timezone_name_get() expects exactly 1 parameter".into());
+    }
+
+    let data = get_internal_data::<DateTimeZoneData>(vm, args[0])?;
+    Ok(vm
+        .arena
+        .alloc(Val::String(data.tz.name().as_bytes().to_vec().into())))
+}
+
+/// timezone_identifiers_list(int $timezoneGroup = DateTimeZone::ALL, ?string $countryCode = null): array
+pub fn php_timezone_identifiers_list(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+    let mut map = IndexMap::new();
+    for (i, tz) in chrono_tz::TZ_VARIANTS.iter().enumerate() {
+        map.insert(
+            ArrayKey::Int(i as i64),
+            vm.arena
+                .alloc(Val::String(tz.name().as_bytes().to_vec().into())),
+        );
+    }
+
+    Ok(vm
+        .arena
+        .alloc(Val::Array(Rc::new(crate::core::value::ArrayData {
+            map,
+            next_free: chrono_tz::TZ_VARIANTS.len() as i64,
+        }))))
 }

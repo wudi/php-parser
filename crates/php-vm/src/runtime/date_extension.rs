@@ -582,15 +582,16 @@ impl Extension for DateExtension {
         registry.register_function(b"date_interval_format", datetime::php_dateinterval_format);
         registry.register_function(b"checkdate", datetime::php_checkdate);
         registry.register_function(b"timezone_open", datetime::php_timezone_open);
+        registry.register_function(b"date_default_timezone_set", datetime::php_date_default_timezone_set);
+        registry.register_function(b"date_create_immutable", datetime::php_date_create_immutable);
+        registry.register_function(b"date_create_immutable_from_format", datetime::php_date_create_immutable_from_format);
+        registry.register_function(b"date_timestamp_get", datetime::php_date_timestamp_get);
+        registry.register_function(b"date_timestamp_set", datetime::php_date_timestamp_set);
+        registry.register_function(b"date_timezone_get", datetime::php_date_timezone_get);
+        registry.register_function(b"date_timezone_set", datetime::php_date_timezone_set);
+        registry.register_function(b"timezone_name_get", datetime::php_timezone_name_get);
+        registry.register_function(b"timezone_identifiers_list", datetime::php_timezone_identifiers_list);
                 
-        
-        // TODO: Implement remaining date/time functions:
-        // gmdate, microtime, gmmktime, date_create_immutable, date_create_from_format,
-        // date_create_immutable_from_format, date_parse_from_format, date_timestamp_get,
-        // date_timestamp_set, date_timezone_get, date_timezone_set, timezone_open,
-        // timezone_name_get, timezone_identifiers_list, date_default_timezone_get,
-        // date_default_timezone_set
-
         ExtensionResult::Success
     }
 
