@@ -185,15 +185,6 @@ impl EngineContext {
             .register_extension(Box::new(OpenSSLExtension))
             .expect("Failed to register OpenSSL extension");
 
-        // Register core string functions with by-ref info
-        registry.register_function_with_by_ref(b"str_replace", string::php_str_replace, vec![3]);
-        registry.register_function_with_by_ref(b"str_ireplace", string::php_str_ireplace, vec![3]);
-
-        // Register core string constants
-        registry.register_constant(b"STR_PAD_LEFT", Val::Int(0));
-        registry.register_constant(b"STR_PAD_RIGHT", Val::Int(1));
-        registry.register_constant(b"STR_PAD_BOTH", Val::Int(2));
-
         Self {
             registry,
             pdo_driver_registry: Some(Arc::new(
@@ -441,7 +432,20 @@ impl RequestContext {
 }
 
 impl RequestContext {
+    /// Register core PHP constants that are not provided by extensions
+    ///
+    /// This method only registers fundamental PHP constants that must exist
+    /// in every request context. Extension-specific constants (output control,
+    /// URL parsing, date formats, string functions, etc.) are registered by
+    /// their respective extensions via ExtensionRegistry.
+    ///
+    /// Core constants registered here:
+    /// - PHP version info (PHP_VERSION, PHP_VERSION_ID, etc.)
+    /// - System constants (PHP_OS, PHP_SAPI, PHP_EOL)
+    /// - Path separators (DIRECTORY_SEPARATOR, PATH_SEPARATOR)
+    /// - Error reporting levels (E_ERROR, E_WARNING, etc.)
     fn register_builtin_constants(&mut self) {
+        // PHP version constants
         const PHP_VERSION_STR: &str = "8.2.0";
         const PHP_VERSION_ID_VALUE: i64 = 80200;
         const PHP_MAJOR: i64 = 8;
@@ -457,162 +461,20 @@ impl RequestContext {
         self.insert_builtin_constant(b"PHP_MINOR_VERSION", Val::Int(PHP_MINOR));
         self.insert_builtin_constant(b"PHP_RELEASE_VERSION", Val::Int(PHP_RELEASE));
         self.insert_builtin_constant(b"PHP_EXTRA_VERSION", Val::String(Rc::new(Vec::new())));
+
+        // System constants
         self.insert_builtin_constant(b"PHP_OS", Val::String(Rc::new(b"Darwin".to_vec())));
         self.insert_builtin_constant(b"PHP_SAPI", Val::String(Rc::new(b"cli".to_vec())));
         self.insert_builtin_constant(b"PHP_EOL", Val::String(Rc::new(b"\n".to_vec())));
 
+        // Path separator constants
         let dir_sep = std::path::MAIN_SEPARATOR.to_string().into_bytes();
         self.insert_builtin_constant(b"DIRECTORY_SEPARATOR", Val::String(Rc::new(dir_sep)));
 
         let path_sep_byte = if cfg!(windows) { b';' } else { b':' };
         self.insert_builtin_constant(b"PATH_SEPARATOR", Val::String(Rc::new(vec![path_sep_byte])));
 
-        // Output Control constants - Phase flags
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_START",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_START),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_WRITE",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_FLUSH",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_CLEAN",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_FINAL",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_CONT",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_END",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_END),
-        );
-
-        // Output Control constants - Control flags
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_CLEANABLE",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_FLUSHABLE",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_REMOVABLE",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_STDFLAGS",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS),
-        );
-
-        // Output Control constants - Status flags
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_STARTED",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_DISABLED",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED),
-        );
-        self.insert_builtin_constant(
-            b"PHP_OUTPUT_HANDLER_PROCESSED",
-            Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED),
-        );
-
-        // URL constants
-        self.insert_builtin_constant(b"PHP_URL_SCHEME", Val::Int(url::PHP_URL_SCHEME));
-        self.insert_builtin_constant(b"PHP_URL_HOST", Val::Int(url::PHP_URL_HOST));
-        self.insert_builtin_constant(b"PHP_URL_PORT", Val::Int(url::PHP_URL_PORT));
-        self.insert_builtin_constant(b"PHP_URL_USER", Val::Int(url::PHP_URL_USER));
-        self.insert_builtin_constant(b"PHP_URL_PASS", Val::Int(url::PHP_URL_PASS));
-        self.insert_builtin_constant(b"PHP_URL_PATH", Val::Int(url::PHP_URL_PATH));
-        self.insert_builtin_constant(b"PHP_URL_QUERY", Val::Int(url::PHP_URL_QUERY));
-        self.insert_builtin_constant(b"PHP_URL_FRAGMENT", Val::Int(url::PHP_URL_FRAGMENT));
-        self.insert_builtin_constant(b"PHP_QUERY_RFC1738", Val::Int(url::PHP_QUERY_RFC1738));
-        self.insert_builtin_constant(b"PHP_QUERY_RFC3986", Val::Int(url::PHP_QUERY_RFC3986));
-
-        // Date constants
-        self.insert_builtin_constant(
-            b"DATE_ATOM",
-            Val::String(Rc::new(datetime::DATE_ATOM.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_COOKIE",
-            Val::String(Rc::new(datetime::DATE_COOKIE.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_ISO8601",
-            Val::String(Rc::new(datetime::DATE_ISO8601.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_ISO8601_EXPANDED",
-            Val::String(Rc::new(datetime::DATE_ISO8601_EXPANDED.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC822",
-            Val::String(Rc::new(datetime::DATE_RFC822.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC850",
-            Val::String(Rc::new(datetime::DATE_RFC850.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC1036",
-            Val::String(Rc::new(datetime::DATE_RFC1036.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC1123",
-            Val::String(Rc::new(datetime::DATE_RFC1123.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC7231",
-            Val::String(Rc::new(datetime::DATE_RFC7231.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC2822",
-            Val::String(Rc::new(datetime::DATE_RFC2822.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC3339",
-            Val::String(Rc::new(datetime::DATE_RFC3339.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RFC3339_EXTENDED",
-            Val::String(Rc::new(datetime::DATE_RFC3339_EXTENDED.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_RSS",
-            Val::String(Rc::new(datetime::DATE_RSS.as_bytes().to_vec())),
-        );
-        self.insert_builtin_constant(
-            b"DATE_W3C",
-            Val::String(Rc::new(datetime::DATE_W3C.as_bytes().to_vec())),
-        );
-
-        self.insert_builtin_constant(
-            b"SUNFUNCS_RET_TIMESTAMP",
-            Val::Int(datetime::SUNFUNCS_RET_TIMESTAMP),
-        );
-        self.insert_builtin_constant(
-            b"SUNFUNCS_RET_STRING",
-            Val::Int(datetime::SUNFUNCS_RET_STRING),
-        );
-        self.insert_builtin_constant(
-            b"SUNFUNCS_RET_DOUBLE",
-            Val::Int(datetime::SUNFUNCS_RET_DOUBLE),
-        );
-
-        // Error reporting constants
+        // Error reporting level constants
         self.insert_builtin_constant(b"E_ERROR", Val::Int(1));
         self.insert_builtin_constant(b"E_WARNING", Val::Int(2));
         self.insert_builtin_constant(b"E_PARSE", Val::Int(4));
@@ -629,12 +491,6 @@ impl RequestContext {
         self.insert_builtin_constant(b"E_DEPRECATED", Val::Int(8192));
         self.insert_builtin_constant(b"E_USER_DEPRECATED", Val::Int(16384));
         self.insert_builtin_constant(b"E_ALL", Val::Int(32767));
-
-        // Copy extension-registered constants from registry
-        for (name_bytes, value) in self.engine.registry.constants() {
-            let sym = self.interner.intern(name_bytes);
-            self.constants.insert(sym, value.clone());
-        }
     }
 
     pub fn insert_builtin_constant(&mut self, name: &[u8], value: Val) {
