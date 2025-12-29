@@ -44,6 +44,7 @@ pub fn init_superglobals(
     env_vars: HashMap<Vec<u8>, Vec<u8>>,
     get_vars: HashMap<Vec<u8>, Vec<u8>>,
     post_vars: HashMap<Vec<u8>, Vec<u8>>,
+    cookie_vars: HashMap<Vec<u8>, Vec<u8>>,
     files_vars: HashMap<Vec<u8>, FileUpload>,
 ) {
     // Override PHP_SAPI constant
@@ -119,9 +120,8 @@ pub fn init_superglobals(
     let files_sym = vm.context.interner.intern(b"_FILES");
     vm.context.globals.insert(files_sym, files_handle);
 
-    // $_COOKIE (empty for now)
-    let cookie_handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
-    vm.arena.get_mut(cookie_handle).is_ref = true;
+    // $_COOKIE
+    let cookie_handle = build_array(vm, cookie_vars);
     let cookie_sym = vm.context.interner.intern(b"_COOKIE");
     vm.context.globals.insert(cookie_sym, cookie_handle);
 
@@ -137,6 +137,13 @@ pub fn init_superglobals(
     
     // Add POST
     if let Val::Array(arr) = &vm.arena.get(post_handle).value {
+        for (k, v) in &arr.map {
+            request_data.insert(k.clone(), *v);
+        }
+    }
+    
+    // Add COOKIE
+    if let Val::Array(arr) = &vm.arena.get(cookie_handle).value {
         for (k, v) in &arr.map {
             request_data.insert(k.clone(), *v);
         }

@@ -55,19 +55,19 @@ cargo build --release --bin php-fpm
 
 ### Run
 
-**Single-threaded mode (default):**
+**Single worker (for development/debugging):**
 ```bash
-./target/release/php-fpm --socket /tmp/php-fpm.sock
+./target/release/php-fpm --socket /tmp/php-fpm.sock --workers 1
 ```
 
-**Multi-threaded mode (4 workers):**
+**Multi-threaded mode (4 workers, recommended):**
 ```bash
-./target/release/php-fpm --socket /tmp/php-fpm.sock --workers 4 --threaded
+./target/release/php-fpm --socket /tmp/php-fpm.sock --workers 4
 ```
 
 **TCP mode:**
 ```bash
-./target/release/php-fpm --bind 127.0.0.1:9000 --workers 8 --threaded
+./target/release/php-fpm --bind 127.0.0.1:9000 --workers 8
 ```
 
 ### Configure nginx
@@ -98,6 +98,14 @@ cgi-fcgi -bind -connect /tmp/php-fpm.sock
 
 ```
 php-fpm [OPTIONS]
+
+OPTIONS:
+    -b, --bind <BIND>        Listen on TCP (e.g., "127.0.0.1:9000") [conflicts with --socket]
+    -s, --socket <SOCKET>    Listen on Unix socket (e.g., "/tmp/php-fpm.sock") [conflicts with --bind]
+    -w, --workers <WORKERS>  Number of worker threads [default: 4]
+    -h, --help              Print help
+    -V, --version           Print version
+```
 
 Options:
   -b, --bind <ADDR>         Listen on TCP (e.g., "127.0.0.1:9000")

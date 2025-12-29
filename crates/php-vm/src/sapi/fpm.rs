@@ -5,6 +5,9 @@
 use crate::fcgi::request::Request;
 use crate::sapi::FileUpload;
 use std::collections::HashMap;
+use std::io::{Cursor, Read};
+use multipart::server::Multipart;
+use tempfile::NamedTempFile;
 
 /// Extract superglobal data from FastCGI request params.
 pub struct FpmRequest {
@@ -12,6 +15,7 @@ pub struct FpmRequest {
     pub env_vars: HashMap<Vec<u8>, Vec<u8>>,
     pub get_vars: HashMap<Vec<u8>, Vec<u8>>,
     pub post_vars: HashMap<Vec<u8>, Vec<u8>>,
+    pub cookie_vars: HashMap<Vec<u8>, Vec<u8>>,
     pub files_vars: HashMap<Vec<u8>, FileUpload>,
     pub script_filename: String,
     pub stdin_data: Vec<u8>,
@@ -40,17 +44,27 @@ impl FpmRequest {
             HashMap::new()
         };
 
-        // Parse POST data (if present)
-        let post_vars = if param(req, b"REQUEST_METHOD") == Some(b"POST") {
-            let content_type = param(req, b"CONTENT_TYPE").unwrap_or(b"");
-            if content_type.starts_with(b"application/x-www-form-urlencoded") {
-                parse_query_string(&req.stdin_data)
-            } else {
-                // TODO: multipart/form-data parsing for $_FILES
-                HashMap::new()
-            }
+        // Parse $_COOKIE from HTTP_COOKIE header
+        let cookie_vars = if let Some(cookie_header) = param(req, b"HTTP_COOKIE") {
+            parse_cookies(cookie_header)
         } else {
             HashMap::new()
+        };
+
+        // Parse POST data and files (if present)
+        let (post_vars, files_vars) = if param(req, b"REQUEST_METHOD") == Some(b"POST") {
+            let content_type = param(req, b"CONTENT_TYPE").unwrap_or(b"");
+            let content_type_str = String::from_utf8_lossy(content_type);
+            
+            if content_type.starts_with(b"application/x-www-form-urlencoded") {
+                (parse_query_string(&req.stdin_data), HashMap::new())
+            } else if content_type.starts_with(b"multipart/form-data") {
+                parse_multipart(&content_type_str, &req.stdin_data)
+            } else {
+                (HashMap::new(), HashMap::new())
+            }
+        } else {
+            (HashMap::new(), HashMap::new())
         };
 
         // Extract environment vars (params starting with "HTTP_" or other CGI vars)
@@ -64,7 +78,8 @@ impl FpmRequest {
             env_vars,
             get_vars,
             post_vars,
-            files_vars: HashMap::new(), // TODO: multipart parsing
+            cookie_vars,
+            files_vars,
             script_filename: script_filename.to_string(),
             stdin_data: req.stdin_data.clone(),
         })
@@ -129,6 +144,99 @@ fn url_decode(s: &str) -> String {
     result
 }
 
+/// Parse HTTP Cookie header into key-value pairs.
+/// Format: "name1=value1; name2=value2"
+/// Reference: RFC 6265, php-src/main/php_variables.c
+fn parse_cookies(cookie_header: &[u8]) -> HashMap<Vec<u8>, Vec<u8>> {
+    let mut result = HashMap::new();
+    let cookie_str = String::from_utf8_lossy(cookie_header);
+
+    for pair in cookie_str.split(';') {
+        let pair = pair.trim();
+        if let Some(eq_pos) = pair.find('=') {
+            let key = pair[..eq_pos].trim();
+            let value = pair[eq_pos + 1..].trim();
+            // URL-decode cookie values
+            let decoded_value = url_decode(value);
+            result.insert(key.as_bytes().to_vec(), decoded_value.into_bytes());
+        }
+    }
+
+    result
+}
+
+/// Parse multipart/form-data into $_POST (text fields) and $_FILES (uploads).
+/// Reference: php-src/main/rfc1867.c
+fn parse_multipart(content_type: &str, body: &[u8]) -> (HashMap<Vec<u8>, Vec<u8>>, HashMap<Vec<u8>, FileUpload>) {
+    let mut post_vars = HashMap::new();
+    let mut files_vars = HashMap::new();
+
+    // Extract boundary from Content-Type
+    let boundary = match extract_boundary(content_type) {
+        Some(b) => b,
+        None => {
+            eprintln!("[fpm-sapi] multipart/form-data missing boundary");
+            return (post_vars, files_vars);
+        }
+    };
+
+    let cursor = Cursor::new(body);
+    let mut multipart = Multipart::with_body(cursor, &boundary);
+
+    while let Ok(Some(mut field)) = multipart.read_entry() {
+        let name = field.headers.name.to_string();
+
+        // Check if this field has a filename (indicates file upload)
+        if let Some(filename) = field.headers.filename.clone() {
+            // File upload → $_FILES
+            let content_type = field
+                .headers
+                .content_type
+                .clone()
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+
+            if let Ok(temp_file) = NamedTempFile::new() {
+                let mut temp_file = temp_file;
+                if std::io::copy(&mut field.data, &mut temp_file).is_ok() {
+                    if let Ok((file, path)) = temp_file.keep() {
+                        let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                        let tmp_name = path.to_string_lossy().to_string();
+                        let file_upload = FileUpload {
+                            name: filename,
+                            type_: content_type,
+                            tmp_name,
+                            error: 0, // UPLOAD_ERR_OK
+                            size,
+                        };
+                        files_vars.insert(name.into_bytes(), file_upload);
+                    }
+                }
+            }
+        } else {
+            // Text form field → $_POST
+            let mut data = Vec::new();
+            if field.data.read_to_end(&mut data).is_ok() {
+                post_vars.insert(name.into_bytes(), data);
+            }
+        }
+    }
+
+    (post_vars, files_vars)
+}
+
+/// Extract boundary from Content-Type header.
+fn extract_boundary(content_type: &str) -> Option<String> {
+    if let Some(idx) = content_type.find("boundary=") {
+        let boundary = &content_type[idx + 9..];
+        let boundary = boundary.split(';').next().unwrap_or(boundary);
+        let boundary = boundary.trim_matches('"');
+        Some(boundary.to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +256,23 @@ mod tests {
         assert_eq!(url_decode("hello+world"), "hello world");
         assert_eq!(url_decode("%3Ctest%3E"), "<test>");
         assert_eq!(url_decode("a%20b"), "a b");
+    }
+
+    #[test]
+    fn test_parse_cookies() {
+        let header = b"session_id=abc123; user=john_doe; theme=dark";
+        let cookies = parse_cookies(header);
+        assert_eq!(cookies.get(b"session_id".as_slice()), Some(&b"abc123".to_vec()));
+        assert_eq!(cookies.get(b"user".as_slice()), Some(&b"john_doe".to_vec()));
+        assert_eq!(cookies.get(b"theme".as_slice()), Some(&b"dark".to_vec()));
+    }
+
+    #[test]
+    fn test_extract_boundary() {
+        let ct = "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW";
+        assert_eq!(extract_boundary(ct), Some("----WebKitFormBoundary7MA4YWxkTrZu0gW".to_string()));
+        
+        let ct_quoted = "multipart/form-data; boundary=\"----Boundary\"";
+        assert_eq!(extract_boundary(ct_quoted), Some("----Boundary".to_string()));
     }
 }
