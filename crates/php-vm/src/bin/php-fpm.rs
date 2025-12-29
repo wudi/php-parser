@@ -102,10 +102,6 @@ fn run_workers(workers: usize, source: ListenerSource) -> anyhow::Result<()> {
             local.block_on(&rt, async move {
                 let context = php_vm::runtime::context::EngineBuilder::new()
                     .with_core_extensions()
-                    .with_extension(php_vm::runtime::hash_extension::HashExtension)
-                    .with_extension(php_vm::runtime::json_extension::JsonExtension)
-                    .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
-                    .with_extension(php_vm::runtime::zlib_extension::ZlibExtension)
                     .build()
                     .expect("Failed to build engine");
                 eprintln!("[php-fpm] Worker {} started", id);

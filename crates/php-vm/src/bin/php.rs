@@ -6,7 +6,6 @@ use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::{ArrayData, ArrayKey, Val};
 use php_vm::runtime::context::{EngineBuilder, EngineContext};
-use php_vm::runtime::pthreads_extension::PthreadsExtension;
 use php_vm::vm::engine::{VmError, VM};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -23,10 +22,6 @@ struct Cli {
     #[arg(short = 'a', long)]
     interactive: bool,
 
-    /// Enable pthreads extension for multi-threading support
-    #[arg(long)]
-    enable_pthreads: bool,
-
     /// Script file to run
     #[arg(name = "FILE")]
     file: Option<PathBuf>,
@@ -40,9 +35,9 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     if cli.interactive {
-        run_repl(cli.enable_pthreads)?;
+        run_repl()?;
     } else if let Some(file) = cli.file {
-        run_file(file, cli.args, cli.enable_pthreads)?;
+        run_file(file, cli.args)?;
     } else {
         // If no arguments, show help
         use clap::CommandFactory;
@@ -52,39 +47,25 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn create_engine(enable_pthreads: bool) -> anyhow::Result<Arc<EngineContext>> {
-    let mut builder = EngineBuilder::new();
+fn create_engine() -> anyhow::Result<Arc<EngineContext>> {
+    let builder = EngineBuilder::new();
 
-    if enable_pthreads {
-        println!("[PHP] Loading pthreads extension...");
-        builder = builder.with_extension(PthreadsExtension);
-    }
-
-    // For backward compatibility, we still create the default EngineContext
-    // with all built-in functions if no extensions are loaded
-    if enable_pthreads {
-        builder
-            .build()
-            .map_err(|e| anyhow::anyhow!("Failed to build engine: {}", e))
-    } else {
-        // Use the legacy EngineContext::new() for backward compatibility
-        Ok(Arc::new(EngineContext::new()))
-    }
+    builder
+        .with_core_extensions()
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to build engine: {}", e))
 }
 
-fn run_repl(enable_pthreads: bool) -> anyhow::Result<()> {
+fn run_repl() -> anyhow::Result<()> {
     let mut rl = DefaultEditor::new()?;
     if let Err(_) = rl.load_history("history.txt") {
         // No history file is fine
     }
 
     println!("Interactive shell");
-    if enable_pthreads {
-        println!("pthreads extension: enabled");
-    }
     println!("Type 'exit' or 'quit' to quit");
 
-    let engine_context = create_engine(enable_pthreads)?;
+    let engine_context = create_engine()?;
     let mut vm = VM::new(engine_context);
 
     loop {
@@ -135,7 +116,7 @@ fn run_repl(enable_pthreads: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::Result<()> {
+fn run_file(path: PathBuf, args: Vec<String>) -> anyhow::Result<()> {
     let source = fs::read_to_string(&path)?;
     let script_name = path.to_string_lossy().into_owned();
     let canonical_path = path.canonicalize().unwrap_or_else(|_| path.clone());
@@ -145,7 +126,7 @@ fn run_file(path: PathBuf, args: Vec<String>, enable_pthreads: bool) -> anyhow::
         std::env::set_current_dir(parent)?;
     }
 
-    let engine_context = create_engine(enable_pthreads)?;
+    let engine_context = create_engine()?;
     let mut vm = VM::new(engine_context);
 
     // Fix $_SERVER variables to match the script being run

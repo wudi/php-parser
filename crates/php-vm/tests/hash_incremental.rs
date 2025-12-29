@@ -6,7 +6,6 @@ use php_vm::vm::engine::VM;
 
 fn create_test_vm() -> VM {
     let engine = EngineBuilder::new()
-        .with_core_extensions()
         .with_extension(php_vm::runtime::hash_extension::HashExtension)
         .build()
         .expect("Failed to build engine");

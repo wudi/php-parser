@@ -143,10 +143,6 @@ pub fn execute_code_with_config(
     // Create execution context
     let engine_context = crate::runtime::context::EngineBuilder::new()
         .with_core_extensions()
-        .with_extension(crate::runtime::hash_extension::HashExtension)
-        .with_extension(crate::runtime::json_extension::JsonExtension)
-        .with_extension(crate::runtime::openssl_extension::OpenSSLExtension)
-        .with_extension(crate::runtime::zlib_extension::ZlibExtension)
         .build()
         .map_err(|e| VmError::RuntimeError(format!("Failed to build engine: {}", e)))?;
     let mut request_context = RequestContext::new(engine_context);

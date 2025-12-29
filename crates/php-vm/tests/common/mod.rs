@@ -59,10 +59,6 @@ pub fn run_code_with_vm(code: &str) -> Result<(Val, VM), VmError> {
 
     let engine_context = EngineBuilder::new()
         .with_core_extensions()
-        .with_extension(php_vm::runtime::hash_extension::HashExtension)
-        .with_extension(php_vm::runtime::json_extension::JsonExtension)
-        .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
-        .with_extension(php_vm::runtime::zlib_extension::ZlibExtension)
         .build()
         .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
@@ -112,10 +108,6 @@ pub fn run_code_capture_output(code: &str) -> Result<(Val, String), VmError> {
 
     let engine_context = EngineBuilder::new()
         .with_core_extensions()
-        .with_extension(php_vm::runtime::hash_extension::HashExtension)
-        .with_extension(php_vm::runtime::json_extension::JsonExtension)
-        .with_extension(php_vm::runtime::openssl_extension::OpenSSLExtension)
-        .with_extension(php_vm::runtime::zlib_extension::ZlibExtension)
         .build()
         .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);

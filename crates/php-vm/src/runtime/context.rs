@@ -530,10 +530,15 @@ impl EngineBuilder {
     /// This includes all core PHP functionality: core functions, classes, interfaces,
     /// exceptions, and the date/time extension.
     pub fn with_core_extensions(mut self) -> Self {
-        self.extensions
-            .push(Box::new(super::core_extension::CoreExtension));
-        self.extensions
-            .push(Box::new(super::date_extension::DateExtension));
+        self.extensions.push(Box::new(super::core_extension::CoreExtension));
+        self.extensions.push(Box::new(super::date_extension::DateExtension));
+        self.extensions.push(Box::new(super::hash_extension::HashExtension));
+        self.extensions.push(Box::new(super::mysqli_extension::MysqliExtension));
+        self.extensions.push(Box::new(super::json_extension::JsonExtension));
+        self.extensions.push(Box::new(super::openssl_extension::OpenSSLExtension));
+        self.extensions.push(Box::new(super::pdo_extension::PdoExtension));
+        self.extensions.push(Box::new(super::pthreads_extension::PthreadsExtension));
+        self.extensions.push(Box::new(super::zlib_extension::ZlibExtension));
         self
     }
 
