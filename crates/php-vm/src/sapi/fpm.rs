@@ -6,6 +6,7 @@ use crate::fcgi::request::Request;
 use crate::sapi::FileUpload;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
+use std::time::{SystemTime, UNIX_EPOCH};
 use multipart::server::Multipart;
 use tempfile::NamedTempFile;
 
@@ -23,13 +24,23 @@ pub struct FpmRequest {
 
 impl FpmRequest {
     /// Parse FastCGI request into superglobal data.
-    pub fn from_fcgi(req: &Request) -> Result<Self, String> {
+    pub fn from_fcgi(req: &Request, request_time: SystemTime) -> Result<Self, String> {
         let mut server_vars = HashMap::new();
         let mut env_vars = HashMap::new();
 
         // Copy all params to $_SERVER (standard CGI/FastCGI behavior)
         for (key, value) in &req.params {
             server_vars.insert(key.clone(), value.clone());
+        }
+
+        // Add REQUEST_TIME and REQUEST_TIME_FLOAT
+        if let Ok(duration) = request_time.duration_since(UNIX_EPOCH) {
+            let secs = duration.as_secs();
+            let micros = duration.subsec_micros();
+            let float_time = secs as f64 + (micros as f64 / 1_000_000.0);
+            
+            server_vars.insert(b"REQUEST_TIME".to_vec(), secs.to_string().into_bytes());
+            server_vars.insert(b"REQUEST_TIME_FLOAT".to_vec(), format!("{:.6}", float_time).into_bytes());
         }
 
         // Extract script filename (required)

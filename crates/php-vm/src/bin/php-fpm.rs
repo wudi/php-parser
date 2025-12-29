@@ -12,13 +12,13 @@ use php_vm::fcgi;
 use php_vm::runtime::context::EngineContext;
 use php_vm::sapi::fpm::FpmRequest;
 use php_vm::vm::engine::VM;
-use std::fs;
 use std::io::Write;
 use std::net::TcpListener as StdTcpListener;
 use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
@@ -167,7 +167,7 @@ async fn handle_fastcgi_connection(
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?; // Ensure blocking mode
     
-    handle_fastcgi_connection_sync(std_stream, engine)
+    handle_fastcgi_connection_sync(std_stream, engine).await
 }
 
 /// Handle Unix stream connection.
@@ -178,11 +178,11 @@ async fn handle_fastcgi_unix_connection(
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?;
     
-    handle_fastcgi_connection_sync(std_stream, engine)
+    handle_fastcgi_connection_sync(std_stream, engine).await
 }
 
 /// Synchronous FastCGI connection handler.
-fn handle_fastcgi_connection_sync<S>(
+async fn handle_fastcgi_connection_sync<S>(
     stream: S,
     engine: Arc<EngineContext>,
 ) -> Result<(), anyhow::Error>
@@ -211,8 +211,11 @@ where
         let request_id = request.request_id;
         let keep_conn = request.keep_conn;
 
+        // Capture request start time for REQUEST_TIME/REQUEST_TIME_FLOAT
+        let request_time = SystemTime::now();
+
         // Convert to FpmRequest (SAPI adapter)
-        let fpm_req = match FpmRequest::from_fcgi(&request) {
+        let fpm_req = match FpmRequest::from_fcgi(&request, request_time) {
             Ok(req) => req,
             Err(e) => {
                 eprintln!("[php-fpm] Request parse error: {}", e);
@@ -226,7 +229,7 @@ where
         };
 
         // Execute PHP script
-        let (body, headers, status, errors) = execute_php(&engine, &fpm_req);
+        let (body, headers, status, errors) = execute_php(&engine, &fpm_req).await;
 
         // Send response
         {
@@ -368,7 +371,7 @@ fn http_reason_phrase(status: u16) -> &'static str {
 }
 
 /// Execute PHP script and return (body, headers, status, errors).
-fn execute_php(
+async fn execute_php(
     engine: &Arc<EngineContext>,
     fpm_req: &FpmRequest,
 ) -> (
@@ -377,7 +380,7 @@ fn execute_php(
     Option<u16>,
     Vec<u8>,  // stderr/errors
 ) {
-    let source = match fs::read(&fpm_req.script_filename) {
+    let source = match tokio::fs::read(&fpm_req.script_filename).await {
         Ok(s) => s,
         Err(e) => {
             let error = format!("Error reading script: {}", e);
