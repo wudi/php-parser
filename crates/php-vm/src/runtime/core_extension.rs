@@ -43,6 +43,11 @@ impl Extension for CoreExtension {
         registry.register_function(b"ord", string::php_ord);
         registry.register_function(b"bin2hex", string::php_bin2hex);
         registry.register_function(b"hex2bin", string::php_hex2bin);
+        registry.register_function(b"crc32", string::php_crc32);
+        registry.register_function(b"quoted_printable_decode", string::php_quoted_printable_decode);
+        registry.register_function(b"quoted_printable_encode", string::php_quoted_printable_encode);
+        registry.register_function(b"convert_uuencode", string::php_convert_uuencode);
+        registry.register_function(b"convert_uudecode", string::php_convert_uudecode);
         registry.register_function(b"addslashes", string::php_addslashes);
         registry.register_function(b"stripslashes", string::php_stripslashes);
         registry.register_function(b"addcslashes", string::php_addcslashes);
@@ -51,6 +56,8 @@ impl Extension for CoreExtension {
         registry.register_function(b"str_rot13", string::php_str_rot13);
         registry.register_function(b"str_shuffle", string::php_str_shuffle);
         registry.register_function(b"str_split", string::php_str_split);
+        registry.register_function(b"chunk_split", string::php_chunk_split);
+        registry.register_function(b"str_getcsv", string::php_str_getcsv);
         registry.register_function(b"strrev", string::php_strrev);
         registry.register_function(b"strcmp", string::php_strcmp);
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
@@ -65,6 +72,8 @@ impl Extension for CoreExtension {
         registry.register_function(b"ucwords", string::php_ucwords);
         registry.register_function(b"wordwrap", string::php_wordwrap);
         registry.register_function(b"strtok", string::php_strtok);
+        registry.register_function(b"count_chars", string::php_count_chars);
+        registry.register_function(b"str_word_count", string::php_str_word_count);
         registry.register_function(b"str_contains", string::php_str_contains);
         registry.register_function(b"str_starts_with", string::php_str_starts_with);
         registry.register_function(b"str_ends_with", string::php_str_ends_with);
@@ -79,6 +88,10 @@ impl Extension for CoreExtension {
         registry.register_function(b"strchr", string::php_strstr);
         registry.register_function(b"sprintf", string::php_sprintf);
         registry.register_function(b"printf", string::php_printf);
+        registry.register_function(b"vsprintf", string::php_vsprintf);
+        registry.register_function(b"vprintf", string::php_vprintf);
+        registry.register_function(b"fprintf", string::php_fprintf);
+        registry.register_function(b"vfprintf", string::php_vfprintf);
 
         // Array functions
         registry.register_function(b"array_merge", array::php_array_merge);

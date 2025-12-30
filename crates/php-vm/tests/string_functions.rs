@@ -611,6 +611,175 @@ fn test_strtok_basic() {
 }
 
 #[test]
+fn test_count_chars_modes() {
+    let src = "<?php return count_chars('aba', 1);";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(arr.map.len(), 2);
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(97)).unwrap()).value,
+                Val::Int(2)
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(98)).unwrap()).value,
+                Val::Int(1)
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+
+    let src = "<?php return count_chars('aba', 3);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"ab".to_vec().into()));
+}
+
+#[test]
+fn test_str_word_count_basic() {
+    let src = "<?php return str_word_count('Hello world');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(2));
+
+    let src = "<?php return str_word_count('Hello world', 1);";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(arr.map.len(), 2);
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value,
+                Val::String(b"Hello".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value,
+                Val::String(b"world".to_vec().into())
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+
+    let src = "<?php return str_word_count('Hello world', 2);";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(arr.map.len(), 2);
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value,
+                Val::String(b"Hello".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(6)).unwrap()).value,
+                Val::String(b"world".to_vec().into())
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_chunk_split_basic() {
+    let src = "<?php return chunk_split('abcdef', 2, '-');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"ab-cd-ef-".to_vec().into()));
+
+    let src = "<?php return chunk_split('abc', 10, '-');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"abc-".to_vec().into()));
+}
+
+#[test]
+fn test_str_getcsv_basic() {
+    let src = "<?php return str_getcsv('a,b,c');";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(arr.map.len(), 3);
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value,
+                Val::String(b"a".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value,
+                Val::String(b"b".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(2)).unwrap()).value,
+                Val::String(b"c".to_vec().into())
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+
+    let src = "<?php return str_getcsv('\"a,b\",c');";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(arr.map.len(), 2);
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value,
+                Val::String(b"a,b".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value,
+                Val::String(b"c".to_vec().into())
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_quoted_printable_basic() {
+    let src = "<?php return quoted_printable_decode('=41=42=43');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"ABC".to_vec().into()));
+
+    let src = "<?php return quoted_printable_encode('ABC');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"ABC".to_vec().into()));
+}
+
+#[test]
+fn test_uuencode_roundtrip() {
+    let src = "<?php $enc = convert_uuencode('hello'); return convert_uudecode($enc);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"hello".to_vec().into()));
+}
+
+#[test]
+fn test_crc32_basic() {
+    let src = "<?php return crc32('hello');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(907060870));
+}
+
+#[test]
+fn test_vprintf_vsprintf_basic() {
+    let src = "<?php return vsprintf('%s-%d', ['ok', 3]);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"ok-3".to_vec().into()));
+
+    let src = "<?php return vprintf('%s-%d', ['ok', 3]);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(4));
+}
+
+#[test]
+fn test_fprintf_vfprintf_basic() {
+    let src = "<?php
+        $file = '/tmp/php_vm_fprintf_test.txt';
+        $fp = fopen($file, 'w+');
+        $len1 = fprintf($fp, '%s-%d', 'hi', 2);
+        $len2 = vfprintf($fp, '%s', ['!']);
+        fclose($fp);
+        $contents = file_get_contents($file);
+        unlink($file);
+        return $len1 . '|' . $len2 . '|' . $contents;
+    ";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"4|1|hi-2!".to_vec().into()));
+}
+
+#[test]
 fn test_strlen_multiple_args() {
     let src = "<?php return strlen('a', 'b');";
     let (result, warnings, _) = run_code(src);

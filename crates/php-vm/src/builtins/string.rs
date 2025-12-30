@@ -1,5 +1,6 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
+use crc32fast::Hasher;
 use std::cmp::Ordering;
 use std::str;
 
@@ -575,6 +576,253 @@ pub fn php_addslashes(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(result.into())))
 }
 
+pub fn php_quoted_printable_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quoted_printable_decode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    if input.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let mut result = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'=' {
+            if i + 2 < input.len()
+                && input[i + 1].is_ascii_hexdigit()
+                && input[i + 2].is_ascii_hexdigit()
+            {
+                let hi = (input[i + 1] as char).to_digit(16).unwrap() as u8;
+                let lo = (input[i + 2] as char).to_digit(16).unwrap() as u8;
+                result.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+
+            let mut k = 1;
+            while i + k < input.len() && (input[i + k] == b' ' || input[i + k] == b'\t') {
+                k += 1;
+            }
+            if i + k >= input.len() {
+                i += k;
+                continue;
+            }
+            if input[i + k] == b'\r' && i + k + 1 < input.len() && input[i + k + 1] == b'\n' {
+                i += k + 2;
+                continue;
+            }
+            if input[i + k] == b'\r' || input[i + k] == b'\n' {
+                i += k + 1;
+                continue;
+            }
+            result.push(b'=');
+            i += 1;
+        } else {
+            result.push(input[i]);
+            i += 1;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_quoted_printable_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quoted_printable_encode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    if input.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let mut result = Vec::with_capacity(input.len());
+    let mut line_len = 0usize;
+
+    let mut i = 0;
+    while i < input.len() {
+        let c = input[i];
+        if c == b'\r' && i + 1 < input.len() && input[i + 1] == b'\n' {
+            result.push(b'\r');
+            result.push(b'\n');
+            i += 2;
+            line_len = 0;
+            continue;
+        }
+
+        let mut encode = c == b'=' || c < 0x20 || c == 0x7f || (c & 0x80) != 0;
+        if (c == b' ' || c == b'\t')
+            && (i + 1 == input.len() || input[i + 1] == b'\r' || input[i + 1] == b'\n')
+        {
+            encode = true;
+        }
+
+        let needed = if encode { 3 } else { 1 };
+        if line_len + needed > 75 {
+            result.extend_from_slice(b"=\r\n");
+            line_len = 0;
+        }
+
+        if encode {
+            result.push(b'=');
+            result.push(hex_upper(c >> 4));
+            result.push(hex_upper(c & 0x0f));
+            line_len += 3;
+        } else {
+            result.push(c);
+            line_len += 1;
+        }
+
+        i += 1;
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_convert_uuencode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("convert_uuencode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let encoded = uuencode_bytes(&input);
+    Ok(vm.arena.alloc(Val::String(encoded.into())))
+}
+
+pub fn php_convert_uudecode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("convert_uudecode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let decoded = uudecode_bytes(&input);
+    match decoded {
+        Some(bytes) => Ok(vm.arena.alloc(Val::String(bytes.into()))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+pub fn php_crc32(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("crc32() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let mut hasher = Hasher::new();
+    hasher.update(&input);
+    let checksum = hasher.finalize();
+    Ok(vm.arena.alloc(Val::Int(checksum as i64)))
+}
+
+fn hex_upper(nibble: u8) -> u8 {
+    match nibble {
+        0..=9 => b'0' + nibble,
+        _ => b'A' + (nibble - 10),
+    }
+}
+
+fn uuencode_bytes(input: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        let chunk_len = std::cmp::min(45, input.len() - i);
+        out.push(uu_enc(chunk_len as u8));
+
+        let mut j = 0;
+        while j < chunk_len {
+            let b1 = input[i + j];
+            let b2 = if j + 1 < chunk_len {
+                input[i + j + 1]
+            } else {
+                0
+            };
+            let b3 = if j + 2 < chunk_len {
+                input[i + j + 2]
+            } else {
+                0
+            };
+
+            out.push(uu_enc(b1 >> 2));
+            out.push(uu_enc(((b1 << 4) & 0x30) | ((b2 >> 4) & 0x0f)));
+            out.push(uu_enc(((b2 << 2) & 0x3c) | ((b3 >> 6) & 0x03)));
+            out.push(uu_enc(b3 & 0x3f));
+            j += 3;
+        }
+
+        out.push(b'\n');
+        i += chunk_len;
+    }
+
+    out.push(uu_enc(0));
+    out.push(b'\n');
+    out
+}
+
+fn uudecode_bytes(input: &[u8]) -> Option<Vec<u8>> {
+    if input.is_empty() {
+        return None;
+    }
+
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        let len_char = input[i];
+        i += 1;
+        let len = uu_dec(len_char) as usize;
+        if len == 0 {
+            break;
+        }
+
+        let mut written = 0usize;
+        while written < len {
+            if i + 4 > input.len() {
+                return None;
+            }
+            let c1 = uu_dec(input[i]);
+            let c2 = uu_dec(input[i + 1]);
+            let c3 = uu_dec(input[i + 2]);
+            let c4 = uu_dec(input[i + 3]);
+
+            let b1 = (c1 << 2) | (c2 >> 4);
+            let b2 = (c2 << 4) | (c3 >> 2);
+            let b3 = (c3 << 6) | c4;
+
+            out.push(b1);
+            written += 1;
+            if written < len {
+                out.push(b2);
+                written += 1;
+            }
+            if written < len {
+                out.push(b3);
+                written += 1;
+            }
+
+            i += 4;
+        }
+
+        if i < input.len() && input[i] == b'\n' {
+            i += 1;
+        }
+    }
+
+    Some(out)
+}
+
+fn uu_enc(c: u8) -> u8 {
+    if c == 0 {
+        b'`'
+    } else {
+        (c & 0x3f) + b' '
+    }
+}
+
+fn uu_dec(c: u8) -> u8 {
+    (c.wrapping_sub(b' ')) & 0x3f
+}
+
 pub fn php_stripslashes(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("stripslashes() expects exactly 1 parameter".into());
@@ -818,6 +1066,167 @@ pub fn php_str_split(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Array(
         crate::core::value::ArrayData::from(result_map).into(),
     )))
+}
+
+pub fn php_chunk_split(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("chunk_split() expects between 1 and 3 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let chunk_len = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        76
+    };
+    let end = if args.len() == 3 {
+        vm.value_to_string(args[2])?
+    } else {
+        b"\r\n".to_vec()
+    };
+
+    if chunk_len <= 0 {
+        return Err("chunk_split(): Chunk length must be greater than 0".into());
+    }
+
+    if s.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let chunk_len = chunk_len as usize;
+    if chunk_len > s.len() {
+        let mut result = Vec::with_capacity(s.len() + end.len());
+        result.extend_from_slice(&s);
+        result.extend_from_slice(&end);
+        return Ok(vm.arena.alloc(Val::String(result.into())));
+    }
+
+    let mut result =
+        Vec::with_capacity(s.len() + ((s.len() + chunk_len - 1) / chunk_len) * end.len());
+    for chunk in s.chunks(chunk_len) {
+        result.extend_from_slice(chunk);
+        result.extend_from_slice(&end);
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_str_getcsv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("str_getcsv() expects between 1 and 4 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let delimiter = if args.len() >= 2 {
+        let d = vm.value_to_string(args[1])?;
+        if d.len() != 1 {
+            return Err("str_getcsv(): Delimiter must be a single character".into());
+        }
+        d[0]
+    } else {
+        b','
+    };
+
+    let enclosure = if args.len() >= 3 {
+        let e = vm.value_to_string(args[2])?;
+        if e.len() != 1 {
+            return Err("str_getcsv(): Enclosure must be a single character".into());
+        }
+        e[0]
+    } else {
+        b'"'
+    };
+
+    let escape = if args.len() == 4 {
+        let esc = vm.value_to_string(args[3])?;
+        if esc.len() > 1 {
+            return Err("str_getcsv(): Escape must be empty or a single character".into());
+        }
+        if esc.is_empty() {
+            None
+        } else {
+            Some(esc[0])
+        }
+    } else {
+        Some(b'\\')
+    };
+
+    if input.is_empty() {
+        let mut result_map = indexmap::IndexMap::new();
+        result_map.insert(
+            crate::core::value::ArrayKey::Int(0),
+            vm.arena.alloc(Val::Null),
+        );
+        return Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )));
+    }
+
+    let fields = parse_csv_line(&input, delimiter, enclosure, escape);
+    let mut result_map = indexmap::IndexMap::new();
+    for (i, field) in fields.into_iter().enumerate() {
+        let val = vm.arena.alloc(Val::String(field.into()));
+        result_map.insert(crate::core::value::ArrayKey::Int(i as i64), val);
+    }
+
+    Ok(vm.arena.alloc(Val::Array(
+        crate::core::value::ArrayData::from(result_map).into(),
+    )))
+}
+
+fn parse_csv_line(
+    input: &[u8],
+    delimiter: u8,
+    enclosure: u8,
+    escape: Option<u8>,
+) -> Vec<Vec<u8>> {
+    let mut fields = Vec::new();
+    let mut field = Vec::new();
+    let mut in_quotes = false;
+    let mut i = 0;
+
+    while i < input.len() {
+        let b = input[i];
+        if in_quotes {
+            if let Some(escape_char) = escape {
+                if b == escape_char && i + 1 < input.len() {
+                    field.push(input[i + 1]);
+                    i += 2;
+                    continue;
+                }
+            }
+            if b == enclosure {
+                if i + 1 < input.len() && input[i + 1] == enclosure {
+                    field.push(enclosure);
+                    i += 2;
+                    continue;
+                }
+                in_quotes = false;
+                i += 1;
+                continue;
+            }
+            field.push(b);
+            i += 1;
+            continue;
+        }
+
+        if b == delimiter {
+            fields.push(field);
+            field = Vec::new();
+            i += 1;
+            continue;
+        }
+        if b == enclosure {
+            in_quotes = true;
+            i += 1;
+            continue;
+        }
+        field.push(b);
+        i += 1;
+    }
+
+    fields.push(field);
+    fields
 }
 
 pub fn php_strrev(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -1259,6 +1668,188 @@ pub fn php_strtok(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(result.into())))
 }
 
+pub fn php_count_chars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("count_chars() expects 1 or 2 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let mode = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        0
+    };
+
+    if mode < 0 || mode > 4 {
+        return Err("count_chars(): Mode must be between 0 and 4 (inclusive)".into());
+    }
+
+    let mut counts = [0usize; 256];
+    for &b in &input {
+        counts[b as usize] += 1;
+    }
+
+    if mode < 3 {
+        let mut result_map = indexmap::IndexMap::new();
+        for (idx, count) in counts.iter().enumerate() {
+            let include = match mode {
+                0 => true,
+                1 => *count != 0,
+                2 => *count == 0,
+                _ => false,
+            };
+            if include {
+                let handle = vm.arena.alloc(Val::Int(*count as i64));
+                result_map.insert(crate::core::value::ArrayKey::Int(idx as i64), handle);
+            }
+        }
+        return Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )));
+    }
+
+    let mut bytes = Vec::new();
+    for (idx, count) in counts.iter().enumerate() {
+        let include = match mode {
+            3 => *count != 0,
+            4 => *count == 0,
+            _ => false,
+        };
+        if include {
+            bytes.push(idx as u8);
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_str_word_count(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("str_word_count() expects between 1 and 3 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let word_type = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        0
+    };
+
+    let char_list = if args.len() == 3 {
+        match &vm.arena.get(args[2]).value {
+            Val::Null => None,
+            _ => Some(vm.value_to_string(args[2])?),
+        }
+    } else {
+        None
+    };
+
+    let mask = char_list.as_ref().map(|chars| build_char_mask(chars));
+
+    if input.is_empty() {
+        return match word_type {
+            0 => Ok(vm.arena.alloc(Val::Int(0))),
+            1 | 2 => Ok(vm.arena.alloc(Val::Array(
+                crate::core::value::ArrayData::new().into(),
+            ))),
+            _ => Err("str_word_count(): Invalid format".into()),
+        };
+    }
+
+    match word_type {
+        0 | 1 | 2 => {}
+        _ => return Err("str_word_count(): Invalid format".into()),
+    }
+
+    let mut start = 0usize;
+    let mut end = input.len();
+    if start < end {
+        let first = input[start];
+        let allowed = mask
+            .as_ref()
+            .map(|m| m[first as usize])
+            .unwrap_or(false);
+        if (first == b'\'' || first == b'-') && !allowed {
+            start += 1;
+        }
+    }
+    if start < end {
+        let last = input[end - 1];
+        let allowed = mask
+            .as_ref()
+            .map(|m| m[last as usize])
+            .unwrap_or(false);
+        if last == b'-' && !allowed {
+            end -= 1;
+        }
+    }
+
+    let mut p = start;
+    let mut word_count = 0i64;
+    let mut result_map = indexmap::IndexMap::new();
+    let mut idx = 0i64;
+
+    while p < end {
+        let s = p;
+        while p < end && is_word_char(input[p], mask.as_ref()) {
+            p += 1;
+        }
+        if p > s {
+            match word_type {
+                1 => {
+                    let handle = vm.arena.alloc(Val::String(input[s..p].to_vec().into()));
+                    result_map.insert(crate::core::value::ArrayKey::Int(idx), handle);
+                    idx += 1;
+                }
+                2 => {
+                    let handle = vm.arena.alloc(Val::String(input[s..p].to_vec().into()));
+                    result_map.insert(crate::core::value::ArrayKey::Int(s as i64), handle);
+                }
+                _ => {
+                    word_count += 1;
+                }
+            }
+        }
+        p += 1;
+    }
+
+    if word_type == 0 {
+        Ok(vm.arena.alloc(Val::Int(word_count)))
+    } else {
+        Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )))
+    }
+}
+
+fn build_char_mask(chars: &[u8]) -> [bool; 256] {
+    let mut mask = [false; 256];
+    let mut i = 0;
+    while i < chars.len() {
+        let start = chars[i];
+        if i + 3 < chars.len() && chars[i + 1] == b'.' && chars[i + 2] == b'.' {
+            let end = chars[i + 3];
+            if end >= start {
+                for b in start..=end {
+                    mask[b as usize] = true;
+                }
+                i += 4;
+                continue;
+            }
+        }
+        mask[start as usize] = true;
+        i += 1;
+    }
+    mask
+}
+
+fn is_word_char(b: u8, mask: Option<&[bool; 256]>) -> bool {
+    b.is_ascii_alphabetic()
+        || mask.map(|m| m[b as usize]).unwrap_or(false)
+        || b == b'\''
+        || b == b'-'
+}
+
 pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 || args.len() > 3 {
         return Err("strpos() expects 2 or 3 parameters".into());
@@ -1593,6 +2184,49 @@ pub fn php_printf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Int(bytes.len() as i64)))
 }
 
+pub fn php_vprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("vprintf() expects exactly 2 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[0], args[1], "vprintf", 2)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    vm.print_bytes(&bytes)?;
+    Ok(vm.arena.alloc(Val::Int(bytes.len() as i64)))
+}
+
+pub fn php_vsprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("vsprintf() expects exactly 2 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[0], args[1], "vsprintf", 2)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_fprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("fprintf() expects at least 2 parameters".into());
+    }
+
+    let format_args: Vec<Handle> = args[1..].to_vec();
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    let str_handle = vm.arena.alloc(Val::String(bytes.into()));
+    crate::builtins::filesystem::php_fwrite(vm, &[args[0], str_handle])
+}
+
+pub fn php_vfprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 3 {
+        return Err("vfprintf() expects exactly 3 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[1], args[2], "vfprintf", 3)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    let str_handle = vm.arena.alloc(Val::String(bytes.into()));
+    crate::builtins::filesystem::php_fwrite(vm, &[args[0], str_handle])
+}
+
 fn format_sprintf_bytes(vm: &mut VM, args: &[Handle]) -> Result<Vec<u8>, String> {
     if args.is_empty() {
         return Err("sprintf() expects at least 1 parameter".into());
@@ -1641,6 +2275,33 @@ fn format_sprintf_bytes(vm: &mut VM, args: &[Handle]) -> Result<Vec<u8>, String>
     }
 
     Ok(output)
+}
+
+fn build_format_args_from_array(
+    vm: &mut VM,
+    format_handle: Handle,
+    array_handle: Handle,
+    name: &str,
+    arg_index: usize,
+) -> Result<Vec<Handle>, String> {
+    let mut args = Vec::new();
+    args.push(format_handle);
+
+    match &vm.arena.get(array_handle).value {
+        Val::Array(arr) => {
+            let handles: Vec<Handle> = arr.map.values().copied().collect();
+            args.extend(handles);
+        }
+        Val::ConstArray(arr) => {
+            let values: Vec<Val> = arr.values().cloned().collect();
+            for value in values {
+                args.push(vm.arena.alloc(value));
+            }
+        }
+        _ => return Err(format!("{}(): Argument #{} must be an array", name, arg_index)),
+    }
+
+    Ok(args)
 }
 
 pub fn php_version_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
