@@ -1921,6 +1921,81 @@ pub fn php_strncasecmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Int(res)))
 }
 
+pub fn php_strnatcmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strnatcmp() expects exactly 2 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let res = natural_compare(&s1, &s2, false);
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+pub fn php_strnatcasecmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strnatcasecmp() expects exactly 2 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let res = natural_compare(&s1, &s2, true);
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+pub fn php_levenshtein(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 5 {
+        return Err("levenshtein() expects between 2 and 5 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let replace_cost = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        1
+    };
+    let insert_cost = if args.len() >= 4 {
+        vm.arena.get(args[3]).value.to_int()
+    } else {
+        1
+    };
+    let delete_cost = if args.len() >= 5 {
+        vm.arena.get(args[4]).value.to_int()
+    } else {
+        1
+    };
+    let dist = levenshtein_distance(&s1, &s2, replace_cost, insert_cost, delete_cost);
+    Ok(vm.arena.alloc(Val::Int(dist)))
+}
+
+pub fn php_similar_text(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("similar_text() expects 2 or 3 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let matches = similar_text_count(&s1, &s2);
+    if args.len() == 3 {
+        let percent = if s1.is_empty() && s2.is_empty() {
+            0.0
+        } else {
+            (matches as f64) * 200.0 / ((s1.len() + s2.len()) as f64)
+        };
+        let handle = args[2];
+        if vm.arena.get(handle).is_ref {
+            vm.arena.get_mut(handle).value = Val::Float(percent);
+        }
+    }
+    Ok(vm.arena.alloc(Val::Int(matches as i64)))
+}
+
+pub fn php_soundex(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("soundex() expects exactly 1 parameter".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let code = soundex_code(&input);
+    Ok(vm.arena.alloc(Val::String(code.into())))
+}
+
 pub fn php_substr_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 3 || args.len() > 5 {
         return Err("substr_compare() expects between 3 and 5 parameters".into());
@@ -1979,6 +2054,195 @@ pub fn php_substr_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
     };
 
     Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+fn natural_compare(a: &[u8], b: &[u8], case_insensitive: bool) -> i64 {
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() && j < b.len() {
+        let ca = if case_insensitive {
+            a[i].to_ascii_lowercase()
+        } else {
+            a[i]
+        };
+        let cb = if case_insensitive {
+            b[j].to_ascii_lowercase()
+        } else {
+            b[j]
+        };
+        if ca.is_ascii_digit() && cb.is_ascii_digit() {
+            let (next_i, next_j, cmp) = compare_numeric_run(a, b, i, j);
+            if cmp != 0 {
+                return cmp;
+            }
+            i = next_i;
+            j = next_j;
+            continue;
+        }
+        if ca != cb {
+            return if ca < cb { -1 } else { 1 };
+        }
+        i += 1;
+        j += 1;
+    }
+    match a.len().cmp(&b.len()) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
+fn compare_numeric_run(a: &[u8], b: &[u8], start_a: usize, start_b: usize) -> (usize, usize, i64) {
+    let mut i = start_a;
+    let mut j = start_b;
+    while i < a.len() && a[i].is_ascii_digit() {
+        i += 1;
+    }
+    while j < b.len() && b[j].is_ascii_digit() {
+        j += 1;
+    }
+    let run_a = &a[start_a..i];
+    let run_b = &b[start_b..j];
+    let (sig_a, zeros_a) = strip_leading_zeros(run_a);
+    let (sig_b, zeros_b) = strip_leading_zeros(run_b);
+    if sig_a.len() != sig_b.len() {
+        return (
+            i,
+            j,
+            if sig_a.len() < sig_b.len() { -1 } else { 1 },
+        );
+    }
+    for (da, db) in sig_a.iter().zip(sig_b.iter()) {
+        if da != db {
+            return (i, j, if da < db { -1 } else { 1 });
+        }
+    }
+    if run_a.len() != run_b.len() {
+        return (
+            i,
+            j,
+            if run_a.len() < run_b.len() { -1 } else { 1 },
+        );
+    }
+    let zeros_cmp = zeros_a.cmp(&zeros_b);
+    let cmp = match zeros_cmp {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    (i, j, cmp)
+}
+
+fn strip_leading_zeros(run: &[u8]) -> (&[u8], usize) {
+    let mut idx = 0;
+    while idx < run.len() && run[idx] == b'0' {
+        idx += 1;
+    }
+    let sig = if idx == run.len() { &run[run.len() - 1..] } else { &run[idx..] };
+    (sig, idx)
+}
+
+fn levenshtein_distance(a: &[u8], b: &[u8], replace_cost: i64, insert_cost: i64, delete_cost: i64) -> i64 {
+    if a.is_empty() {
+        return (b.len() as i64) * insert_cost;
+    }
+    if b.is_empty() {
+        return (a.len() as i64) * delete_cost;
+    }
+    let mut prev: Vec<i64> = (0..=b.len())
+        .map(|j| (j as i64) * insert_cost)
+        .collect();
+    let mut curr = vec![0i64; b.len() + 1];
+    for (i, &ca) in a.iter().enumerate() {
+        curr[0] = (i as i64 + 1) * delete_cost;
+        for (j, &cb) in b.iter().enumerate() {
+            let cost_replace = if ca == cb { 0 } else { replace_cost };
+            let del = prev[j + 1] + delete_cost;
+            let ins = curr[j] + insert_cost;
+            let rep = prev[j] + cost_replace;
+            curr[j + 1] = del.min(ins).min(rep);
+        }
+        prev.clone_from_slice(&curr);
+    }
+    prev[b.len()]
+}
+
+fn similar_text_count(a: &[u8], b: &[u8]) -> usize {
+    let mut max_len = 0;
+    let mut max_pos_a = 0;
+    let mut max_pos_b = 0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut k = 0;
+            while i + k < a.len() && j + k < b.len() && a[i + k] == b[j + k] {
+                k += 1;
+            }
+            if k > max_len {
+                max_len = k;
+                max_pos_a = i;
+                max_pos_b = j;
+            }
+        }
+    }
+    if max_len == 0 {
+        return 0;
+    }
+    let mut count = max_len;
+    if max_pos_a > 0 && max_pos_b > 0 {
+        count += similar_text_count(&a[..max_pos_a], &b[..max_pos_b]);
+    }
+    if max_pos_a + max_len < a.len() && max_pos_b + max_len < b.len() {
+        count += similar_text_count(
+            &a[max_pos_a + max_len..],
+            &b[max_pos_b + max_len..],
+        );
+    }
+    count
+}
+
+fn soundex_code(input: &[u8]) -> Vec<u8> {
+    let mut first = None;
+    for &b in input {
+        if b.is_ascii_alphabetic() {
+            first = Some(b.to_ascii_uppercase());
+            break;
+        }
+    }
+    let Some(first_letter) = first else {
+        return b"0000".to_vec();
+    };
+    let mut out = vec![first_letter];
+    let mut prev = soundex_digit(first_letter);
+    for &b in input {
+        if !b.is_ascii_alphabetic() {
+            continue;
+        }
+        let upper = b.to_ascii_uppercase();
+        let code = soundex_digit(upper);
+        if code != 0 && code != prev {
+            out.push(b'0' + code);
+        }
+        prev = code;
+        if out.len() == 4 {
+            break;
+        }
+    }
+    while out.len() < 4 {
+        out.push(b'0');
+    }
+    out
+}
+
+fn soundex_digit(b: u8) -> u8 {
+    match b {
+        b'B' | b'F' | b'P' | b'V' => 1,
+        b'C' | b'G' | b'J' | b'K' | b'Q' | b'S' | b'X' | b'Z' => 2,
+        b'D' | b'T' => 3,
+        b'L' => 4,
+        b'M' | b'N' => 5,
+        b'R' => 6,
+        _ => 0,
+    }
 }
 
 fn binary_strncmp(s1: &[u8], s2: &[u8], length: usize) -> i64 {

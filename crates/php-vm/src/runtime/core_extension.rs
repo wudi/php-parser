@@ -63,6 +63,11 @@ impl Extension for CoreExtension {
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
         registry.register_function(b"strncmp", string::php_strncmp);
         registry.register_function(b"strncasecmp", string::php_strncasecmp);
+        registry.register_function(b"strnatcmp", string::php_strnatcmp);
+        registry.register_function(b"strnatcasecmp", string::php_strnatcasecmp);
+        registry.register_function(b"levenshtein", string::php_levenshtein);
+        registry.register_function_with_by_ref(b"similar_text", string::php_similar_text, vec![2]);
+        registry.register_function(b"soundex", string::php_soundex);
         registry.register_function(b"substr_compare", string::php_substr_compare);
         registry.register_function(b"strstr", string::php_strstr);
         registry.register_function(b"stristr", string::php_stristr);

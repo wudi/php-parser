@@ -461,6 +461,45 @@ fn test_strncasecmp_basic() {
 }
 
 #[test]
+fn test_strnatcmp_basic() {
+    let src = "<?php return strnatcmp('img12.png', 'img2.png') > 0;";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Bool(true));
+}
+
+#[test]
+fn test_strnatcasecmp_basic() {
+    let src = "<?php return strnatcasecmp('Img12.png', 'img2.png') > 0;";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Bool(true));
+}
+
+#[test]
+fn test_levenshtein_basic() {
+    let src = "<?php return levenshtein('kitten', 'sitting');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(3));
+
+    let src = "<?php return levenshtein('a', 'b', 2, 3, 4);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(2));
+}
+
+#[test]
+fn test_similar_text_basic() {
+    let src = "<?php $p = 0; $c = similar_text('cat', 'car', $p); return $c . '|' . sprintf('%.2f', $p);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"2|66.67".to_vec().into()));
+}
+
+#[test]
+fn test_soundex_basic() {
+    let src = "<?php return soundex('Euler') . '|' . soundex('Ellery');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"E460|E460".to_vec().into()));
+}
+
+#[test]
 fn test_substr_compare_basic() {
     let src = "<?php return substr_compare('abcde', 'bc', 1, 2);";
     let (result, _, _) = run_code(src);
