@@ -27,6 +27,10 @@ impl Extension for CoreExtension {
         registry.register_function(b"substr", string::php_substr);
         registry.register_function(b"substr_replace", string::php_substr_replace);
         registry.register_function(b"strpos", string::php_strpos);
+        registry.register_function(b"stripos", string::php_stripos);
+        registry.register_function(b"strrpos", string::php_strrpos);
+        registry.register_function(b"strripos", string::php_strripos);
+        registry.register_function(b"strrchr", string::php_strrchr);
         registry.register_function(b"strtr", string::php_strtr);
         registry.register_function(b"trim", string::php_trim);
         registry.register_function(b"ltrim", string::php_ltrim);

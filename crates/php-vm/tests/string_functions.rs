@@ -538,6 +538,13 @@ fn test_chop_join_strchr_aliases() {
 }
 
 #[test]
+fn test_stripos_strrpos_strripos_strrchr() {
+    let src = "<?php return stripos(\"Hello\", \"e\") . \"|\" . strrpos(\"abcabc\", \"b\") . \"|\" . strripos(\"aBcAbC\", \"C\") . \"|\" . strrchr(\"abcabc\", \"b\");";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"1|4|5|bc".to_vec().into()));
+}
+
+#[test]
 fn test_strtok_basic() {
     let src = "<?php
         $tok = strtok('This is a test', ' ');

@@ -1207,6 +1207,142 @@ pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 }
 
+pub fn php_stripos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("stripos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if offset < 0 || offset as usize > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let hay = haystack[offset as usize..]
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+    let nee = needle
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+
+    if let Some(pos) = hay.windows(nee.len()).position(|window| window == nee.as_slice()) {
+        Ok(vm.arena.alloc(Val::Int(offset + pos as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strrpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("strrpos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let start = if offset >= 0 {
+        offset as usize
+    } else {
+        haystack
+            .len()
+            .saturating_sub((-offset) as usize)
+    };
+    if start > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let search_area = &haystack[start..];
+    if let Some(pos) = search_area
+        .windows(needle.len())
+        .rposition(|window| window == needle.as_slice())
+    {
+        Ok(vm.arena.alloc(Val::Int((start + pos) as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strripos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("strripos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let start = if offset >= 0 {
+        offset as usize
+    } else {
+        haystack
+            .len()
+            .saturating_sub((-offset) as usize)
+    };
+    if start > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let hay = haystack[start..]
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+    let nee = needle
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+
+    if let Some(pos) = hay.windows(nee.len()).rposition(|window| window == nee.as_slice()) {
+        Ok(vm.arena.alloc(Val::Int((start + pos) as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strrchr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strrchr() expects exactly 2 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let ch = needle.first().copied().unwrap_or(0);
+
+    if let Some(pos) = haystack.iter().rposition(|b| *b == ch) {
+        return Ok(vm.arena.alloc(Val::String(haystack[pos..].to_vec().into())));
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
 pub fn php_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("strtolower() expects exactly 1 parameter".into());
