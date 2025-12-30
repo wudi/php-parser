@@ -44,6 +44,7 @@ impl Extension for CoreExtension {
         registry.register_function(b"str_shuffle", string::php_str_shuffle);
         registry.register_function(b"str_split", string::php_str_split);
         registry.register_function(b"strrev", string::php_strrev);
+        registry.register_function(b"metaphone", string::php_metaphone);
         registry.register_function(b"strcmp", string::php_strcmp);
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
         registry.register_function(b"strncmp", string::php_strncmp);
@@ -1053,4 +1054,3 @@ impl Extension for CoreExtension {
         ExtensionResult::Success
     }
 }
-

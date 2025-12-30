@@ -62,6 +62,20 @@ fn test_number_format_compile_smoke() {
 }
 
 #[test]
+fn test_metaphone_basic() {
+    let (result, warnings, _) = run_code("<?php return metaphone('programmer');");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"PRKRMR".to_vec().into()));
+}
+
+#[test]
+fn test_metaphone_max_phonemes() {
+    let (result, warnings, _) = run_code("<?php return metaphone('programmer', 3);");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"PRK".to_vec().into()));
+}
+
+#[test]
 fn test_strlen_string() {
     let src = "<?php return strlen('hello');";
     let (result, warnings, _) = run_code(src);
