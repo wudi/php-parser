@@ -5322,6 +5322,7 @@ impl VM {
                                             ))
                                         }
                                     }
+                                    handled = true;
                                 }
                             }
 
@@ -5344,6 +5345,7 @@ impl VM {
                                         let idx_handle = self.arena.alloc(Val::Int(0));
                                         self.operand_stack.push(idx_handle);
                                     }
+                                    handled = true;
                                 }
                             }
 
@@ -5427,6 +5429,7 @@ impl VM {
                                         let frame = self.frames.last_mut().unwrap();
                                         frame.ip = target as usize;
                                     }
+                                    handled = true;
                                 }
                             }
 
