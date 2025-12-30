@@ -56,6 +56,7 @@ impl Extension for CoreExtension {
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
         registry.register_function(b"strncmp", string::php_strncmp);
         registry.register_function(b"strncasecmp", string::php_strncasecmp);
+        registry.register_function(b"substr_compare", string::php_substr_compare);
         registry.register_function(b"strstr", string::php_strstr);
         registry.register_function(b"stristr", string::php_stristr);
         registry.register_function(b"substr_count", string::php_substr_count);

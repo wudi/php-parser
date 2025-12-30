@@ -895,6 +895,104 @@ pub fn php_strncasecmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Int(res)))
 }
 
+pub fn php_substr_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 3 || args.len() > 5 {
+        return Err("substr_compare() expects between 3 and 5 parameters".into());
+    }
+
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let mut offset = vm.arena.get(args[2]).value.to_int();
+
+    if offset < 0 {
+        offset = s1.len() as i64 + offset;
+        if offset < 0 {
+            offset = 0;
+        }
+    }
+
+    if offset as usize > s1.len() {
+        return Err("substr_compare(): Offset not contained in string".into());
+    }
+
+    let mut len_is_default = true;
+    let mut length = 0i64;
+    if args.len() >= 4 {
+        let value = &vm.arena.get(args[3]).value;
+        if !matches!(value, Val::Null) {
+            len_is_default = false;
+            length = value.to_int();
+        }
+    }
+
+    if !len_is_default && length <= 0 {
+        if length == 0 {
+            return Ok(vm.arena.alloc(Val::Int(0)));
+        }
+        return Err("substr_compare(): Length must be greater than or equal to 0".into());
+    }
+
+    let case_insensitive = if args.len() == 5 {
+        vm.arena.get(args[4]).value.to_bool()
+    } else {
+        false
+    };
+
+    let offset = offset as usize;
+    let cmp_len = if len_is_default {
+        std::cmp::max(s2.len(), s1.len() - offset)
+    } else {
+        length as usize
+    };
+
+    let haystack = &s1[offset..];
+    let res = if case_insensitive {
+        binary_strncasecmp(haystack, &s2, cmp_len)
+    } else {
+        binary_strncmp(haystack, &s2, cmp_len)
+    };
+
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+fn binary_strncmp(s1: &[u8], s2: &[u8], length: usize) -> i64 {
+    let len = std::cmp::min(length, std::cmp::min(s1.len(), s2.len()));
+    for i in 0..len {
+        let b1 = s1[i];
+        let b2 = s2[i];
+        if b1 != b2 {
+            return b1 as i64 - b2 as i64;
+        }
+    }
+
+    let left = std::cmp::min(length, s1.len());
+    let right = std::cmp::min(length, s2.len());
+    match left.cmp(&right) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
+fn binary_strncasecmp(s1: &[u8], s2: &[u8], length: usize) -> i64 {
+    let len = std::cmp::min(length, std::cmp::min(s1.len(), s2.len()));
+    for i in 0..len {
+        let b1 = s1[i].to_ascii_lowercase();
+        let b2 = s2[i].to_ascii_lowercase();
+        if b1 != b2 {
+            return b1 as i64 - b2 as i64;
+        }
+    }
+
+    let left = std::cmp::min(length, s1.len());
+    let right = std::cmp::min(length, s2.len());
+    match left.cmp(&right) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
 pub fn php_strstr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     strstr_common(vm, args, false)
 }

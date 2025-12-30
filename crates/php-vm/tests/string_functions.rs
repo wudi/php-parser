@@ -461,6 +461,29 @@ fn test_strncasecmp_basic() {
 }
 
 #[test]
+fn test_substr_compare_basic() {
+    let src = "<?php return substr_compare('abcde', 'bc', 1, 2);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(0));
+
+    let src = "<?php return substr_compare('abcde', 'bd', 1, 2);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(-1));
+
+    let src = "<?php return substr_compare('abcde', 'BC', 1, null, true);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(1));
+
+    let src = "<?php return substr_compare('abcde', 'de', -2);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(0));
+
+    let src = "<?php return substr_compare('abcde', 'de', 3, 0);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::Int(0));
+}
+
+#[test]
 fn test_strstr_basic() {
     let src = "<?php return strstr('name@example.com', '@');";
     let (result, _, _) = run_code(src);
