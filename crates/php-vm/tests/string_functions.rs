@@ -863,3 +863,51 @@ fn test_parse_str_array_values() {
         _ => panic!("Expected array, got {:?}", result),
     }
 }
+
+#[test]
+fn test_htmlspecialchars_basic() {
+    let src = "<?php return htmlspecialchars(\"Tom & Jerry <tag> \\\"quote\\\" 'single'\");";
+    let (result, _, _) = run_code(src);
+    assert_eq!(
+        result,
+        Val::String(b"Tom &amp; Jerry &lt;tag&gt; &quot;quote&quot; &#039;single&#039;".to_vec().into())
+    );
+}
+
+#[test]
+fn test_htmlspecialchars_no_double_encode() {
+    let src = "<?php return htmlspecialchars('Tom &amp; Jerry', ENT_QUOTES, null, false);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"Tom &amp; Jerry".to_vec().into()));
+}
+
+#[test]
+fn test_htmlspecialchars_decode_basic() {
+    let src = "<?php return htmlspecialchars_decode('&lt;tag&gt;&quot;x&quot;&#039;y&#039;');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"<tag>\"x\"'y'".to_vec().into()));
+}
+
+#[test]
+fn test_htmlentities_basic() {
+    let src = "<?php return htmlentities('a&b');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"a&amp;b".to_vec().into()));
+}
+
+#[test]
+fn test_html_entity_decode_numeric() {
+    let src = "<?php return html_entity_decode('&#65;&#x42;');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"AB".to_vec().into()));
+}
+
+#[test]
+fn test_get_html_translation_table_basic() {
+    let src = r#"<?php $t = get_html_translation_table(HTML_SPECIALCHARS, ENT_QUOTES); return $t['&'] . '|' . $t['<'] . '|' . $t['"'] . '|' . $t["'"];"#;
+    let (result, _, _) = run_code(src);
+    assert_eq!(
+        result,
+        Val::String(b"&amp;|&lt;|&quot;|&#039;".to_vec().into())
+    );
+}

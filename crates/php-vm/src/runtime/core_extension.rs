@@ -80,6 +80,11 @@ impl Extension for CoreExtension {
         registry.register_function(b"str_contains", string::php_str_contains);
         registry.register_function(b"str_starts_with", string::php_str_starts_with);
         registry.register_function(b"str_ends_with", string::php_str_ends_with);
+        registry.register_function(b"htmlspecialchars", string::php_htmlspecialchars);
+        registry.register_function(b"htmlspecialchars_decode", string::php_htmlspecialchars_decode);
+        registry.register_function(b"htmlentities", string::php_htmlentities);
+        registry.register_function(b"html_entity_decode", string::php_html_entity_decode);
+        registry.register_function(b"get_html_translation_table", string::php_get_html_translation_table);
         registry.register_function_with_by_ref(b"str_replace", string::php_str_replace, vec![3]);
         registry.register_function_with_by_ref(b"str_ireplace", string::php_str_ireplace, vec![3]);
         registry.register_function_with_by_ref(b"parse_str", string::php_parse_str, vec![1]);
@@ -1033,6 +1038,16 @@ impl Extension for CoreExtension {
         registry.register_constant(b"STR_PAD_LEFT", Val::Int(0));
         registry.register_constant(b"STR_PAD_RIGHT", Val::Int(1));
         registry.register_constant(b"STR_PAD_BOTH", Val::Int(2));
+        registry.register_constant(b"HTML_SPECIALCHARS", Val::Int(string::HTML_SPECIALCHARS));
+        registry.register_constant(b"HTML_ENTITIES", Val::Int(string::HTML_ENTITIES));
+        registry.register_constant(b"ENT_NOQUOTES", Val::Int(string::ENT_NOQUOTES));
+        registry.register_constant(b"ENT_COMPAT", Val::Int(string::ENT_COMPAT));
+        registry.register_constant(b"ENT_QUOTES", Val::Int(string::ENT_QUOTES));
+        registry.register_constant(b"ENT_SUBSTITUTE", Val::Int(string::ENT_SUBSTITUTE));
+        registry.register_constant(b"ENT_HTML401", Val::Int(string::ENT_HTML401));
+        registry.register_constant(b"ENT_XML1", Val::Int(string::ENT_XML1));
+        registry.register_constant(b"ENT_XHTML", Val::Int(string::ENT_XHTML));
+        registry.register_constant(b"ENT_HTML5", Val::Int(string::ENT_HTML5));
 
         // Register URL constants
         registry.register_constant(b"PHP_URL_SCHEME", Val::Int(url::PHP_URL_SCHEME));

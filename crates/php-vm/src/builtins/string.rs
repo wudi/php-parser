@@ -6,6 +6,17 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::str;
 
+pub const HTML_SPECIALCHARS: i64 = 0;
+pub const HTML_ENTITIES: i64 = 1;
+pub const ENT_NOQUOTES: i64 = 0;
+pub const ENT_COMPAT: i64 = 2;
+pub const ENT_QUOTES: i64 = 3;
+pub const ENT_SUBSTITUTE: i64 = 8;
+pub const ENT_HTML401: i64 = 0;
+pub const ENT_XML1: i64 = 16;
+pub const ENT_XHTML: i64 = 32;
+pub const ENT_HTML5: i64 = 48;
+
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         vm.report_error(
@@ -1377,6 +1388,244 @@ pub fn php_parse_str(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 
     Ok(vm.arena.alloc(Val::Null))
+}
+
+pub fn php_htmlspecialchars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("htmlspecialchars() expects between 1 and 4 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let double_encode = if args.len() == 4 {
+        vm.arena.get(args[3]).value.to_bool()
+    } else {
+        true
+    };
+    let out = html_encode(&input, flags, false, double_encode);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_htmlspecialchars_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("htmlspecialchars_decode() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let out = html_decode(&input, flags, false);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_htmlentities(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("htmlentities() expects between 1 and 4 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let double_encode = if args.len() == 4 {
+        vm.arena.get(args[3]).value.to_bool()
+    } else {
+        true
+    };
+    let out = html_encode(&input, flags, true, double_encode);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_html_entity_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("html_entity_decode() expects between 1 and 3 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let out = html_decode(&input, flags, true);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_get_html_translation_table(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() > 3 {
+        return Err("get_html_translation_table() expects between 0 and 3 parameters".into());
+    }
+    let table = if args.len() >= 1 {
+        vm.arena.get(args[0]).value.to_int()
+    } else {
+        HTML_SPECIALCHARS
+    };
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+
+    let mapping = build_html_translation_table(vm, table, flags)?;
+    Ok(vm.arena.alloc(Val::Array(Rc::new(mapping))))
+}
+
+fn build_html_translation_table(vm: &mut VM, table: i64, flags: i64) -> Result<ArrayData, String> {
+    if table != HTML_SPECIALCHARS && table != HTML_ENTITIES {
+        return Err("get_html_translation_table(): Table must be HTML_SPECIALCHARS or HTML_ENTITIES".into());
+    }
+
+    let encode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let encode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut map = ArrayData::new();
+    map.insert(
+        ArrayKey::Str(Rc::new(b"&".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&amp;".to_vec()))),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new(b"<".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&lt;".to_vec()))),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new(b">".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&gt;".to_vec()))),
+    );
+    if encode_double {
+        map.insert(
+            ArrayKey::Str(Rc::new(b"\"".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(b"&quot;".to_vec()))),
+        );
+    }
+    if encode_single {
+        map.insert(
+            ArrayKey::Str(Rc::new(b"'".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(b"&#039;".to_vec()))),
+        );
+    }
+    Ok(map)
+}
+
+fn html_encode(input: &[u8], flags: i64, encode_all: bool, double_encode: bool) -> Vec<u8> {
+    let encode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let encode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        let b = input[i];
+        if b == b'&' && !double_encode {
+            if let Some(len) = scan_entity(input, i) {
+                out.extend_from_slice(&input[i..i + len]);
+                i += len;
+                continue;
+            }
+        }
+        match b {
+            b'&' => out.extend_from_slice(b"&amp;"),
+            b'<' => out.extend_from_slice(b"&lt;"),
+            b'>' => out.extend_from_slice(b"&gt;"),
+            b'"' if encode_double => out.extend_from_slice(b"&quot;"),
+            b'\'' if encode_single => out.extend_from_slice(b"&#039;"),
+            _ if encode_all && b >= 0x80 => {
+                let entity = format!("&#{};", b);
+                out.extend_from_slice(entity.as_bytes());
+            }
+            _ => out.push(b),
+        }
+        i += 1;
+    }
+    out
+}
+
+fn html_decode(input: &[u8], flags: i64, decode_all: bool) -> Vec<u8> {
+    let decode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let decode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'&' {
+            if let Some((len, decoded)) = decode_entity(&input[i..], decode_double, decode_single, decode_all) {
+                out.extend_from_slice(&decoded);
+                i += len;
+                continue;
+            }
+        }
+        out.push(input[i]);
+        i += 1;
+    }
+    out
+}
+
+fn scan_entity(input: &[u8], start: usize) -> Option<usize> {
+    let slice = &input[start..];
+    let end = slice.iter().position(|&b| b == b';')?;
+    if end == 0 {
+        return None;
+    }
+    let name = &slice[1..end];
+    if name.starts_with(b"#") {
+        if name.len() == 1 {
+            return None;
+        }
+        if name[1] == b'x' || name[1] == b'X' {
+            if name[2..].is_empty() || !name[2..].iter().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+        } else if !name[1..].iter().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        return Some(end + 1);
+    }
+    let known = matches!(name, b"amp" | b"lt" | b"gt" | b"quot" | b"apos" | b"#039");
+    if known {
+        return Some(end + 1);
+    }
+    None
+}
+
+fn decode_entity(
+    input: &[u8],
+    decode_double: bool,
+    decode_single: bool,
+    decode_all: bool,
+) -> Option<(usize, Vec<u8>)> {
+    let end = input.iter().position(|&b| b == b';')?;
+    if end == 0 {
+        return None;
+    }
+    let name = &input[1..end];
+    let decoded = match name {
+        b"amp" => Some(b"&".to_vec()),
+        b"lt" => Some(b"<".to_vec()),
+        b"gt" => Some(b">".to_vec()),
+        b"quot" if decode_double => Some(b"\"".to_vec()),
+        b"apos" | b"#039" if decode_single => Some(b"'".to_vec()),
+        _ if decode_all && name.starts_with(b"#") => decode_numeric_entity(name),
+        _ => None,
+    }?;
+    Some((end + 1, decoded))
+}
+
+fn decode_numeric_entity(name: &[u8]) -> Option<Vec<u8>> {
+    if name.len() < 2 {
+        return None;
+    }
+    let value = if name[1] == b'x' || name[1] == b'X' {
+        u32::from_str_radix(std::str::from_utf8(&name[2..]).ok()?, 16).ok()?
+    } else {
+        u32::from_str_radix(std::str::from_utf8(&name[1..]).ok()?, 10).ok()?
+    };
+    if let Some(ch) = std::char::from_u32(value) {
+        let mut buf = [0u8; 4];
+        let encoded = ch.encode_utf8(&mut buf);
+        Some(encoded.as_bytes().to_vec())
+    } else {
+        None
+    }
 }
 
 fn parse_allowed_tags(vm: &mut VM, handle: Handle) -> Result<HashSet<Vec<u8>>, String> {
