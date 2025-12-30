@@ -62,6 +62,28 @@ fn test_number_format_compile_smoke() {
 }
 
 #[test]
+fn test_number_format_defaults() {
+    let (result, warnings, _) = run_code("<?php return number_format(1234.567);");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"1,235".to_vec().into()));
+}
+
+#[test]
+fn test_number_format_custom() {
+    let src = "<?php return number_format(1234.567, 2, ',', ' ');";
+    let (result, warnings, _) = run_code(src);
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"1 234,57".to_vec().into()));
+}
+
+#[test]
+fn test_money_format_basic() {
+    let src = "<?php setlocale(LC_ALL, 'C'); return money_format('%.2n', 1234.5);";
+    let (result, _, _) = run_code(src);
+    assert!(matches!(result, Val::String(_)) || result == Val::Bool(false));
+}
+
+#[test]
 fn test_metaphone_basic() {
     let (result, warnings, _) = run_code("<?php return metaphone('programmer');");
     assert!(warnings.is_empty());

@@ -2,10 +2,22 @@ use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use libc;
 use rphonetic::{Encoder, Metaphone};
+use rust_decimal::{Decimal, RoundingStrategy};
 use std::cmp::Ordering;
 use std::ffi::{CStr, CString};
 use std::rc::Rc;
 use std::str;
+use std::str::FromStr;
+
+#[cfg(unix)]
+extern "C" {
+    fn strfmon(
+        s: *mut libc::c_char,
+        max: libc::size_t,
+        format: *const libc::c_char,
+        ...
+    ) -> libc::ssize_t;
+}
 
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
@@ -2451,6 +2463,234 @@ pub fn php_strcoll(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let cmp = unsafe { libc::strcoll(a_c.as_ptr(), b_c.as_ptr()) };
 
     Ok(vm.arena.alloc(Val::Int(cmp as i64)))
+}
+
+pub fn php_number_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("number_format() expects between 1 and 4 parameters".into());
+    }
+
+    let mut decimals = if args.len() >= 2 {
+        vm.check_builtin_param_int(args[1], 2, "number_format")?
+    } else {
+        0
+    };
+    if decimals < 0 {
+        decimals = 0;
+    }
+
+    let decimal_point = if args.len() >= 3 {
+        vm.check_builtin_param_string(args[2], 3, "number_format")?
+    } else {
+        b".".to_vec()
+    };
+    let thousands_sep = if args.len() >= 4 {
+        vm.check_builtin_param_string(args[3], 4, "number_format")?
+    } else {
+        b",".to_vec()
+    };
+
+    let number = number_format_decimal(vm, args[0], 1)?;
+    let rounded = number.round_dp_with_strategy(decimals as u32, RoundingStrategy::MidpointAwayFromZero);
+    let negative = rounded < Decimal::ZERO;
+    let abs_val = if negative { -rounded } else { rounded };
+
+    let formatted = abs_val.to_string();
+    let (int_part, frac_part) = match formatted.find('.') {
+        Some(dot) => (&formatted[..dot], &formatted[dot + 1..]),
+        None => (formatted.as_str(), ""),
+    };
+
+    let mut frac_bytes = Vec::new();
+    let decimals_usize = decimals as usize;
+    if decimals_usize > 0 {
+        frac_bytes.extend_from_slice(frac_part.as_bytes());
+        if frac_bytes.len() < decimals_usize {
+            frac_bytes.extend(std::iter::repeat(b'0').take(decimals_usize - frac_bytes.len()));
+        }
+    }
+
+    let mut output = Vec::new();
+    if negative {
+        output.push(b'-');
+    }
+
+    let grouped = group_integer_digits(int_part.as_bytes(), &thousands_sep);
+    if grouped.is_empty() {
+        output.extend_from_slice(b"0");
+    } else {
+        output.extend_from_slice(&grouped);
+    }
+
+    if decimals_usize > 0 {
+        output.extend_from_slice(&decimal_point);
+        output.extend_from_slice(&frac_bytes);
+    }
+
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+pub fn php_money_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("money_format() expects exactly 2 parameters".into());
+    }
+
+    let format = vm.check_builtin_param_string(args[0], 1, "money_format")?;
+    let value = number_format_float(vm, args[1], 2)?;
+
+    #[cfg(unix)]
+    {
+        let c_format = CString::new(format)
+            .map_err(|_| "money_format(): Format string contains null byte".to_string())?;
+        let mut buf_len = 128usize;
+        loop {
+            let mut buffer = vec![0u8; buf_len];
+            let written = unsafe {
+                strfmon(
+                    buffer.as_mut_ptr() as *mut libc::c_char,
+                    buffer.len(),
+                    c_format.as_ptr(),
+                    value as libc::c_double,
+                )
+            };
+            if written < 0 {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::ERANGE) {
+                    buf_len = buf_len.saturating_mul(2);
+                    if buf_len > 1024 * 1024 {
+                        break;
+                    }
+                    continue;
+                }
+                break;
+            }
+            buffer.truncate(written as usize);
+            return Ok(vm.arena.alloc(Val::String(buffer.into())));
+        }
+        vm.report_error(
+            crate::vm::engine::ErrorLevel::Warning,
+            "money_format(): strfmon failed",
+        );
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    #[cfg(not(unix))]
+    {
+        vm.report_error(
+            crate::vm::engine::ErrorLevel::Warning,
+            "money_format(): not supported on this platform",
+        );
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+fn number_format_decimal(vm: &VM, arg: Handle, param_num: usize) -> Result<Decimal, String> {
+    let val = &vm.arena.get(arg).value;
+    match val {
+        Val::Int(i) => Ok(Decimal::from(*i)),
+        Val::Float(f) => Decimal::from_str(&f.to_string()).map_err(|e| e.to_string()),
+        Val::String(s) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, string given",
+                    param_num
+                ))
+            } else {
+                let text = String::from_utf8_lossy(s);
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    return Ok(Decimal::ZERO);
+                }
+                if let Ok(dec) = Decimal::from_str(trimmed) {
+                    return Ok(dec);
+                }
+                if let Ok(f) = trimmed.parse::<f64>() {
+                    return Decimal::from_str(&f.to_string()).map_err(|e| e.to_string());
+                }
+                Ok(Decimal::ZERO)
+            }
+        }
+        Val::Bool(b) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, bool given",
+                    param_num
+                ))
+            } else {
+                Ok(Decimal::from(if *b { 1 } else { 0 }))
+            }
+        }
+        Val::Null => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, null given",
+                    param_num
+                ))
+            } else {
+                Ok(Decimal::ZERO)
+            }
+        }
+        _ => Err(format!(
+            "number_format(): Argument #{} must be of type float, {} given",
+            param_num,
+            val.type_name()
+        )),
+    }
+}
+
+fn number_format_float(vm: &VM, arg: Handle, param_num: usize) -> Result<f64, String> {
+    let val = &vm.arena.get(arg).value;
+    match val {
+        Val::Int(i) => Ok(*i as f64),
+        Val::Float(f) => Ok(*f),
+        Val::String(_) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "money_format(): Argument #{} must be of type float, string given",
+                    param_num
+                ))
+            } else {
+                Ok(val.to_float())
+            }
+        }
+        Val::Bool(_) | Val::Null => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "money_format(): Argument #{} must be of type float, {} given",
+                    param_num,
+                    val.type_name()
+                ))
+            } else {
+                Ok(val.to_float())
+            }
+        }
+        _ => Err(format!(
+            "money_format(): Argument #{} must be of type float, {} given",
+            param_num,
+            val.type_name()
+        )),
+    }
+}
+
+fn group_integer_digits(digits: &[u8], separator: &[u8]) -> Vec<u8> {
+    if separator.is_empty() || digits.len() <= 3 {
+        return digits.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(digits.len() + (digits.len() / 3) * separator.len());
+    let first_group = digits.len() % 3;
+    let mut idx = 0;
+    let first_len = if first_group == 0 { 3 } else { first_group };
+
+    out.extend_from_slice(&digits[..first_len]);
+    idx += first_len;
+    while idx < digits.len() {
+        out.extend_from_slice(separator);
+        out.extend_from_slice(&digits[idx..idx + 3]);
+        idx += 3;
+    }
+
+    out
 }
 
 fn perform_replacement(

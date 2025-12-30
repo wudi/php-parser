@@ -49,6 +49,8 @@ impl Extension for CoreExtension {
         registry.register_function(b"localeconv", string::php_localeconv);
         registry.register_function(b"nl_langinfo", string::php_nl_langinfo);
         registry.register_function(b"strcoll", string::php_strcoll);
+        registry.register_function(b"number_format", string::php_number_format);
+        registry.register_function(b"money_format", string::php_money_format);
         registry.register_function(b"strcmp", string::php_strcmp);
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
         registry.register_function(b"strncmp", string::php_strncmp);
