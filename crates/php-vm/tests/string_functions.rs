@@ -530,6 +530,14 @@ fn test_wordwrap_basic() {
 }
 
 #[test]
+fn test_chop_join_strchr_aliases() {
+    let src =
+        "<?php return chop(\"hi\\n\") . \"|\" . join(\",\", [\"a\", \"b\"]) . \"|\" . strchr(\"hello\", \"l\");";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"hi|a,b|llo".to_vec().into()));
+}
+
+#[test]
 fn test_strtok_basic() {
     let src = "<?php
         $tok = strtok('This is a test', ' ');

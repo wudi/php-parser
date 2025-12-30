@@ -31,6 +31,7 @@ impl Extension for CoreExtension {
         registry.register_function(b"trim", string::php_trim);
         registry.register_function(b"ltrim", string::php_ltrim);
         registry.register_function(b"rtrim", string::php_rtrim);
+        registry.register_function(b"chop", string::php_rtrim);
         registry.register_function(b"chr", string::php_chr);
         registry.register_function(b"ord", string::php_ord);
         registry.register_function(b"bin2hex", string::php_bin2hex);
@@ -65,7 +66,9 @@ impl Extension for CoreExtension {
         registry.register_function(b"strtoupper", string::php_strtoupper);
         registry.register_function(b"version_compare", string::php_version_compare);
         registry.register_function(b"implode", string::php_implode);
+        registry.register_function(b"join", string::php_implode);
         registry.register_function(b"explode", string::php_explode);
+        registry.register_function(b"strchr", string::php_strstr);
         registry.register_function(b"sprintf", string::php_sprintf);
         registry.register_function(b"printf", string::php_printf);
 
@@ -1053,4 +1056,3 @@ impl Extension for CoreExtension {
         ExtensionResult::Success
     }
 }
-
