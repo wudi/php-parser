@@ -1,0 +1,82 @@
+[package]
+name = "php-vm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+indexmap = "2.0"
+php-parser = { path = "../php-parser" }
+bumpalo = "3.12"
+clap = { version = "4.5", features = ["derive"] }
+rustyline = "14.0"
+smallvec = "1.13"
+anyhow = "1.0"
+tempfile = "3.23.0"
+regex = "1.12.2"
+pcre2 = "0.2.11"
+chrono = "0.4"
+chrono-tz = "0.10"
+libc = "0.2"
+num-format = "0.4"
+rphonetic = "3.0.4"
+
+# Hash extension dependencies
+md-5 = "0.10"
+md2 = "0.10"
+md4 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+sha3 = "0.10"
+whirlpool = "0.10"
+ripemd = "0.1"
+tiger = "0.2"
+xxhash-rust = { version = "0.8", features = ["xxh32", "xxh64", "xxh3"] }
+crc32fast = "1.3"
+adler32 = "1.2"
+digest = "0.10"
+hex = "0.4"
+subtle = "2.5"
+hmac = "0.12"
+pbkdf2 = "0.12"
+hkdf = "0.12"
+
+# MySQLi extension dependencies
+mysql = "24.0"
+
+# PDO extension dependencies
+rusqlite = { version = "0.31", features = ["bundled"] }
+postgres = "0.19"
+oracle = "0.6"
+
+# Zlib extension dependencies
+flate2 = "1.0"
+
+# Zip extension dependencies
+zip = "2.2.2"
+
+# OpenSSL extension dependencies
+openssl = "0.10.75"
+base64 = "0.21"
+
+# BCMath extension dependencies
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+rust_decimal = "1.39.0"
+rust_decimal_macros = "1.39.0"
+rand = "0.8.5"
+
+# Signal handling for php-fpm
+ctrlc = "3.4"
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-fastcgi = "1.3.0"
+multipart = "0.18"
+
+
+[[bin]]
+name = "php"
+path = "src/bin/php.rs"
+
+[[bin]]
+name = "php-fpm"
+path = "src/bin/php-fpm.rs"

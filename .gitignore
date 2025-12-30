@@ -1,4 +1,8 @@
+.vscode/
+build/
+.idea/
 /target
+.worktrees/
 test_repos/
 tmp_corpus/
 tools/
@@ -6,3 +10,5 @@ run-tests.php
 profile.pb
 flamegraph.svg
 *.log
+node_modules/
+editors/code/out
