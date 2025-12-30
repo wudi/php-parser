@@ -385,7 +385,7 @@ pub fn openssl_digest(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         _ => return Ok(vm.arena.alloc(Val::Bool(false))),
     };
 
-    let algo = String::from_utf8_lossy(algo_bytes);
+    let _algo = String::from_utf8_lossy(algo_bytes);
 
     let binary = if args.len() > 2 {
         match &vm.arena.get(args[2]).value {
@@ -732,7 +732,7 @@ pub fn openssl_x509_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, String>
             };
             Ok(vm.arena.alloc(Val::ObjPayload(obj)))
         }
-        Err(e) => {
+        Err(_e) => {
             // In PHP, this returns false on failure, not an error
             Ok(vm.arena.alloc(Val::Bool(false)))
         }
@@ -2430,6 +2430,6 @@ pub fn openssl_x509_free(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String
 }
 
 pub fn openssl_get_cert_locations(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let mut array = ArrayData::new();
+    let array = ArrayData::new();
     Ok(vm.arena.alloc(Val::Array(Rc::new(array))))
 }

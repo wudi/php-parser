@@ -11,7 +11,7 @@ use std::rc::Rc;
 // Iterator interface methods (SPL)
 // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - zend_user_iterator
 pub fn iterator_current(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let this_handle = vm
+    let _this_handle = vm
         .frames
         .last()
         .and_then(|f| f.this)
@@ -22,7 +22,7 @@ pub fn iterator_current(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String>
 }
 
 pub fn iterator_key(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
-    let this_handle = vm
+    let _this_handle = vm
         .frames
         .last()
         .and_then(|f| f.this)
@@ -44,46 +44,46 @@ pub fn iterator_valid(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
 }
 
 // IteratorAggregate interface
-pub fn iterator_aggregate_get_iterator(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn iterator_aggregate_get_iterator(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("IteratorAggregate::getIterator() must be implemented".into())
 }
 
 // Countable interface
 // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - spl_countable
-pub fn countable_count(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn countable_count(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Countable::count() must be implemented".into())
 }
 
 // ArrayAccess interface methods
 // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c - zend_user_arrayaccess
-pub fn array_access_offset_exists(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn array_access_offset_exists(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("ArrayAccess::offsetExists() must be implemented".into())
 }
 
-pub fn array_access_offset_get(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn array_access_offset_get(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("ArrayAccess::offsetGet() must be implemented".into())
 }
 
-pub fn array_access_offset_set(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn array_access_offset_set(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("ArrayAccess::offsetSet() must be implemented".into())
 }
 
-pub fn array_access_offset_unset(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn array_access_offset_unset(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("ArrayAccess::offsetUnset() must be implemented".into())
 }
 
 // Serializable interface (deprecated in PHP 8.1, but still supported)
-pub fn serializable_serialize(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn serializable_serialize(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Serializable::serialize() must be implemented".into())
 }
 
-pub fn serializable_unserialize(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn serializable_unserialize(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Serializable::unserialize() must be implemented".into())
 }
 
 // Closure class methods
 // Reference: $PHP_SRC_PATH/Zend/zend_closures.c
-pub fn closure_bind(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn closure_bind(_vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Closure::bind($closure, $newthis, $newscope = "static")
     // Returns a new closure with bound $this and/or class scope
     // For now, simplified implementation
@@ -95,7 +95,7 @@ pub fn closure_bind(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(args[0])
 }
 
-pub fn closure_bind_to(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn closure_bind_to(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // $closure->bindTo($newthis, $newscope = "static")
     let this_handle = vm
         .frames
@@ -107,12 +107,12 @@ pub fn closure_bind_to(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(this_handle)
 }
 
-pub fn closure_call(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn closure_call(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // $closure->call($newThis, ...$args)
     Err("Closure::call() not yet fully implemented".into())
 }
 
-pub fn closure_from_callable(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn closure_from_callable(_vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     // Closure::fromCallable($callable)
     if args.is_empty() {
         return Err("Closure::fromCallable() expects exactly 1 parameter".into());
@@ -149,7 +149,7 @@ pub fn generator_send(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Null))
 }
 
-pub fn generator_throw(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn generator_throw(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Generator::throw() not yet implemented".into())
 }
 
@@ -171,19 +171,19 @@ pub fn fiber_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Null))
 }
 
-pub fn fiber_start(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn fiber_start(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Fiber::start() not yet implemented".into())
 }
 
-pub fn fiber_resume(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn fiber_resume(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Fiber::resume() not yet implemented".into())
 }
 
-pub fn fiber_suspend(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn fiber_suspend(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Fiber::suspend() not yet implemented".into())
 }
 
-pub fn fiber_throw(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn fiber_throw(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Fiber::throw() not yet implemented".into())
 }
 
@@ -213,7 +213,7 @@ pub fn fiber_get_current(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String
 
 // WeakReference class (PHP 7.4+)
 // Reference: $PHP_SRC_PATH/Zend/zend_weakrefs.c
-pub fn weak_reference_construct(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+pub fn weak_reference_construct(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // WeakReference::__construct() - private, use ::create() instead
     Err("WeakReference::__construct() is private".into())
 }
@@ -264,13 +264,13 @@ pub fn weak_map_count(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Int(0)))
 }
 
-pub fn weak_map_get_iterator(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn weak_map_get_iterator(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("WeakMap::getIterator() not yet implemented".into())
 }
 
 // Stringable interface (PHP 8.0+)
 // Reference: $PHP_SRC_PATH/Zend/zend_interfaces.c
-pub fn stringable_to_string(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn stringable_to_string(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("Stringable::__toString() must be implemented".into())
 }
 
@@ -284,7 +284,7 @@ pub fn unit_enum_cases(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> 
 }
 
 // BackedEnum interface (PHP 8.1+)
-pub fn backed_enum_from(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn backed_enum_from(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     Err("BackedEnum::from() not yet implemented".into())
 }
 
@@ -360,7 +360,7 @@ pub fn sensitive_parameter_value_debug_info(
 
 // __PHP_Incomplete_Class - used during unserialization
 // Reference: $PHP_SRC_PATH/ext/standard/incomplete_class.c
-pub fn incomplete_class_construct(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
+pub fn incomplete_class_construct(_vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     // Should not be instantiated directly
     Err("__PHP_Incomplete_Class cannot be instantiated".into())
 }
