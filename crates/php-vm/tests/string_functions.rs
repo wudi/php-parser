@@ -234,11 +234,11 @@ fn test_strlen_object() {
 #[test]
 fn test_str_contains_basic() {
     let src = "<?php return str_contains('abc', 'a');";
-    let (result, warnings, _) = run_code(src);
+    let (result, _warnings, _) = run_code(src);
     assert_eq!(result, Val::Bool(true));
 
     let src = "<?php return str_contains('abc', 'd');";
-    let (result, warnings, _) = run_code(src);
+    let (result, _warnings, _) = run_code(src);
     assert_eq!(result, Val::Bool(false));
 }
 

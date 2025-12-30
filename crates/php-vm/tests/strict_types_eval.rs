@@ -1,22 +1,9 @@
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::vm::engine::VM;
 use php_vm::runtime::context::EngineBuilder;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-// Unique temp directory to avoid collisions
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-fn create_temp_dir() -> PathBuf {
-    let counter = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let temp_dir = std::env::temp_dir().join(format!("php_vm_test_{}_{}", std::process::id(), counter));
-    fs::create_dir_all(&temp_dir).unwrap();
-    temp_dir
-}
 
 /// Helper to compile and run PHP code
 fn compile_and_run(code: &str) -> Result<(), String> {

@@ -1,8 +1,6 @@
-use php_vm::runtime::context::EngineContext;
 use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::{VmError, VM};
 use std::rc::Rc;
-use std::sync::Arc;
 
 #[test]
 fn test_undefined_constant_error_message_format() {

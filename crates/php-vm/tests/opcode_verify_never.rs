@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use php_vm::compiler::chunk::CodeChunk;
 use php_vm::runtime::context::EngineBuilder;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::{VmError, VM};
 use php_vm::vm::opcode::OpCode;
 use std::process::Command;

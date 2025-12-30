@@ -1,5 +1,4 @@
 use std::rc::Rc;
-use php_vm::runtime::context::EngineContext;
 use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::{OutputWriter, VmError, VM};
 use std::cell::RefCell;

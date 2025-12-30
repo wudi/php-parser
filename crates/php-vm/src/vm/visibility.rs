@@ -165,7 +165,7 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::context::{ClassDef, EngineContext};
+    use crate::runtime::context::EngineContext;
     use std::sync::Arc;
 
     #[test]

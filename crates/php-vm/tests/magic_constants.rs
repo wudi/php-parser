@@ -1,11 +1,9 @@
-use std::rc::Rc;
 use bumpalo::Bump;
 use php_vm::runtime::context::EngineBuilder;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::{ArrayKey, Val};
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
 
 #[test]

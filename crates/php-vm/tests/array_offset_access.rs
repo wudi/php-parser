@@ -2,7 +2,6 @@ mod common;
 
 use common::run_code_vm_only;
 use php_vm::core::value::Val;
-use php_vm::vm::engine::VM;
 
 #[test]
 fn test_array_offset_integer_key() {

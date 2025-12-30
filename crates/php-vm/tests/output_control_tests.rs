@@ -2,7 +2,6 @@ use std::rc::Rc;
 use php_vm::builtins::output_control;
 use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::Val;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
 
 fn create_test_vm() -> VM {

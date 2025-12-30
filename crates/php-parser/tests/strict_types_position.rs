@@ -1,4 +1,3 @@
-use php_parser::ast::ParseError;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 

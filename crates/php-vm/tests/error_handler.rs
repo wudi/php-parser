@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use php_vm::core::interner::Interner;
 use php_vm::runtime::context::EngineBuilder;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::{ErrorHandler, ErrorLevel, VM};
 use std::cell::RefCell;
 

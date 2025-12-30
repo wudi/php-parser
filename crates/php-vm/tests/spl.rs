@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use php_vm::runtime::context::EngineBuilder;
 
-use php_vm::core::value::Val;
 use php_vm::vm::engine::VM;
 
 #[test]

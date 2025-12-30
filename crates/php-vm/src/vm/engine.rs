@@ -12212,11 +12212,8 @@ impl VM {
 
 mod tests {
     use super::*;
-    use crate::builtins::string::php_strlen;
     use crate::compiler::chunk::{FuncParam, UserFunc};
     use crate::core::value::Symbol;
-    use crate::runtime::context::EngineContext;
-    use std::sync::Arc;
 
     fn create_vm() -> VM {
         // Use EngineBuilder to properly register core extensions

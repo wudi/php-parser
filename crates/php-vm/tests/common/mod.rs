@@ -5,7 +5,7 @@
 
 use php_vm::core::value::Val;
 use php_vm::vm::engine::{VmError, VM};
-use php_vm::vm::executor::{execute_code, execute_code_with_config, ExecutionConfig};
+use php_vm::vm::executor::{execute_code, ExecutionConfig};
 
 /// Legacy helper: Execute PHP code and return the result value
 ///
@@ -76,10 +76,12 @@ pub fn run_code_with_vm(code: &str) -> Result<(Val, VM), VmError> {
 }
 
 /// Execute code and return just the VM (for inspecting internal state)
+#[allow(dead_code)]
 pub fn run_code_vm_only(code: &str) -> VM {
     run_code_with_vm(code).expect("code execution failed").1
 }
 // Result<Val, VmError>, String
+#[allow(dead_code)]
 pub fn run_code_capture_output(code: &str) -> Result<(Val, String), VmError> {
     use php_vm::compiler::emitter::Emitter;
     use php_vm::runtime::context::{EngineBuilder, RequestContext};
