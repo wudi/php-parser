@@ -5,8 +5,7 @@ use pbkdf2::pbkdf2;
 use hmac::Hmac;
 use md5::Md5;
 use sha1::Sha1;
-use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
-use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 use hkdf::Hkdf;
 
 pub fn php_hash_pbkdf2(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {

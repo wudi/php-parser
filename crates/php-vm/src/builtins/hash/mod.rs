@@ -24,7 +24,7 @@ pub mod kdf;
 use crate::builtins::exec::{PipeKind, PipeResource};
 use crate::builtins::filesystem::FileHandle;
 use crate::builtins::zlib::GzFile;
-use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val};
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Val};
 use crate::vm::engine::VM;
 use std::collections::HashMap;
 use std::io::Read;

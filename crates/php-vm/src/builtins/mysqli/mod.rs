@@ -28,7 +28,6 @@ pub mod types;
 
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use connection::MysqliConnection;

@@ -1,4 +1,4 @@
-use crate::core::value::{ArrayKey, Handle, ObjectData, Val};
+use crate::core::value::{ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use chrono::{
     DateTime as ChronoDateTime, Datelike, Local, NaiveDate, NaiveDateTime, NaiveTime, Offset,
@@ -7,7 +7,6 @@ use chrono::{
 use chrono_tz::Tz;
 use indexmap::IndexMap;
 use regex::Regex;
-use std::any::Any;
 use std::rc::Rc;
 use std::str::FromStr;
 
