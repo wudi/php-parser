@@ -423,7 +423,7 @@ impl VM {
             let constructor_name = self.context.interner.intern(b"__construct");
             let method_lookup = self.find_method(resolved_class, constructor_name);
 
-            if let Some((constructor, vis, _, defined_class)) = method_lookup {
+            if let Some((constructor, _vis, _, defined_class)) = method_lookup {
                 // For internal instantiation, we might want to bypass visibility checks,
                 // but let's keep them for now or assume internal calls are "public".
 
@@ -5322,7 +5322,6 @@ impl VM {
                                             ))
                                         }
                                     }
-                                    handled = true;
                                 }
                             }
 
@@ -5345,7 +5344,6 @@ impl VM {
                                         let idx_handle = self.arena.alloc(Val::Int(0));
                                         self.operand_stack.push(idx_handle);
                                     }
-                                    handled = true;
                                 }
                             }
 
@@ -5429,7 +5427,6 @@ impl VM {
                                         let frame = self.frames.last_mut().unwrap();
                                         frame.ip = target as usize;
                                     }
-                                    handled = true;
                                 }
                             }
 
@@ -5446,7 +5443,6 @@ impl VM {
                                         let frame = self.frames.last_mut().unwrap();
                                         frame.ip = target as usize;
                                     }
-                                    handled = true;
                                 }
                             }
                         }
@@ -11835,7 +11831,7 @@ impl VM {
                 
                 // Validate return type (covariance)
                 match (&iface_method.signature.return_type, &class_method.signature.return_type) {
-                    (Some(iface_ret), None) => {
+                    (Some(_), None) => {
                         return Err(VmError::RuntimeError(format!(
                             "Declaration of {}::{}() must be compatible with interface return type",
                             class_name_str, method_name_str
@@ -12058,7 +12054,7 @@ impl VM {
         // 6. Validate return type (covariance)
         match (&parent_signature.return_type, &child_signature.return_type) {
             (None, _) => {}, // Parent has no return type - child can have any or none
-            (Some(parent_type), None) => {
+            (Some(_), None) => {
                 // Parent has return type, child has none - not allowed
                 return Err(VmError::RuntimeError(format!(
                     "Declaration of {}::{}() must be compatible with parent return type",
