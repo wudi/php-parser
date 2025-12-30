@@ -1,7 +1,9 @@
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
+use libc;
 use rphonetic::{Encoder, Metaphone};
 use std::cmp::Ordering;
+use std::ffi::{CStr, CString};
 use std::rc::Rc;
 use std::str;
 
@@ -2260,6 +2262,195 @@ pub fn php_metaphone(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let result = encoder.encode(&input);
 
     Ok(vm.arena.alloc(Val::String(result.into_bytes().into())))
+}
+
+pub fn php_setlocale(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("setlocale() expects at least 2 parameters".into());
+    }
+
+    let category = vm.check_builtin_param_int(args[0], 1, "setlocale")? as libc::c_int;
+    let mut locales = Vec::new();
+
+    if args.len() == 2 {
+        match &vm.arena.get(args[1]).value {
+            Val::Array(arr) => {
+                let entries: Vec<_> = arr.map.values().copied().collect();
+                for entry in entries {
+                    locales.push(vm.value_to_string(entry)?);
+                }
+            }
+            _ => {
+                let locale = vm.check_builtin_param_string(args[1], 2, "setlocale")?;
+                locales.push(locale);
+            }
+        }
+    } else {
+        for (idx, handle) in args[1..].iter().enumerate() {
+            let locale = vm.check_builtin_param_string(*handle, idx + 2, "setlocale")?;
+            locales.push(locale);
+        }
+    }
+
+    if locales.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let mut result_ptr = std::ptr::null_mut();
+    for locale in locales {
+        let c_locale = CString::new(locale)
+            .map_err(|_| "setlocale(): Locale string contains null byte".to_string())?;
+        let ptr = unsafe { libc::setlocale(category, c_locale.as_ptr()) };
+        if !ptr.is_null() {
+            result_ptr = ptr;
+            break;
+        }
+    }
+
+    if result_ptr.is_null() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let bytes = unsafe { CStr::from_ptr(result_ptr) }.to_bytes().to_vec();
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_localeconv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if !args.is_empty() {
+        return Err("localeconv() expects exactly 0 parameters".into());
+    }
+
+    let lconv_ptr = unsafe { libc::localeconv() };
+    if lconv_ptr.is_null() {
+        return Ok(vm.arena.alloc(Val::Array(Rc::new(ArrayData::new()))));
+    }
+
+    let lconv = unsafe { &*lconv_ptr };
+    let mut data = ArrayData::new();
+
+    fn c_str_to_bytes(ptr: *const libc::c_char) -> Vec<u8> {
+        if ptr.is_null() {
+            Vec::new()
+        } else {
+            unsafe { CStr::from_ptr(ptr).to_bytes().to_vec() }
+        }
+    }
+
+    fn lconv_char_to_int(value: libc::c_char) -> i64 {
+        let val = value as i64;
+        let max = i8::MAX as i64;
+        if val == max {
+            -1
+        } else {
+            val
+        }
+    }
+
+    fn insert_str(vm: &mut VM, data: &mut ArrayData, key: &str, val: Vec<u8>) {
+        let handle = vm.arena.alloc(Val::String(val.into()));
+        data.insert(ArrayKey::Str(Rc::new(key.as_bytes().to_vec())), handle);
+    }
+
+    fn insert_int(vm: &mut VM, data: &mut ArrayData, key: &str, val: i64) {
+        let handle = vm.arena.alloc(Val::Int(val));
+        data.insert(ArrayKey::Str(Rc::new(key.as_bytes().to_vec())), handle);
+    }
+
+    insert_str(vm, &mut data, "decimal_point", c_str_to_bytes(lconv.decimal_point));
+    insert_str(vm, &mut data, "thousands_sep", c_str_to_bytes(lconv.thousands_sep));
+    insert_str(vm, &mut data, "int_curr_symbol", c_str_to_bytes(lconv.int_curr_symbol));
+    insert_str(vm, &mut data, "currency_symbol", c_str_to_bytes(lconv.currency_symbol));
+    insert_str(vm, &mut data, "mon_decimal_point", c_str_to_bytes(lconv.mon_decimal_point));
+    insert_str(
+        vm,
+        &mut data,
+        "mon_thousands_sep",
+        c_str_to_bytes(lconv.mon_thousands_sep),
+    );
+    insert_str(vm, &mut data, "mon_grouping", c_str_to_bytes(lconv.mon_grouping));
+    insert_str(vm, &mut data, "positive_sign", c_str_to_bytes(lconv.positive_sign));
+    insert_str(vm, &mut data, "negative_sign", c_str_to_bytes(lconv.negative_sign));
+    insert_int(
+        vm,
+        &mut data,
+        "int_frac_digits",
+        lconv_char_to_int(lconv.int_frac_digits),
+    );
+    insert_int(vm, &mut data, "frac_digits", lconv_char_to_int(lconv.frac_digits));
+    insert_int(
+        vm,
+        &mut data,
+        "p_cs_precedes",
+        lconv_char_to_int(lconv.p_cs_precedes),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "p_sep_by_space",
+        lconv_char_to_int(lconv.p_sep_by_space),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_cs_precedes",
+        lconv_char_to_int(lconv.n_cs_precedes),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_sep_by_space",
+        lconv_char_to_int(lconv.n_sep_by_space),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "p_sign_posn",
+        lconv_char_to_int(lconv.p_sign_posn),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_sign_posn",
+        lconv_char_to_int(lconv.n_sign_posn),
+    );
+
+    Ok(vm.arena.alloc(Val::Array(Rc::new(data))))
+}
+
+pub fn php_nl_langinfo(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("nl_langinfo() expects exactly 1 parameter".into());
+    }
+
+    let item = vm.check_builtin_param_int(args[0], 1, "nl_langinfo")? as libc::c_int;
+    #[cfg(unix)]
+    {
+        let ptr = unsafe { libc::nl_langinfo(item) };
+        if ptr.is_null() {
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+        let bytes = unsafe { CStr::from_ptr(ptr) }.to_bytes().to_vec();
+        return Ok(vm.arena.alloc(Val::String(bytes.into())));
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strcoll(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strcoll() expects exactly 2 parameters".into());
+    }
+
+    let a = vm.check_builtin_param_string(args[0], 1, "strcoll")?;
+    let b = vm.check_builtin_param_string(args[1], 2, "strcoll")?;
+
+    let a_c = CString::new(a).map_err(|_| "strcoll(): Invalid string".to_string())?;
+    let b_c = CString::new(b).map_err(|_| "strcoll(): Invalid string".to_string())?;
+    let cmp = unsafe { libc::strcoll(a_c.as_ptr(), b_c.as_ptr()) };
+
+    Ok(vm.arena.alloc(Val::Int(cmp as i64)))
 }
 
 fn perform_replacement(

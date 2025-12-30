@@ -76,6 +76,53 @@ fn test_metaphone_max_phonemes() {
 }
 
 #[test]
+fn test_setlocale_and_localeconv_c_locale() {
+    let src = "<?php
+        $prev = setlocale(LC_ALL, 'C');
+        $conv = localeconv();
+        return [$prev, $conv['decimal_point'], $conv['thousands_sep']];
+    ";
+    let (result, warnings, vm) = run_code(src);
+    assert!(warnings.is_empty());
+
+    match result {
+        Val::Array(arr) => {
+            let prev = vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value.clone();
+            assert!(matches!(prev, Val::String(_)));
+            let dec = vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value.clone();
+            let sep = vm.arena.get(*arr.map.get(&ArrayKey::Int(2)).unwrap()).value.clone();
+            assert_eq!(dec, Val::String(b".".to_vec().into()));
+            assert_eq!(sep, Val::String(b"".to_vec().into()));
+        }
+        _ => panic!("Expected array"),
+    }
+}
+
+#[test]
+fn test_nl_langinfo_codeset() {
+    let src = "<?php return nl_langinfo(CODESET);";
+    let (result, warnings, _) = run_code(src);
+    assert!(warnings.is_empty());
+    assert!(matches!(result, Val::String(_)));
+}
+
+#[test]
+fn test_strcoll_c_locale() {
+    let src = "<?php setlocale(LC_ALL, 'C'); return [strcoll('abc', 'abd'), strcoll('abc', 'abc')];";
+    let (result, warnings, vm) = run_code(src);
+    assert!(warnings.is_empty());
+    match result {
+        Val::Array(arr) => {
+            let a = vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value.clone();
+            let b = vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value.clone();
+            assert!(matches!(a, Val::Int(_)));
+            assert_eq!(b, Val::Int(0));
+        }
+        _ => panic!("Expected array"),
+    }
+}
+
+#[test]
 fn test_strlen_string() {
     let src = "<?php return strlen('hello');";
     let (result, warnings, _) = run_code(src);
