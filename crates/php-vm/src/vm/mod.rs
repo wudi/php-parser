@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod array_access;
 pub mod assign_op;
 mod callable;

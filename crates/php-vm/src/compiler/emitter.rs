@@ -3478,6 +3478,7 @@ impl<'src> Emitter<'src> {
     }
 
     /// Convert AST Type to runtime TypeHint
+    #[allow(dead_code)]
     fn extract_type_hint(&mut self, ty: &Type) -> crate::runtime::context::TypeHint {
         use crate::runtime::context::TypeHint;
         
@@ -3519,7 +3520,11 @@ impl<'src> Emitter<'src> {
     }
 
     /// Extract parameter information for method signature validation
-    fn extract_parameter_info(&mut self, params: &[php_parser::ast::Param]) -> Vec<crate::runtime::context::ParameterInfo> {
+    #[allow(dead_code)]
+    fn extract_parameter_info(
+        &mut self,
+        params: &[php_parser::ast::Param],
+    ) -> Vec<crate::runtime::context::ParameterInfo> {
         use crate::runtime::context::ParameterInfo;
         
         params.iter().map(|param| {
@@ -3544,4 +3549,3 @@ impl<'src> Emitter<'src> {
         }).collect()
     }
 }
-
