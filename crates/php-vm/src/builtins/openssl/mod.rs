@@ -1943,9 +1943,11 @@ pub fn openssl_pkcs12_export(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
         _ => "".to_string(),
     };
 
-    let builder = openssl::pkcs12::Pkcs12::builder();
-    let pkcs12 = builder
-        .build(&pass, "PHP OpenSSL", &pkey, &cert)
+    let pkcs12 = openssl::pkcs12::Pkcs12::builder()
+        .name("PHP OpenSSL")
+        .pkey(&pkey)
+        .cert(&cert)
+        .build2(&pass)
         .map_err(|e| e.to_string())?;
     let der = pkcs12.to_der().map_err(|e| e.to_string())?;
 
@@ -1970,7 +1972,13 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     };
 
     let pkcs12 = openssl::pkcs12::Pkcs12::from_der(&data).map_err(|e| e.to_string())?;
-    let parsed = pkcs12.parse(&pass).map_err(|e| e.to_string())?;
+    let parsed = pkcs12.parse2(&pass).map_err(|e| e.to_string())?;
+    let cert = parsed
+        .cert
+        .ok_or_else(|| "PKCS12 missing certificate".to_string())?;
+    let pkey = parsed
+        .pkey
+        .ok_or_else(|| "PKCS12 missing private key".to_string())?;
 
     // Set the certs reference (args[1])
     let mut certs_array = ArrayData::new();
@@ -1979,7 +1987,7 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     let cert_obj = ObjectData {
         class: cert_class,
         properties: IndexMap::new(),
-        internal: Some(Rc::new(parsed.cert.clone())),
+        internal: Some(Rc::new(cert.clone())),
         dynamic_properties: HashSet::new(),
     };
     certs_array.insert(
@@ -1987,9 +1995,9 @@ pub fn openssl_pkcs12_read(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
         vm.arena.alloc(Val::ObjPayload(cert_obj)),
     );
 
-    pkey_to_array(&mut certs_array, &parsed.pkey, vm)?;
+    pkey_to_array(&mut certs_array, &pkey, vm)?;
 
-    if let Some(chain) = parsed.chain {
+    if let Some(chain) = parsed.ca {
         let mut chain_array = ArrayData::new();
         for (i, c) in chain.into_iter().enumerate() {
             let c_obj = ObjectData {
@@ -2372,9 +2380,11 @@ pub fn openssl_pkcs12_export_to_file(vm: &mut VM, args: &[Handle]) -> Result<Han
         _ => "".to_string(),
     };
 
-    let builder = openssl::pkcs12::Pkcs12::builder();
-    let pkcs12 = builder
-        .build(&pass, "PHP OpenSSL", &pkey, &cert)
+    let pkcs12 = openssl::pkcs12::Pkcs12::builder()
+        .name("PHP OpenSSL")
+        .pkey(&pkey)
+        .cert(&cert)
+        .build2(&pass)
         .map_err(|e| e.to_string())?;
     let der = pkcs12.to_der().map_err(|e| e.to_string())?;
 
