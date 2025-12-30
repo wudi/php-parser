@@ -16,6 +16,9 @@ regex = "1.12.2"
 pcre2 = "0.2.11"
 chrono = "0.4"
 chrono-tz = "0.10"
+libc = "0.2"
+num-format = "0.4"
+rphonetic = "3.0.4"
 
 # Hash extension dependencies
 md-5 = "0.10"

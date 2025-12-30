@@ -57,6 +57,11 @@ fn run_code(src: &str) -> (Val, Vec<(ErrorLevel, String)>, VM) {
 }
 
 #[test]
+fn test_number_format_compile_smoke() {
+    let _ = num_format::Locale::en;
+}
+
+#[test]
 fn test_strlen_string() {
     let src = "<?php return strlen('hello');";
     let (result, warnings, _) = run_code(src);
