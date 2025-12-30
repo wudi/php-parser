@@ -786,3 +786,80 @@ fn test_strlen_multiple_args() {
     assert_eq!(result, Val::Null);
     assert_eq!(warnings.len(), 1);
 }
+
+#[test]
+fn test_quotemeta_basic() {
+    let src = "<?php return quotemeta('a.b+c');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"a\\.b\\+c".to_vec().into()));
+}
+
+#[test]
+fn test_nl2br_basic() {
+    let src = "<?php return nl2br(\"a\\nb\\r\\nc\\r\");";
+    let (result, _, _) = run_code(src);
+    assert_eq!(
+        result,
+        Val::String(b"a<br />\nb<br />\r\nc<br />\r".to_vec().into())
+    );
+
+    let src = "<?php return nl2br(\"a\\nb\", false);";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"a<br>\nb".to_vec().into()));
+}
+
+#[test]
+fn test_strip_tags_basic() {
+    let src = "<?php return strip_tags('<b>hi</b> <i>there</i>', '<b>');";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"<b>hi</b> there".to_vec().into()));
+}
+
+#[test]
+fn test_parse_str_basic() {
+    let src = "<?php $out = null; parse_str('a=1&b=hello+world', $out); return $out;";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Str(Rc::new(b"a".to_vec()))).unwrap())
+                    .value,
+                Val::String(b"1".to_vec().into())
+            );
+            assert_eq!(
+                vm.arena.get(*arr.map.get(&ArrayKey::Str(Rc::new(b"b".to_vec()))).unwrap())
+                    .value,
+                Val::String(b"hello world".to_vec().into())
+            );
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_parse_str_array_values() {
+    let src = "<?php $out = null; parse_str('arr[]=1&arr[]=2', $out); return $out;";
+    let (result, _, vm) = run_code(src);
+    match result {
+        Val::Array(arr) => {
+            let arr_handle = *arr
+                .map
+                .get(&ArrayKey::Str(Rc::new(b"arr".to_vec())))
+                .unwrap();
+            match &vm.arena.get(arr_handle).value {
+                Val::Array(inner) => {
+                    assert_eq!(
+                        vm.arena.get(*inner.map.get(&ArrayKey::Int(0)).unwrap()).value,
+                        Val::String(b"1".to_vec().into())
+                    );
+                    assert_eq!(
+                        vm.arena.get(*inner.map.get(&ArrayKey::Int(1)).unwrap()).value,
+                        Val::String(b"2".to_vec().into())
+                    );
+                }
+                other => panic!("Expected array, got {:?}", other),
+            }
+        }
+        _ => panic!("Expected array, got {:?}", result),
+    }
+}

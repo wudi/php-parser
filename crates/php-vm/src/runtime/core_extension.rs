@@ -71,6 +71,9 @@ impl Extension for CoreExtension {
         registry.register_function(b"lcfirst", string::php_lcfirst);
         registry.register_function(b"ucwords", string::php_ucwords);
         registry.register_function(b"wordwrap", string::php_wordwrap);
+        registry.register_function(b"quotemeta", string::php_quotemeta);
+        registry.register_function(b"nl2br", string::php_nl2br);
+        registry.register_function(b"strip_tags", string::php_strip_tags);
         registry.register_function(b"strtok", string::php_strtok);
         registry.register_function(b"count_chars", string::php_count_chars);
         registry.register_function(b"str_word_count", string::php_str_word_count);
@@ -79,6 +82,7 @@ impl Extension for CoreExtension {
         registry.register_function(b"str_ends_with", string::php_str_ends_with);
         registry.register_function_with_by_ref(b"str_replace", string::php_str_replace, vec![3]);
         registry.register_function_with_by_ref(b"str_ireplace", string::php_str_ireplace, vec![3]);
+        registry.register_function_with_by_ref(b"parse_str", string::php_parse_str, vec![1]);
         registry.register_function(b"strtolower", string::php_strtolower);
         registry.register_function(b"strtoupper", string::php_strtoupper);
         registry.register_function(b"version_compare", string::php_version_compare);

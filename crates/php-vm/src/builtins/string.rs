@@ -1,7 +1,9 @@
-use crate::core::value::{Handle, Val};
+use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use crc32fast::Hasher;
 use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::rc::Rc;
 use std::str;
 
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -723,6 +725,21 @@ fn hex_upper(nibble: u8) -> u8 {
     }
 }
 
+fn from_hex_digits(h: u8, l: u8) -> Option<u8> {
+    let h = from_hex_digit(h)?;
+    let l = from_hex_digit(l)?;
+    Some((h << 4) | l)
+}
+
+fn from_hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn uuencode_bytes(input: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -1236,6 +1253,357 @@ pub fn php_strrev(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let mut s = vm.value_to_string(args[0])?;
     s.reverse();
     Ok(vm.arena.alloc(Val::String(s.into())))
+}
+
+pub fn php_quotemeta(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quotemeta() expects exactly 1 parameter".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let mut out = Vec::with_capacity(input.len());
+    for &b in &input {
+        match b {
+            b'.' | b'\\' | b'+' | b'*' | b'?' | b'[' | b'^' | b']' | b'$' | b'(' | b')'
+            | b'{' | b'}' | b'=' | b'!' | b'<' | b'>' | b'|' | b':' | b'-' => {
+                out.push(b'\\');
+                out.push(b);
+            }
+            _ => out.push(b),
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_nl2br(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("nl2br() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let use_xhtml = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_bool()
+    } else {
+        true
+    };
+    let break_tag: &[u8] = if use_xhtml { b"<br />" } else { b"<br>" };
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        match input[i] {
+            b'\r' => {
+                out.extend_from_slice(break_tag);
+                out.push(b'\r');
+                if i + 1 < input.len() && input[i + 1] == b'\n' {
+                    out.push(b'\n');
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            b'\n' => {
+                out.extend_from_slice(break_tag);
+                out.push(b'\n');
+                i += 1;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_strip_tags(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("strip_tags() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let allowed = if args.len() == 2 {
+        parse_allowed_tags(vm, args[1])?
+    } else {
+        HashSet::new()
+    };
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] != b'<' {
+            out.push(input[i]);
+            i += 1;
+            continue;
+        }
+        if let Some(end) = input[i + 1..].iter().position(|&b| b == b'>') {
+            let tag_start = i + 1;
+            let tag_end = tag_start + end;
+            let tag_name = extract_tag_name(&input[tag_start..tag_end]);
+            if let Some(name) = tag_name {
+                if allowed.contains(&name) {
+                    out.extend_from_slice(&input[i..=tag_end]);
+                }
+            }
+            i = tag_end + 1;
+        } else {
+            out.push(input[i]);
+            i += 1;
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_parse_str(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("parse_str() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let mut root = ArrayData::new();
+    for (raw_key, raw_val) in parse_query_pairs(&input) {
+        if raw_key.is_empty() {
+            continue;
+        }
+        let key = urldecode_bytes(raw_key);
+        let val = urldecode_bytes(raw_val);
+        let (base, segments) = parse_key_segments(&key);
+        if base.is_empty() {
+            continue;
+        }
+        let value_handle = vm.arena.alloc(Val::String(val.into()));
+        insert_parse_str_value(vm, &mut root, &base, &segments, value_handle)?;
+    }
+
+    if args.len() == 2 {
+        let out_handle = args[1];
+        if vm.arena.get(out_handle).is_ref {
+            vm.arena.get_mut(out_handle).value = Val::Array(Rc::new(root));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+fn parse_allowed_tags(vm: &mut VM, handle: Handle) -> Result<HashSet<Vec<u8>>, String> {
+    let mut allowed = HashSet::new();
+    match &vm.arena.get(handle).value {
+        Val::Null => {}
+        Val::String(s) => {
+            let bytes = s.as_ref();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'<' {
+                    if let Some(end) = bytes[i + 1..].iter().position(|&b| b == b'>') {
+                        let name = extract_tag_name(&bytes[i + 1..i + 1 + end]);
+                        if let Some(tag) = name {
+                            allowed.insert(tag);
+                        }
+                        i += end + 2;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        }
+        Val::Array(arr) => {
+            let entries: Vec<_> = arr.map.values().copied().collect();
+            for entry in entries {
+                let tag = vm.value_to_string(entry)?;
+                let name = extract_tag_name(&tag).unwrap_or_else(|| tag);
+                if !name.is_empty() {
+                    allowed.insert(name);
+                }
+            }
+        }
+        v => {
+            return Err(format!(
+                "strip_tags() expects parameter 2 to be array or string, {} given",
+                v.type_name()
+            ))
+        }
+    }
+    Ok(allowed)
+}
+
+fn extract_tag_name(tag: &[u8]) -> Option<Vec<u8>> {
+    let mut i = 0;
+    while i < tag.len() && (tag[i] == b'/' || tag[i].is_ascii_whitespace()) {
+        i += 1;
+    }
+    if i >= tag.len() {
+        return None;
+    }
+    if tag[i] == b'!' || tag[i] == b'?' {
+        return None;
+    }
+    let start = i;
+    while i < tag.len() && (tag[i].is_ascii_alphanumeric() || tag[i] == b':' || tag[i] == b'-') {
+        i += 1;
+    }
+    if start == i {
+        return None;
+    }
+    Some(tag[start..i].iter().map(|b| b.to_ascii_lowercase()).collect())
+}
+
+fn parse_query_pairs(input: &[u8]) -> Vec<(&[u8], &[u8])> {
+    let mut pairs = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i <= input.len() {
+        let is_end = i == input.len();
+        if is_end || input[i] == b'&' || input[i] == b';' {
+            let part = &input[start..i];
+            if !part.is_empty() {
+                if let Some(eq) = part.iter().position(|&b| b == b'=') {
+                    pairs.push((&part[..eq], &part[eq + 1..]));
+                } else {
+                    pairs.push((part, b""));
+                }
+            }
+            start = i + 1;
+        }
+        i += 1;
+    }
+    pairs
+}
+
+fn urldecode_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut result = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                result.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                if let Some(b) = from_hex_digits(bytes[i + 1], bytes[i + 2]) {
+                    result.push(b);
+                    i += 3;
+                } else {
+                    result.push(b'%');
+                    i += 1;
+                }
+            }
+            b => {
+                result.push(b);
+                i += 1;
+            }
+        }
+    }
+    result
+}
+
+fn parse_key_segments(key: &[u8]) -> (Vec<u8>, Vec<Option<Vec<u8>>>) {
+    let mut base = Vec::new();
+    let mut i = 0;
+    while i < key.len() && key[i] != b'[' {
+        base.push(key[i]);
+        i += 1;
+    }
+    let mut segments = Vec::new();
+    while i < key.len() {
+        if key[i] != b'[' {
+            i += 1;
+            continue;
+        }
+        i += 1;
+        let start = i;
+        while i < key.len() && key[i] != b']' {
+            i += 1;
+        }
+        if i >= key.len() {
+            break;
+        }
+        let content = &key[start..i];
+        if content.is_empty() {
+            segments.push(None);
+        } else {
+            segments.push(Some(content.to_vec()));
+        }
+        i += 1;
+    }
+    (base, segments)
+}
+
+fn insert_parse_str_value(
+    vm: &mut VM,
+    root: &mut ArrayData,
+    base: &[u8],
+    segments: &[Option<Vec<u8>>],
+    value_handle: Handle,
+) -> Result<(), String> {
+    let base_key = array_key_from_bytes(base);
+    if segments.is_empty() {
+        root.insert(base_key, value_handle);
+        return Ok(());
+    }
+
+    let mut current_handle = ensure_array_for_key(vm, root, base_key);
+    for (idx, segment) in segments.iter().enumerate() {
+        let is_last = idx == segments.len() - 1;
+        let mut current_array = match &vm.arena.get(current_handle).value {
+            Val::Array(arr) => (**arr).clone(),
+            _ => ArrayData::new(),
+        };
+
+        if is_last {
+            match segment {
+                None => current_array.push(value_handle),
+                Some(name) => {
+                    current_array.insert(array_key_from_bytes(name), value_handle);
+                }
+            }
+            vm.arena.get_mut(current_handle).value = Val::Array(Rc::new(current_array));
+            return Ok(());
+        }
+
+        let next_handle = match segment {
+            None => {
+                let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                current_array.push(handle);
+                handle
+            }
+            Some(name) => {
+                let key = array_key_from_bytes(name);
+                match current_array.map.get(&key).copied() {
+                    Some(existing) => match &vm.arena.get(existing).value {
+                        Val::Array(_) => existing,
+                        _ => {
+                            let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                            current_array.insert(key, handle);
+                            handle
+                        }
+                    },
+                    None => {
+                        let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                        current_array.insert(key, handle);
+                        handle
+                    }
+                }
+            }
+        };
+
+        vm.arena.get_mut(current_handle).value = Val::Array(Rc::new(current_array));
+        current_handle = next_handle;
+    }
+    Ok(())
+}
+
+fn ensure_array_for_key(vm: &mut VM, array: &mut ArrayData, key: ArrayKey) -> Handle {
+    if let Some(existing) = array.map.get(&key).copied() {
+        if matches!(vm.arena.get(existing).value, Val::Array(_)) {
+            return existing;
+        }
+    }
+    let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+    array.insert(key, handle);
+    handle
+}
+
+fn array_key_from_bytes(bytes: &[u8]) -> ArrayKey {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        if let Ok(num) = s.parse::<i64>() {
+            return ArrayKey::Int(num);
+        }
+    }
+    ArrayKey::Str(Rc::new(bytes.to_vec()))
 }
 
 pub fn php_strcmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
