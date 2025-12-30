@@ -1343,6 +1343,109 @@ pub fn php_strrchr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Bool(false)))
 }
 
+pub fn php_strpbrk(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strpbrk() expects exactly 2 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+
+    for (idx, b) in haystack.iter().enumerate() {
+        if mask.contains(b) {
+            return Ok(vm
+                .arena
+                .alloc(Val::String(haystack[idx..].to_vec().into())));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_strspn(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err("strspn() expects 2 to 4 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+    let start = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+    let length = if args.len() == 4 {
+        Some(vm.arena.get(args[3]).value.to_int())
+    } else {
+        None
+    };
+
+    let start = if start < 0 { 0 } else { start as usize };
+    if start > s.len() {
+        return Ok(vm.arena.alloc(Val::Int(0)));
+    }
+
+    let slice = &s[start..];
+    let slice = if let Some(len) = length {
+        &slice[..slice.len().min(len as usize)]
+    } else {
+        slice
+    };
+
+    let mut count = 0;
+    for b in slice {
+        if mask.contains(b) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Int(count)))
+}
+
+pub fn php_strcspn(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err("strcspn() expects 2 to 4 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+    let start = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+    let length = if args.len() == 4 {
+        Some(vm.arena.get(args[3]).value.to_int())
+    } else {
+        None
+    };
+
+    let start = if start < 0 { 0 } else { start as usize };
+    if start > s.len() {
+        return Ok(vm.arena.alloc(Val::Int(0)));
+    }
+
+    let slice = &s[start..];
+    let slice = if let Some(len) = length {
+        &slice[..slice.len().min(len as usize)]
+    } else {
+        slice
+    };
+
+    let mut count = 0;
+    for b in slice {
+        if !mask.contains(b) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Int(count)))
+}
+
 pub fn php_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("strtolower() expects exactly 1 parameter".into());

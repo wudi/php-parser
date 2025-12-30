@@ -545,6 +545,13 @@ fn test_stripos_strrpos_strripos_strrchr() {
 }
 
 #[test]
+fn test_strpbrk_spn_cspn() {
+    let src = "<?php return strpbrk(\"abcdef\", \"xd\") . \"|\" . strspn(\"abc123\", \"abc\") . \"|\" . strcspn(\"abc123\", \"123\");";
+    let (result, _, _) = run_code(src);
+    assert_eq!(result, Val::String(b"def|3|3".to_vec().into()));
+}
+
+#[test]
 fn test_strtok_basic() {
     let src = "<?php
         $tok = strtok('This is a test', ' ');
