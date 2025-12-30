@@ -1,6 +1,6 @@
 use super::context::{NativeHandler, RequestContext};
 use super::extension::{Extension, ExtensionResult};
-use crate::core::value::{Symbol, Val, Visibility};
+use crate::core::value::{Val, Visibility};
 use std::collections::HashMap;
 
 /// Native class definition for extension-provided classes

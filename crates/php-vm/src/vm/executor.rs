@@ -19,14 +19,13 @@
 //! ```
 
 use crate::compiler::emitter::Emitter;
-use crate::core::value::{Handle, Val};
-use crate::runtime::context::{EngineContext, RequestContext};
-use crate::vm::engine::{CapturingErrorHandler, CapturingOutputWriter, ErrorLevel, OutputWriter, VmError, VM};
+use crate::core::value::Val;
+use crate::runtime::context::RequestContext;
+use crate::vm::engine::{CapturingErrorHandler, CapturingOutputWriter, ErrorLevel, VmError, VM};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 /// Result of executing PHP code
 #[derive(Debug, Clone)]

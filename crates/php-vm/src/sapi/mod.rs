@@ -5,7 +5,6 @@
 pub mod fpm;
 
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
-use crate::runtime::context::RequestContext;
 use crate::vm::engine::VM;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -167,4 +166,3 @@ pub fn init_superglobals(
     vm.arena.get_mut(globals_handle).is_ref = true;
     vm.context.globals.insert(globals_sym, globals_handle);
 }
-

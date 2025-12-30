@@ -4,7 +4,7 @@ use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::ExtensionRegistry;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;use std::sync::Arc;
+use std::cell::RefCell;
 /// Extension-specific data for PDO module
 #[derive(Debug, Default)]
 pub struct PdoExtensionData {

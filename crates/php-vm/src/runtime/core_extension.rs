@@ -1,8 +1,8 @@
 use crate::builtins::{
-    array, bcmath, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
-    output_control, pcre, spl, string, url, variable,
+    array, bcmath, class, exception, exec, filesystem, function, http, math, output_control, pcre,
+    spl, string, url, variable,
 };
-use crate::core::value::{Symbol, Val, Visibility};
+use crate::core::value::{Val, Visibility};
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::{ExtensionRegistry, NativeClassDef, NativeMethodEntry};
