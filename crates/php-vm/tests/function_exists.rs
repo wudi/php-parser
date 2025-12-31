@@ -53,7 +53,7 @@ fn reports_extension_loaded_status() {
     let result = run_php_and_get_result("<?php return extension_loaded('core');");
     assert!(matches!(result, Val::Bool(true)));
 
-    // Test missing extension
+    // Test mbstring extension
     let result = run_php_and_get_result("<?php return extension_loaded('mbstring');");
-    assert!(matches!(result, Val::Bool(false)));
+    assert!(matches!(result, Val::Bool(true)));
 }
