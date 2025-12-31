@@ -680,6 +680,54 @@ pub fn php_mb_convert_case(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     Ok(vm.arena.alloc(Val::String(output.into())))
 }
 
+pub fn php_mb_strwidth(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strwidth() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_strwidth")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_strwidth(): {}", message))?;
+    let width = crate::runtime::mb::width::str_width(&decoded);
+    Ok(vm.arena.alloc(Val::Int(width as i64)))
+}
+
+pub fn php_mb_strimwidth(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 3 || args.len() > 5 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strimwidth() expects 3 to 5 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_strimwidth")?;
+    let start = vm.check_builtin_param_int(args[1], 2, "mb_strimwidth")?;
+    let width = vm.check_builtin_param_int(args[2], 3, "mb_strimwidth")? as usize;
+    let trim_marker = if args.len() >= 4 {
+        let marker = vm.check_builtin_param_string(args[3], 4, "mb_strimwidth")?;
+        String::from_utf8_lossy(&marker).to_string()
+    } else {
+        String::new()
+    };
+    let encoding = if args.len() == 5 {
+        resolve_encoding_arg(vm, args.get(4))
+    } else {
+        resolve_encoding_arg(vm, None)
+    };
+
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_strimwidth(): {}", message))?;
+    let trimmed = crate::runtime::mb::width::trim_width(&decoded, start, width, &trim_marker);
+    let output = crate::runtime::mb::convert::encode_string(&trimmed, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 

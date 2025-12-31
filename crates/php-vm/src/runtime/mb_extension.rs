@@ -33,6 +33,8 @@ impl Extension for MbStringExtension {
         registry.register_function(b"mb_strtolower", mbstring::php_mb_strtolower);
         registry.register_function(b"mb_strtoupper", mbstring::php_mb_strtoupper);
         registry.register_function(b"mb_convert_case", mbstring::php_mb_convert_case);
+        registry.register_function(b"mb_strwidth", mbstring::php_mb_strwidth);
+        registry.register_function(b"mb_strimwidth", mbstring::php_mb_strimwidth);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);
