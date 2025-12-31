@@ -44,6 +44,30 @@ pub fn all_encodings() -> &'static [&'static str] {
     ENCODINGS
 }
 
+pub fn canonical_label(name: &str) -> Option<&'static str> {
+    let normalized = name.trim().to_ascii_uppercase().replace('_', "-");
+
+    for enc in ENCODINGS {
+        if normalized == enc.to_ascii_uppercase() {
+            return Some(*enc);
+        }
+    }
+
+    match normalized.as_str() {
+        "UTF8" => Some("UTF-8"),
+        "ISO8859-1" | "LATIN1" | "L1" => Some("ISO-8859-1"),
+        "SHIFT-JIS" | "SJIS" | "SJIS-WIN" | "CP932" | "WINDOWS-31J" => Some("SJIS"),
+        "US-ASCII" => Some("ASCII"),
+        "UTF16" => Some("UTF-16"),
+        "UTF16LE" => Some("UTF-16LE"),
+        "UTF16BE" => Some("UTF-16BE"),
+        "UTF32" => Some("UTF-32"),
+        "UTF32LE" => Some("UTF-32LE"),
+        "UTF32BE" => Some("UTF-32BE"),
+        _ => None,
+    }
+}
+
 pub fn aliases_for(name: &str) -> Vec<&'static str> {
     let normalized = name.trim().to_ascii_uppercase().replace('_', "-");
 

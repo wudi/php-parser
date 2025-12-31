@@ -149,6 +149,42 @@ pub fn php_mb_get_info(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> 
         .alloc(Val::Array(ArrayData::from(entries).into())))
 }
 
+pub fn php_mb_convert_encoding(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_convert_encoding() expects 2 or 3 parameters, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_convert_encoding")?;
+    let to = vm.check_builtin_param_string(args[1], 2, "mb_convert_encoding")?;
+    let to_str = String::from_utf8_lossy(&to).to_string();
+
+    let from_str = if args.len() == 3 {
+        let from = vm.check_builtin_param_string(args[2], 3, "mb_convert_encoding")?;
+        String::from_utf8_lossy(&from).to_string()
+    } else {
+        let state = vm.context.get_or_init_extension_data(MbStringState::default);
+        state.internal_encoding.clone()
+    };
+
+    match crate::runtime::mb::convert::convert_bytes(&input, &from_str, &to_str) {
+        Ok(bytes) => Ok(vm.arena.alloc(Val::String(bytes.into()))),
+        Err(message) => {
+            vm.report_error(
+                ErrorLevel::Warning,
+                &format!("mb_convert_encoding(): {}", message),
+            );
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    }
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
