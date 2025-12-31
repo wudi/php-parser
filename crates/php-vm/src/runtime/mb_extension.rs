@@ -18,6 +18,9 @@ impl Extension for MbStringExtension {
 
     fn module_init(&self, registry: &mut ExtensionRegistry) -> ExtensionResult {
         registry.register_function(b"mb_internal_encoding", mbstring::php_mb_internal_encoding);
+        registry.register_function(b"mb_detect_order", mbstring::php_mb_detect_order);
+        registry.register_function(b"mb_language", mbstring::php_mb_language);
+        registry.register_function(b"mb_get_info", mbstring::php_mb_get_info);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);
