@@ -1,5 +1,6 @@
 ---
 source: tests/declare_enddeclare_tests.rs
+assertion_line: 140
 expression: program
 ---
 Program {
@@ -196,7 +197,15 @@ Program {
             },
         },
     ],
-    errors: [],
+    errors: [
+        ParseError {
+            span: Span {
+                start: 31,
+                end: 43,
+            },
+            message: "strict_types declaration must be the first statement in the file",
+        },
+    ],
     span: Span {
         start: 0,
         end: 140,
