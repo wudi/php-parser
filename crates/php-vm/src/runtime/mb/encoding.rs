@@ -87,3 +87,16 @@ pub fn aliases_for(name: &str) -> Vec<&'static str> {
         _ => Vec::new(),
     }
 }
+
+pub fn is_valid_encoding(input: &[u8], encoding: &str) -> Result<bool, String> {
+    let label = canonical_label(encoding).unwrap_or(encoding);
+    if label.eq_ignore_ascii_case("UTF-8") {
+        return Ok(std::str::from_utf8(input).is_ok());
+    }
+
+    let encoding = Encoding::for_label(label.to_ascii_lowercase().as_bytes())
+        .ok_or_else(|| format!("unknown encoding: {}", encoding))?;
+    let (_, _, had_errors) = encoding.decode(input);
+    Ok(!had_errors)
+}
+use encoding_rs::Encoding;

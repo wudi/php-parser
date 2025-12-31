@@ -23,6 +23,9 @@ impl Extension for MbStringExtension {
         registry.register_function(b"mb_get_info", mbstring::php_mb_get_info);
         registry.register_function(b"mb_convert_encoding", mbstring::php_mb_convert_encoding);
         registry.register_function(b"mb_convert_variables", mbstring::php_mb_convert_variables);
+        registry.register_function(b"mb_detect_encoding", mbstring::php_mb_detect_encoding);
+        registry.register_function(b"mb_check_encoding", mbstring::php_mb_check_encoding);
+        registry.register_function(b"mb_scrub", mbstring::php_mb_scrub);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);

@@ -1,6 +1,7 @@
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::runtime::mb::state::MbStringState;
 use crate::vm::engine::{ErrorLevel, VM};
+use encoding_rs::Encoding;
 use std::rc::Rc;
 
 pub fn php_mb_internal_encoding(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -229,6 +230,178 @@ fn convert_value_in_place(
         _ => {}
     }
     Ok(())
+}
+
+pub fn php_mb_detect_encoding(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_detect_encoding() expects 1 to 3 parameters, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_detect_encoding")?;
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+
+    let encodings = if args.len() >= 2 {
+        let list_val = &vm.arena.get(args[1]).value;
+        if matches!(list_val, Val::Null) {
+            state.detect_order.clone()
+        } else {
+            parse_encoding_list(vm, list_val)
+        }
+    } else {
+        state.detect_order.clone()
+    };
+
+    let strict = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_bool()
+    } else {
+        false
+    };
+
+    for encoding in encodings {
+        match crate::runtime::mb::encoding::is_valid_encoding(&input, &encoding) {
+            Ok(valid) => {
+                if valid || !strict {
+                    return Ok(vm
+                        .arena
+                        .alloc(Val::String(encoding.as_bytes().to_vec().into())));
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_mb_check_encoding(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_check_encoding() expects 1 or 2 parameters, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_check_encoding")?;
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+    let encoding = if args.len() == 2 {
+        let enc = vm.check_builtin_param_string(args[1], 2, "mb_check_encoding")?;
+        String::from_utf8_lossy(&enc).to_string()
+    } else {
+        state.internal_encoding.clone()
+    };
+
+    match crate::runtime::mb::encoding::is_valid_encoding(&input, &encoding) {
+        Ok(valid) => Ok(vm.arena.alloc(Val::Bool(valid))),
+        Err(message) => {
+            vm.report_error(
+                ErrorLevel::Warning,
+                &format!("mb_check_encoding(): {}", message),
+            );
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    }
+}
+
+pub fn php_mb_scrub(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_scrub() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_scrub")?;
+    let encoding = if args.len() == 2 {
+        let enc = vm.check_builtin_param_string(args[1], 2, "mb_scrub")?;
+        String::from_utf8_lossy(&enc).to_string()
+    } else {
+        let state = vm.context.get_or_init_extension_data(MbStringState::default);
+        state.internal_encoding.clone()
+    };
+
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+    let substitute = match state.substitute_char {
+        crate::runtime::mb::state::MbSubstitute::Char(c) => Some(c),
+        crate::runtime::mb::state::MbSubstitute::None => None,
+        crate::runtime::mb::state::MbSubstitute::Long => Some('?'),
+    };
+
+    let (decoded, had_errors) = decode_with_replacement(&input, &encoding)?;
+    let scrubbed = if had_errors {
+        apply_substitution(&decoded, substitute)
+    } else {
+        decoded
+    };
+
+    let output = if encoding.eq_ignore_ascii_case("UTF-8") {
+        scrubbed.into_bytes()
+    } else {
+        crate::runtime::mb::convert::encode_string(&scrubbed, &encoding)?
+    };
+
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+fn parse_encoding_list(vm: &VM, list_val: &Val) -> Vec<String> {
+    match list_val {
+        Val::Array(array) => array
+            .map
+            .values()
+            .map(|handle| {
+                String::from_utf8_lossy(&vm.arena.get(*handle).value.to_php_string_bytes())
+                    .to_string()
+            })
+            .collect(),
+        Val::ConstArray(array) => array
+            .values()
+            .map(|value| String::from_utf8_lossy(&value.to_php_string_bytes()).to_string())
+            .collect(),
+        _ => String::from_utf8_lossy(&list_val.to_php_string_bytes())
+            .split(',')
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+    }
+}
+
+fn decode_with_replacement(input: &[u8], encoding: &str) -> Result<(String, bool), String> {
+    if encoding.eq_ignore_ascii_case("UTF-8") {
+        match std::str::from_utf8(input) {
+            Ok(value) => Ok((value.to_string(), false)),
+            Err(_) => Ok((String::from_utf8_lossy(input).to_string(), true)),
+        }
+    } else {
+        let encoding = Encoding::for_label(encoding.to_ascii_lowercase().as_bytes())
+            .ok_or_else(|| format!("unknown encoding: {}", encoding))?;
+        let (cow, _, had_errors) = encoding.decode(input);
+        Ok((cow.to_string(), had_errors))
+    }
+}
+
+fn apply_substitution(input: &str, substitute: Option<char>) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch == '\u{FFFD}' {
+            if let Some(replacement) = substitute {
+                out.push(replacement);
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
