@@ -70,3 +70,79 @@ pub fn php_mb_encoding_aliases(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
         .arena
         .alloc(Val::Array(ArrayData::from(entries).into())))
 }
+
+pub fn php_mb_substitute_character(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() > 1 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_substitute_character() expects at most 1 parameter, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+
+    if args.is_empty() {
+        let value = match state.substitute_char {
+            crate::runtime::mb::state::MbSubstitute::Char(c) => c.to_string().into_bytes(),
+            crate::runtime::mb::state::MbSubstitute::None => b"none".to_vec(),
+            crate::runtime::mb::state::MbSubstitute::Long => b"long".to_vec(),
+        };
+        return Ok(vm.arena.alloc(Val::String(value.into())));
+    }
+
+    let arg = &vm.arena.get(args[0]).value;
+    match arg {
+        Val::Int(codepoint) => {
+            if *codepoint == 0 {
+                state.substitute_char = crate::runtime::mb::state::MbSubstitute::None;
+            } else if *codepoint < 0 {
+                state.substitute_char = crate::runtime::mb::state::MbSubstitute::Long;
+            } else if let Some(ch) = char::from_u32(*codepoint as u32) {
+                state.substitute_char = crate::runtime::mb::state::MbSubstitute::Char(ch);
+            } else {
+                vm.report_error(
+                    ErrorLevel::Warning,
+                    "mb_substitute_character(): Unknown character code",
+                );
+                return Ok(vm.arena.alloc(Val::Bool(false)));
+            }
+        }
+        Val::String(bytes) => {
+            let raw = String::from_utf8_lossy(bytes);
+            let value = raw.as_ref().to_ascii_lowercase();
+            match value.as_str() {
+                "none" => {
+                    state.substitute_char = crate::runtime::mb::state::MbSubstitute::None;
+                }
+                "long" => {
+                    state.substitute_char = crate::runtime::mb::state::MbSubstitute::Long;
+                }
+                _ => {
+                    let mut chars = raw.chars();
+                    if let (Some(ch), None) = (chars.next(), chars.next()) {
+                        state.substitute_char = crate::runtime::mb::state::MbSubstitute::Char(ch);
+                    } else {
+                        vm.report_error(
+                            ErrorLevel::Warning,
+                            "mb_substitute_character(): Unknown character code",
+                        );
+                        return Ok(vm.arena.alloc(Val::Bool(false)));
+                    }
+                }
+            }
+        }
+        _ => {
+            vm.report_error(
+                ErrorLevel::Warning,
+                "mb_substitute_character() expects parameter 1 to be int or string",
+            );
+            return Ok(vm.arena.alloc(Val::Null));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}

@@ -20,6 +20,7 @@ impl Extension for MbStringExtension {
         registry.register_function(b"mb_internal_encoding", mbstring::php_mb_internal_encoding);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
+        registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);
 
         registry.register_constant(b"MB_CASE_UPPER", Val::Int(0));
         registry.register_constant(b"MB_CASE_LOWER", Val::Int(1));
