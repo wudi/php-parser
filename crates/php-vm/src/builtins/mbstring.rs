@@ -145,6 +145,29 @@ pub fn php_mb_get_info(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> 
         substitute_handle,
     );
 
+    let http_output = match &state.http_output {
+        Some(value) => Val::String(value.as_bytes().to_vec().into()),
+        None => Val::Bool(false),
+    };
+    entries.insert(
+        ArrayKey::Str(Rc::new(b"http_output".to_vec())),
+        vm.arena.alloc(http_output),
+    );
+
+    let http_input = match &state.http_input {
+        Some(value) => Val::String(value.as_bytes().to_vec().into()),
+        None => Val::Bool(false),
+    };
+    entries.insert(
+        ArrayKey::Str(Rc::new(b"http_input".to_vec())),
+        vm.arena.alloc(http_input),
+    );
+
+    entries.insert(
+        ArrayKey::Str(Rc::new(b"func_overload".to_vec())),
+        vm.arena.alloc(Val::Int(0)),
+    );
+
     Ok(vm
         .arena
         .alloc(Val::Array(ArrayData::from(entries).into())))
