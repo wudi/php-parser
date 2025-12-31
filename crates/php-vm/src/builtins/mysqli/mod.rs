@@ -106,7 +106,7 @@ pub fn php_mysqli_connect(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
             let resource_val = Val::Resource(Rc::new(conn_id));
             Ok(vm.arena.alloc(resource_val))
         }
-        Err(e) => {
+        Err(_e) => {
             // Return false on connection error (PHP behavior)
             Ok(vm.arena.alloc(Val::Bool(false)))
         }
@@ -193,7 +193,7 @@ pub fn php_mysqli_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
             // Return result resource
             Ok(vm.arena.alloc(Val::Resource(Rc::new(result_id))))
         }
-        Err(e) => {
+        Err(_e) => {
             // Query failed - return false (PHP behavior)
             Ok(vm.arena.alloc(Val::Bool(false)))
         }

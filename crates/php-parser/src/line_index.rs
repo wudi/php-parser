@@ -56,8 +56,9 @@ impl LineIndex {
         // but we should check if it goes beyond the next line start.
         if line + 1 < self.line_starts.len() && offset >= self.line_starts[line + 1] {
             // Column is too large for this line
-            // This could happen if we're between lines?
-            // Actually, binary_search should give us the line where line_start <= offset.
+            // But maybe we allow it if it points to the newline char?
+            // LSP allows pointing past the end of line.
+            // But strictly speaking, it shouldn't cross into the next line.
             // For now, let's just check total length.
         }
 

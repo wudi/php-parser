@@ -146,7 +146,7 @@ fn function_exists_case_insensitive(vm: &VM, name_bytes: &[u8]) -> bool {
         name_bytes
     };
 
-    let lower_name: Vec<u8> = stripped.iter().map(|b| b.to_ascii_lowercase()).collect();
+    let _lower_name: Vec<u8> = stripped.iter().map(|b| b.to_ascii_lowercase()).collect();
 
     // Check extension-registered functions in the registry
     if vm.context.engine.registry.get_function(stripped).is_some() {

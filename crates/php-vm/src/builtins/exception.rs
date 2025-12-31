@@ -287,7 +287,7 @@ pub fn exception_to_string(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Stri
 
     let mut class_name = "Exception".to_string();
     let mut message = String::new();
-    let mut code = 0i64;
+    let mut _code = 0i64;
     let mut file = "unknown".to_string();
     let mut line = 0i64;
 
@@ -309,7 +309,7 @@ pub fn exception_to_string(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Stri
 
             if let Some(&code_handle) = obj_data.properties.get(&code_sym) {
                 if let Val::Int(c) = &vm.arena.get(code_handle).value {
-                    code = *c;
+                    _code = *c;
                 }
             }
 

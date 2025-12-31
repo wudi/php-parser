@@ -60,6 +60,94 @@ fn run_code(src: &str) -> (Val, Vec<(ErrorLevel, String)>, VM) {
 }
 
 #[test]
+fn test_number_format_compile_smoke() {
+    let _ = num_format::Locale::en;
+}
+
+#[test]
+fn test_number_format_defaults() {
+    let (result, warnings, _) = run_code("<?php return number_format(1234.567);");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"1,235".to_vec().into()));
+}
+
+#[test]
+fn test_number_format_custom() {
+    let src = "<?php return number_format(1234.567, 2, ',', ' ');";
+    let (result, warnings, _) = run_code(src);
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"1 234,57".to_vec().into()));
+}
+
+#[test]
+fn test_money_format_basic() {
+    let src = "<?php setlocale(LC_ALL, 'C'); return money_format('%.2n', 1234.5);";
+    let (result, _, _) = run_code(src);
+    assert!(matches!(result, Val::String(_)) || result == Val::Bool(false));
+}
+
+#[test]
+fn test_metaphone_basic() {
+    let (result, warnings, _) = run_code("<?php return metaphone('programmer');");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"PRKRMR".to_vec().into()));
+}
+
+#[test]
+fn test_metaphone_max_phonemes() {
+    let (result, warnings, _) = run_code("<?php return metaphone('programmer', 3);");
+    assert!(warnings.is_empty());
+    assert_eq!(result, Val::String(b"PRK".to_vec().into()));
+}
+
+#[test]
+fn test_setlocale_and_localeconv_c_locale() {
+    let src = "<?php
+        $prev = setlocale(LC_ALL, 'C');
+        $conv = localeconv();
+        return [$prev, $conv['decimal_point'], $conv['thousands_sep']];
+    ";
+    let (result, warnings, vm) = run_code(src);
+    assert!(warnings.is_empty());
+
+    match result {
+        Val::Array(arr) => {
+            let prev = vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value.clone();
+            assert!(matches!(prev, Val::String(_)));
+            let dec = vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value.clone();
+            let sep = vm.arena.get(*arr.map.get(&ArrayKey::Int(2)).unwrap()).value.clone();
+            assert_eq!(dec, Val::String(b".".to_vec().into()));
+            assert_eq!(sep, Val::String(b"".to_vec().into()));
+        }
+        _ => panic!("Expected array"),
+    }
+}
+
+#[test]
+fn test_nl_langinfo_codeset() {
+    let src = "<?php return nl_langinfo(CODESET);";
+    let (result, warnings, _) = run_code(src);
+    assert!(warnings.is_empty());
+    assert!(matches!(result, Val::String(_)));
+}
+
+#[test]
+fn test_strcoll_c_locale() {
+    let src = "<?php setlocale(LC_ALL, 'C'); return [strcoll('abc', 'abd'), strcoll('abc', 'abc')];";
+    let (result, warnings, vm) = run_code(src);
+    assert!(warnings.is_empty());
+    match result {
+        Val::Array(arr) => {
+            let a = vm.arena.get(*arr.map.get(&ArrayKey::Int(0)).unwrap()).value.clone();
+            let b = vm.arena.get(*arr.map.get(&ArrayKey::Int(1)).unwrap()).value.clone();
+            assert!(matches!(a, Val::Int(_)));
+            assert_eq!(b, Val::Int(0));
+        }
+        _ => panic!("Expected array"),
+    }
+}
+
+#[test]
 fn test_strlen_string() {
     let src = "<?php return strlen('hello');";
     let (result, warnings, _) = run_code(src);

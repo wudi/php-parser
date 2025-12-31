@@ -20,6 +20,35 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use walkdir::WalkDir;
 
+type SymbolEntry = (String, Range, SymbolType, SymbolMeta);
+
+#[derive(Debug, Clone, Default)]
+struct SymbolMeta {
+    symbol_kind: Option<SymbolKind>,
+    parameters: Option<Vec<String>>,
+    extends: Option<Vec<String>>,
+    implements: Option<Vec<String>>,
+    type_info: Option<String>,
+}
+
+impl SymbolMeta {
+    fn new(
+        symbol_kind: Option<SymbolKind>,
+        parameters: Option<Vec<String>>,
+        extends: Option<Vec<String>>,
+        implements: Option<Vec<String>>,
+        type_info: Option<String>,
+    ) -> Self {
+        Self {
+            symbol_kind,
+            parameters,
+            extends,
+            implements,
+            type_info,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum SymbolType {
     Definition,
@@ -48,16 +77,7 @@ struct Backend {
 }
 
 struct IndexingVisitor<'a> {
-    entries: Vec<(
-        String,
-        Range,
-        SymbolType,
-        Option<SymbolKind>,
-        Option<Vec<String>>,
-        Option<Vec<String>>,
-        Option<Vec<String>>,
-        Option<String>,
-    )>,
+    entries: Vec<SymbolEntry>,
     line_index: &'a LineIndex,
     source: &'a [u8],
 }
@@ -76,11 +96,7 @@ impl<'a> IndexingVisitor<'a> {
         name: String,
         span: php_parser::span::Span,
         kind: SymbolType,
-        symbol_kind: Option<SymbolKind>,
-        parameters: Option<Vec<String>>,
-        extends: Option<Vec<String>>,
-        implements: Option<Vec<String>>,
-        type_info: Option<String>,
+        meta: SymbolMeta,
     ) {
         let start = self.line_index.line_col(span.start);
         let end = self.line_index.line_col(span.end);
@@ -94,16 +110,7 @@ impl<'a> IndexingVisitor<'a> {
                 character: end.1 as u32,
             },
         };
-        self.entries.push((
-            name,
-            range,
-            kind,
-            symbol_kind,
-            parameters,
-            extends,
-            implements,
-            type_info,
-        ));
+        self.entries.push((name, range, kind, meta));
     }
 
     fn get_text(&self, span: php_parser::span::Span) -> String {
@@ -151,11 +158,13 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::CLASS),
-                    None,
-                    extends_vec,
-                    implements_vec,
-                    None,
+                    SymbolMeta::new(
+                        Some(SymbolKind::CLASS),
+                        None,
+                        extends_vec,
+                        implements_vec,
+                        None,
+                    ),
                 );
 
                 if let Some(extends) = extends {
@@ -164,11 +173,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         ext_name,
                         extends.span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 for implement in *implements {
@@ -177,11 +182,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         imp_name,
                         implement.span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_stmt(self, stmt);
@@ -199,11 +200,13 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::FUNCTION),
-                    Some(parameters),
-                    None,
-                    None,
-                    type_info,
+                    SymbolMeta::new(
+                        Some(SymbolKind::FUNCTION),
+                        Some(parameters),
+                        None,
+                        None,
+                        type_info,
+                    ),
                 );
                 walk_stmt(self, stmt);
             }
@@ -220,11 +223,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::INTERFACE),
-                    None,
-                    extends_vec,
-                    None,
-                    None,
+                    SymbolMeta::new(Some(SymbolKind::INTERFACE), None, extends_vec, None, None),
                 );
                 for extend in *extends {
                     let ext_name = self.get_text(extend.span);
@@ -232,11 +231,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         ext_name,
                         extend.span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_stmt(self, stmt);
@@ -247,11 +242,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::INTERFACE),
-                    None,
-                    None,
-                    None,
-                    None,
+                    SymbolMeta::new(Some(SymbolKind::INTERFACE), None, None, None, None),
                 );
                 walk_stmt(self, stmt);
             }
@@ -270,11 +261,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::ENUM),
-                    None,
-                    None,
-                    implements_vec,
-                    None,
+                    SymbolMeta::new(Some(SymbolKind::ENUM), None, None, implements_vec, None),
                 );
                 for implement in *implements {
                     let imp_name = self.get_text(implement.span);
@@ -282,11 +269,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         imp_name,
                         implement.span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_stmt(self, stmt);
@@ -298,11 +281,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         c.name.span,
                         SymbolType::Definition,
-                        Some(SymbolKind::CONSTANT),
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::new(Some(SymbolKind::CONSTANT), None, None, None, None),
                     );
                 }
                 walk_stmt(self, stmt);
@@ -323,11 +302,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         *name_span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_expr(self, expr);
@@ -342,11 +317,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         *name_span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_expr(self, expr);
@@ -361,11 +332,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         *name_span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_expr(self, expr);
@@ -380,11 +347,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         *name_span,
                         SymbolType::Reference,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::default(),
                     );
                 }
                 walk_expr(self, expr);
@@ -408,11 +371,13 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::METHOD),
-                    Some(parameters),
-                    None,
-                    None,
-                    type_info,
+                    SymbolMeta::new(
+                        Some(SymbolKind::METHOD),
+                        Some(parameters),
+                        None,
+                        None,
+                        type_info,
+                    ),
                 );
                 walk_class_member(self, member);
             }
@@ -424,11 +389,13 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         entry.name.span,
                         SymbolType::Definition,
-                        Some(SymbolKind::PROPERTY),
-                        None,
-                        None,
-                        None,
-                        type_info.clone(),
+                        SymbolMeta::new(
+                            Some(SymbolKind::PROPERTY),
+                            None,
+                            None,
+                            None,
+                            type_info.clone(),
+                        ),
                     );
                 }
                 walk_class_member(self, member);
@@ -440,11 +407,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                         name_str,
                         c.name.span,
                         SymbolType::Definition,
-                        Some(SymbolKind::CONSTANT),
-                        None,
-                        None,
-                        None,
-                        None,
+                        SymbolMeta::new(Some(SymbolKind::CONSTANT), None, None, None, None),
                     );
                 }
                 walk_class_member(self, member);
@@ -455,11 +418,7 @@ impl<'a, 'ast> Visitor<'ast> for IndexingVisitor<'a> {
                     name_str,
                     name.span,
                     SymbolType::Definition,
-                    Some(SymbolKind::ENUM_MEMBER),
-                    None,
-                    None,
-                    None,
-                    None,
+                    SymbolMeta::new(Some(SymbolKind::ENUM_MEMBER), None, None, None, None),
                 );
                 walk_class_member(self, member);
             }
@@ -528,9 +487,14 @@ impl Backend {
 
         // 3. Update index
         let mut new_symbols = Vec::new();
-        for (name, range, kind, symbol_kind, parameters, extends, implements, type_info) in
-            new_entries
-        {
+        for (name, range, kind, meta) in new_entries {
+            let SymbolMeta {
+                symbol_kind,
+                parameters,
+                extends,
+                implements,
+                type_info,
+            } = meta;
             self.index
                 .entry(name.clone())
                 .or_default()
@@ -1014,42 +978,37 @@ impl<'a, 'ast> Visitor<'ast> for InlayHintVisitor<'a> {
                 } = *func
                 {
                     let name_str = self.get_text(*name_span);
-                    if let Some(entries) = self.index.get(&name_str) {
-                        if let Some(entry) = entries
+                    if let Some(entries) = self.index.get(&name_str)
+                        && let Some(entry) = entries
                             .iter()
                             .find(|e| e.kind == SymbolType::Definition && e.parameters.is_some())
-                        {
-                            if let Some(params) = &entry.parameters {
-                                for (i, arg) in args.iter().enumerate() {
-                                    if i < params.len() {
-                                        if let Some(arg_name) = arg.name {
-                                            let arg_name_str = self.get_text(arg_name.span);
-                                            if arg_name_str == params[i] {
-                                                continue;
-                                            }
-                                        }
-
-                                        let param_name = &params[i];
-                                        let start = self.line_index.line_col(arg.span.start);
-
-                                        self.hints.push(InlayHint {
-                                            position: Position {
-                                                line: start.0 as u32,
-                                                character: start.1 as u32,
-                                            },
-                                            label: InlayHintLabel::String(format!(
-                                                "{}:",
-                                                param_name
-                                            )),
-                                            kind: Some(InlayHintKind::PARAMETER),
-                                            text_edits: None,
-                                            tooltip: None,
-                                            padding_left: None,
-                                            padding_right: Some(true),
-                                            data: None,
-                                        });
+                        && let Some(params) = &entry.parameters
+                    {
+                        for (i, arg) in args.iter().enumerate() {
+                            if i < params.len() {
+                                if let Some(arg_name) = arg.name {
+                                    let arg_name_str = self.get_text(arg_name.span);
+                                    if arg_name_str == params[i] {
+                                        continue;
                                     }
                                 }
+
+                                let param_name = &params[i];
+                                let start = self.line_index.line_col(arg.span.start);
+
+                                self.hints.push(InlayHint {
+                                    position: Position {
+                                        line: start.0 as u32,
+                                        character: start.1 as u32,
+                                    },
+                                    label: InlayHintLabel::String(format!("{}:", param_name)),
+                                    kind: Some(InlayHintKind::PARAMETER),
+                                    text_edits: None,
+                                    tooltip: None,
+                                    padding_left: None,
+                                    padding_right: Some(true),
+                                    data: None,
+                                });
                             }
                         }
                     }
@@ -1080,12 +1039,12 @@ impl<'a> Formatter<'a> {
         use php_parser::lexer::token::TokenKind;
 
         let mut edits = Vec::new();
-        let mut lexer = Lexer::new(self.source);
+        let lexer = Lexer::new(self.source);
         let mut indent_level: usize = 0;
         let mut last_token_end = 0;
         let mut safety_counter = 0;
 
-        while let Some(token) = lexer.next() {
+        for token in lexer {
             safety_counter += 1;
             if safety_counter > 100000 {
                 break;
@@ -1240,15 +1199,15 @@ impl Backend {
             for child_entry in entry.value() {
                 if child_entry.kind == SymbolType::Definition {
                     let mut is_child = false;
-                    if let Some(extends) = &child_entry.extends {
-                        if extends.contains(&name) {
-                            is_child = true;
-                        }
+                    if let Some(extends) = &child_entry.extends
+                        && extends.contains(&name)
+                    {
+                        is_child = true;
                     }
-                    if let Some(implements) = &child_entry.implements {
-                        if implements.contains(&name) {
-                            is_child = true;
-                        }
+                    if let Some(implements) = &child_entry.implements
+                        && implements.contains(&name)
+                    {
+                        is_child = true;
                     }
 
                     if is_child {
@@ -1278,45 +1237,54 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        if let Some(root_uri) = params.root_uri {
-            if let Ok(path) = root_uri.to_file_path() {
-                {
-                    let mut root = self.root_path.write().await;
-                    *root = Some(path.clone());
-                }
+        if let Some(root_uri) = params.root_uri
+            && let Ok(path) = root_uri.to_file_path()
+        {
+            {
+                let mut root = self.root_path.write().await;
+                *root = Some(path.clone());
+            }
 
-                let index = self.index.clone();
-                let file_map = self.file_map.clone();
-                let client = self.client.clone();
+            let index = self.index.clone();
+            let file_map = self.file_map.clone();
+            let client = self.client.clone();
 
-                // We need a way to call update_index from the spawned task.
-                // Since update_index is on Backend, and we can't easily clone Backend into the task (it has Client which is cloneable, but DashMaps are too).
-                // Actually Backend is just a struct of Arcs/DashMaps (which are Arc internally).
-                // But we can't clone `self` easily if it's not Arc<Self>.
-                // Let's just copy the logic or make update_index a standalone function or static method.
-                // Or better, just inline the logic here since it's initialization.
+            // We need a way to call update_index from the spawned task.
+            // Since update_index is on Backend, and we can't easily clone Backend into the task (it has Client which is cloneable, but DashMaps are too).
+            // Actually Backend is just a struct of Arcs/DashMaps (which are Arc internally).
+            // But we can't clone `self` easily if it's not Arc<Self>.
+            // Let's just copy the logic or make update_index a standalone function or static method.
+            // Or better, just inline the logic here since it's initialization.
 
-                tokio::spawn(async move {
-                    client
-                        .log_message(MessageType::INFO, format!("Indexing {}", path.display()))
-                        .await;
-                    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-                        if entry.path().extension().map_or(false, |ext| ext == "php") {
-                            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                                let source = content.as_bytes();
-                                let bump = Bump::new();
-                                let lexer = Lexer::new(source);
-                                let mut parser = Parser::new(lexer, &bump);
-                                let program = parser.parse_program();
-                                let line_index = LineIndex::new(source);
+            tokio::spawn(async move {
+                client
+                    .log_message(MessageType::INFO, format!("Indexing {}", path.display()))
+                    .await;
+                for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+                    if entry.path().extension().is_some_and(|ext| ext == "php") {
+                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                            let source = content.as_bytes();
+                            let bump = Bump::new();
+                            let lexer = Lexer::new(source);
+                            let mut parser = Parser::new(lexer, &bump);
+                            let program = parser.parse_program();
+                            let line_index = LineIndex::new(source);
 
-                                if let Ok(uri) = Url::from_file_path(entry.path()) {
-                                    let mut visitor = IndexingVisitor::new(&line_index, source);
-                                    visitor.visit_program(&program);
+                            if let Ok(uri) = Url::from_file_path(entry.path()) {
+                                let mut visitor = IndexingVisitor::new(&line_index, source);
+                                visitor.visit_program(&program);
 
-                                    let mut new_symbols = Vec::new();
-                                    for (
-                                        name,
+                                let mut new_symbols = Vec::new();
+                                for (name, range, kind, meta) in visitor.entries {
+                                    let SymbolMeta {
+                                        symbol_kind,
+                                        parameters,
+                                        extends,
+                                        implements,
+                                        type_info,
+                                    } = meta;
+                                    index.entry(name.clone()).or_default().push(IndexEntry {
+                                        uri: uri.clone(),
                                         range,
                                         kind,
                                         symbol_kind,
@@ -1324,37 +1292,25 @@ impl LanguageServer for Backend {
                                         extends,
                                         implements,
                                         type_info,
-                                    ) in visitor.entries
-                                    {
-                                        index.entry(name.clone()).or_default().push(IndexEntry {
-                                            uri: uri.clone(),
-                                            range,
-                                            kind,
-                                            symbol_kind,
-                                            parameters,
-                                            extends,
-                                            implements,
-                                            type_info,
-                                        });
-                                        new_symbols.push(name);
-                                    }
-                                    file_map.insert(uri, new_symbols);
+                                    });
+                                    new_symbols.push(name);
                                 }
-                            } else {
-                                client
-                                    .log_message(
-                                        MessageType::WARNING,
-                                        format!("Failed to read file: {}", entry.path().display()),
-                                    )
-                                    .await;
+                                file_map.insert(uri, new_symbols);
                             }
+                        } else {
+                            client
+                                .log_message(
+                                    MessageType::WARNING,
+                                    format!("Failed to read file: {}", entry.path().display()),
+                                )
+                                .await;
                         }
                     }
-                    client
-                        .log_message(MessageType::INFO, "Indexing complete")
-                        .await;
-                });
-            }
+                }
+                client
+                    .log_message(MessageType::INFO, "Indexing complete")
+                    .await;
+            });
         }
 
         Ok(InitializeResult {
@@ -1456,16 +1412,16 @@ impl LanguageServer for Backend {
                                 String::from_utf8_lossy(&source[name.span.start..name.span.end])
                                     .to_string();
                         }
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *class
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::New {
+                            class:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
                         _ => {}
                     }
@@ -1532,10 +1488,8 @@ impl LanguageServer for Backend {
         if let Some(text) = params.text {
             self.documents.insert(uri.clone(), text.clone());
             self.update_index(uri, text.as_bytes()).await;
-        } else {
-            if let Some(text) = self.documents.get(&uri) {
-                self.update_index(uri.clone(), text.as_bytes()).await;
-            }
+        } else if let Some(text) = self.documents.get(&uri) {
+            self.update_index(uri.clone(), text.as_bytes()).await;
         }
     }
 
@@ -1695,27 +1649,27 @@ impl LanguageServer for Backend {
 
                 if let Some(node) = locator.path.last() {
                     match node {
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *class
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::New {
+                            class:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
-                        AstNode::Expr(Expr::Call { func, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *func
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::Call {
+                            func:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
                         AstNode::Stmt(Stmt::Class { name, .. }) => {
                             target_name =
@@ -1793,108 +1747,106 @@ impl LanguageServer for Backend {
 
                 if let Some(node) = locator.path.last() {
                     match node {
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *class
-                            {
-                                let target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                );
-                                for stmt in program.statements {
-                                    if let Stmt::Class { name, span, .. } = stmt {
-                                        let class_name = String::from_utf8_lossy(
-                                            &source[name.span.start..name.span.end],
-                                        );
-                                        if class_name == target_name {
-                                            let range = {
-                                                let start = line_index.line_col(span.start);
-                                                let end = line_index.line_col(span.end);
-                                                Range {
-                                                    start: Position {
-                                                        line: start.0 as u32,
-                                                        character: start.1 as u32,
-                                                    },
-                                                    end: Position {
-                                                        line: end.0 as u32,
-                                                        character: end.1 as u32,
-                                                    },
-                                                }
-                                            };
-                                            return Ok(Some(GotoDefinitionResponse::Scalar(
-                                                Location {
-                                                    uri: uri.clone(),
-                                                    range,
+                        AstNode::Expr(Expr::New {
+                            class:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            let target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end]);
+                            for stmt in program.statements {
+                                if let Stmt::Class { name, span, .. } = stmt {
+                                    let class_name = String::from_utf8_lossy(
+                                        &source[name.span.start..name.span.end],
+                                    );
+                                    if class_name == target_name {
+                                        let range = {
+                                            let start = line_index.line_col(span.start);
+                                            let end = line_index.line_col(span.end);
+                                            Range {
+                                                start: Position {
+                                                    line: start.0 as u32,
+                                                    character: start.1 as u32,
                                                 },
-                                            )));
-                                        }
+                                                end: Position {
+                                                    line: end.0 as u32,
+                                                    character: end.1 as u32,
+                                                },
+                                            }
+                                        };
+                                        return Ok(Some(GotoDefinitionResponse::Scalar(
+                                            Location {
+                                                uri: uri.clone(),
+                                                range,
+                                            },
+                                        )));
                                     }
                                 }
+                            }
 
-                                // Fallback to global index
-                                if let Some(entries) = self.index.get(&target_name.to_string()) {
-                                    for entry in entries.iter() {
-                                        if entry.kind == SymbolType::Definition {
-                                            return Ok(Some(GotoDefinitionResponse::Scalar(
-                                                Location {
-                                                    uri: entry.uri.clone(),
-                                                    range: entry.range,
-                                                },
-                                            )));
-                                        }
+                            if let Some(entries) = self.index.get(&target_name.to_string()) {
+                                for entry in entries.iter() {
+                                    if entry.kind == SymbolType::Definition {
+                                        return Ok(Some(GotoDefinitionResponse::Scalar(
+                                            Location {
+                                                uri: entry.uri.clone(),
+                                                range: entry.range,
+                                            },
+                                        )));
                                     }
                                 }
                             }
                         }
-                        AstNode::Expr(Expr::Call { func, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *func
-                            {
-                                let target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                );
-                                for stmt in program.statements {
-                                    if let Stmt::Function { name, span, .. } = stmt {
-                                        let func_name = String::from_utf8_lossy(
-                                            &source[name.span.start..name.span.end],
-                                        );
-                                        if func_name == target_name {
-                                            let range = {
-                                                let start = line_index.line_col(span.start);
-                                                let end = line_index.line_col(span.end);
-                                                Range {
-                                                    start: Position {
-                                                        line: start.0 as u32,
-                                                        character: start.1 as u32,
-                                                    },
-                                                    end: Position {
-                                                        line: end.0 as u32,
-                                                        character: end.1 as u32,
-                                                    },
-                                                }
-                                            };
-                                            return Ok(Some(GotoDefinitionResponse::Scalar(
-                                                Location {
-                                                    uri: uri.clone(),
-                                                    range,
+                        AstNode::Expr(Expr::Call {
+                            func:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            let target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end]);
+                            for stmt in program.statements {
+                                if let Stmt::Function { name, span, .. } = stmt {
+                                    let func_name = String::from_utf8_lossy(
+                                        &source[name.span.start..name.span.end],
+                                    );
+                                    if func_name == target_name {
+                                        let range = {
+                                            let start = line_index.line_col(span.start);
+                                            let end = line_index.line_col(span.end);
+                                            Range {
+                                                start: Position {
+                                                    line: start.0 as u32,
+                                                    character: start.1 as u32,
                                                 },
-                                            )));
-                                        }
+                                                end: Position {
+                                                    line: end.0 as u32,
+                                                    character: end.1 as u32,
+                                                },
+                                            }
+                                        };
+                                        return Ok(Some(GotoDefinitionResponse::Scalar(
+                                            Location {
+                                                uri: uri.clone(),
+                                                range,
+                                            },
+                                        )));
                                     }
                                 }
+                            }
 
-                                // Fallback to global index
-                                if let Some(entries) = self.index.get(&target_name.to_string()) {
-                                    for entry in entries.iter() {
-                                        if entry.kind == SymbolType::Definition {
-                                            return Ok(Some(GotoDefinitionResponse::Scalar(
-                                                Location {
-                                                    uri: entry.uri.clone(),
-                                                    range: entry.range,
-                                                },
-                                            )));
-                                        }
+                            if let Some(entries) = self.index.get(&target_name.to_string()) {
+                                for entry in entries.iter() {
+                                    if entry.kind == SymbolType::Definition {
+                                        return Ok(Some(GotoDefinitionResponse::Scalar(
+                                            Location {
+                                                uri: entry.uri.clone(),
+                                                range: entry.range,
+                                            },
+                                        )));
                                     }
                                 }
                             }
@@ -2000,15 +1952,15 @@ impl LanguageServer for Backend {
             for ie in entry.value() {
                 if ie.kind == SymbolType::Definition {
                     let mut is_impl = false;
-                    if let Some(extends) = &ie.extends {
-                        if extends.contains(&target_name) {
-                            is_impl = true;
-                        }
+                    if let Some(extends) = &ie.extends
+                        && extends.contains(&target_name)
+                    {
+                        is_impl = true;
                     }
-                    if let Some(implements) = &ie.implements {
-                        if implements.contains(&target_name) {
-                            is_impl = true;
-                        }
+                    if let Some(implements) = &ie.implements
+                        && implements.contains(&target_name)
+                    {
+                        is_impl = true;
                     }
 
                     if is_impl {
@@ -2074,53 +2026,51 @@ impl LanguageServer for Backend {
 
                 if let Some(node) = path.last() {
                     match node {
-                        AstNode::Expr(Expr::PropertyFetch { property, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = **property
-                            {
-                                if name_span.start <= cursor_offset
-                                    && cursor_offset <= name_span.end
-                                {
-                                    let name = String::from_utf8_lossy(
-                                        &source[name_span.start..name_span.end],
-                                    )
-                                    .to_string();
-                                    let lookup_name = format!("${}", name);
+                        AstNode::Expr(Expr::PropertyFetch {
+                            property:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            if name_span.start <= cursor_offset && cursor_offset <= name_span.end {
+                                let name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                                let lookup_name = format!("${}", name);
 
-                                    if let Some(entries) = self.index.get(&lookup_name) {
-                                        for entry in entries.value() {
-                                            if entry.kind == SymbolType::Definition
-                                                && entry.type_info.is_some()
-                                            {
-                                                target_type_name = entry.type_info.clone().unwrap();
-                                                break;
-                                            }
+                                if let Some(entries) = self.index.get(&lookup_name) {
+                                    for entry in entries.value() {
+                                        if entry.kind == SymbolType::Definition
+                                            && entry.type_info.is_some()
+                                        {
+                                            target_type_name = entry.type_info.clone().unwrap();
+                                            break;
                                         }
                                     }
                                 }
                             }
                         }
-                        AstNode::Expr(Expr::MethodCall { method, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = **method
-                            {
-                                if name_span.start <= cursor_offset
-                                    && cursor_offset <= name_span.end
-                                {
-                                    let name = String::from_utf8_lossy(
-                                        &source[name_span.start..name_span.end],
-                                    )
-                                    .to_string();
-                                    if let Some(entries) = self.index.get(&name) {
-                                        for entry in entries.value() {
-                                            if entry.kind == SymbolType::Definition
-                                                && entry.type_info.is_some()
-                                            {
-                                                target_type_name = entry.type_info.clone().unwrap();
-                                                break;
-                                            }
+                        AstNode::Expr(Expr::MethodCall {
+                            method:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            if name_span.start <= cursor_offset && cursor_offset <= name_span.end {
+                                let name = String::from_utf8_lossy(
+                                    &source[name_span.start..name_span.end],
+                                )
+                                .to_string();
+                                if let Some(entries) = self.index.get(&name) {
+                                    for entry in entries.value() {
+                                        if entry.kind == SymbolType::Definition
+                                            && entry.type_info.is_some()
+                                        {
+                                            target_type_name = entry.type_info.clone().unwrap();
+                                            break;
                                         }
                                     }
                                 }
@@ -2130,10 +2080,9 @@ impl LanguageServer for Backend {
                             for param in *params {
                                 if param.name.span.start <= cursor_offset
                                     && cursor_offset <= param.name.span.end
+                                    && let Some(ty) = &param.ty
                                 {
-                                    if let Some(ty) = &param.ty {
-                                        target_type_name = get_type_text(ty, source);
-                                    }
+                                    target_type_name = get_type_text(ty, source);
                                 }
                             }
                         }
@@ -2141,10 +2090,9 @@ impl LanguageServer for Backend {
                             for param in *params {
                                 if param.name.span.start <= cursor_offset
                                     && cursor_offset <= param.name.span.end
+                                    && let Some(ty) = &param.ty
                                 {
-                                    if let Some(ty) = &param.ty {
-                                        target_type_name = get_type_text(ty, source);
-                                    }
+                                    target_type_name = get_type_text(ty, source);
                                 }
                             }
                         }
@@ -2206,27 +2154,27 @@ impl LanguageServer for Backend {
 
                 if let Some(node) = locator.path.last() {
                     match node {
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *class
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::New {
+                            class:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
-                        AstNode::Expr(Expr::Call { func, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *func
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::Call {
+                            func:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
                         AstNode::Stmt(Stmt::Class { name, .. }) => {
                             target_name =
@@ -2304,27 +2252,27 @@ impl LanguageServer for Backend {
 
                 if let Some(node) = locator.path.last() {
                     match node {
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *class
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::New {
+                            class:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
-                        AstNode::Expr(Expr::Call { func, .. }) => {
-                            if let Expr::Variable {
-                                name: name_span, ..
-                            } = *func
-                            {
-                                target_name = String::from_utf8_lossy(
-                                    &source[name_span.start..name_span.end],
-                                )
-                                .to_string();
-                            }
+                        AstNode::Expr(Expr::Call {
+                            func:
+                                Expr::Variable {
+                                    name: name_span, ..
+                                },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name_span.start..name_span.end])
+                                    .to_string();
                         }
                         AstNode::Stmt(Stmt::Class { name, .. }) => {
                             target_name =
@@ -2577,33 +2525,33 @@ impl LanguageServer for Backend {
                             target_name =
                                 String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
-                        AstNode::Expr(Expr::New { class, .. }) => {
-                            if let Expr::Variable { name, .. } = *class {
-                                target_name =
-                                    String::from_utf8_lossy(&source[name.start..name.end])
-                                        .to_string();
-                            }
+                        AstNode::Expr(Expr::New {
+                            class: Expr::Variable { name, .. },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
-                        AstNode::Expr(Expr::Call { func, .. }) => {
-                            if let Expr::Variable { name, .. } = *func {
-                                target_name =
-                                    String::from_utf8_lossy(&source[name.start..name.end])
-                                        .to_string();
-                            }
+                        AstNode::Expr(Expr::Call {
+                            func: Expr::Variable { name, .. },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
-                        AstNode::Expr(Expr::StaticCall { class, .. }) => {
-                            if let Expr::Variable { name, .. } = *class {
-                                target_name =
-                                    String::from_utf8_lossy(&source[name.start..name.end])
-                                        .to_string();
-                            }
+                        AstNode::Expr(Expr::StaticCall {
+                            class: Expr::Variable { name, .. },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
-                        AstNode::Expr(Expr::ClassConstFetch { class, .. }) => {
-                            if let Expr::Variable { name, .. } = *class {
-                                target_name =
-                                    String::from_utf8_lossy(&source[name.start..name.end])
-                                        .to_string();
-                            }
+                        AstNode::Expr(Expr::ClassConstFetch {
+                            class: Expr::Variable { name, .. },
+                            ..
+                        }) => {
+                            target_name =
+                                String::from_utf8_lossy(&source[name.start..name.end]).to_string();
                         }
                         AstNode::Stmt(Stmt::Class { name, .. }) => {
                             target_name =
@@ -2819,19 +2767,19 @@ mod tests {
             let names: Vec<&str> = visitor
                 .entries
                 .iter()
-                .map(|(n, _, _, _, _, _, _, _)| n.as_str())
+                .map(|(n, _, _, _)| n.as_str())
                 .collect();
             assert!(names.contains(&"globalFunc"));
             assert!(names.contains(&"GlobalClass"));
 
-            for (name, _, kind, sym_kind, _, _, _, _) in &visitor.entries {
+            for (name, _, kind, meta) in &visitor.entries {
                 if name == "globalFunc" {
                     assert_eq!(*kind, SymbolType::Definition);
-                    assert_eq!(*sym_kind, Some(SymbolKind::FUNCTION));
+                    assert_eq!(meta.symbol_kind, Some(SymbolKind::FUNCTION));
                 }
                 if name == "GlobalClass" {
                     assert_eq!(*kind, SymbolType::Definition);
-                    assert_eq!(*sym_kind, Some(SymbolKind::CLASS));
+                    assert_eq!(meta.symbol_kind, Some(SymbolKind::CLASS));
                 }
             }
         });

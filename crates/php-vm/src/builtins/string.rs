@@ -1,7 +1,23 @@
-use crate::core::value::{Handle, Val};
+use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
+use libc;
+use rphonetic::{Encoder, Metaphone};
+use rust_decimal::{Decimal, RoundingStrategy};
 use std::cmp::Ordering;
+use std::ffi::{CStr, CString};
+use std::rc::Rc;
 use std::str;
+use std::str::FromStr;
+
+#[cfg(unix)]
+extern "C" {
+    fn strfmon(
+        s: *mut libc::c_char,
+        max: libc::size_t,
+        format: *const libc::c_char,
+        ...
+    ) -> libc::ssize_t;
+}
 
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
@@ -821,6 +837,370 @@ pub fn php_strrev(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let mut s = vm.value_to_string(args[0])?;
     s.reverse();
     Ok(vm.arena.alloc(Val::String(s.into())))
+}
+
+pub fn php_quotemeta(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quotemeta() expects exactly 1 parameter".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let mut out = Vec::with_capacity(input.len());
+    for &b in &input {
+        match b {
+            b'.' | b'\\' | b'+' | b'*' | b'?' | b'[' | b'^' | b']' | b'$' | b'(' | b')'
+            | b'{' | b'}' | b'=' | b'!' | b'<' | b'>' | b'|' | b':' | b'-' => {
+                out.push(b'\\');
+                out.push(b);
+            }
+            _ => out.push(b),
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_nl2br(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("nl2br() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let use_xhtml = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_bool()
+    } else {
+        true
+    };
+    let break_tag: &[u8] = if use_xhtml { b"<br />" } else { b"<br>" };
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        match input[i] {
+            b'\r' => {
+                out.extend_from_slice(break_tag);
+                out.push(b'\r');
+                if i + 1 < input.len() && input[i + 1] == b'\n' {
+                    out.push(b'\n');
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            b'\n' => {
+                out.extend_from_slice(break_tag);
+                out.push(b'\n');
+                i += 1;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_strip_tags(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("strip_tags() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let allowed = if args.len() == 2 {
+        parse_allowed_tags(vm, args[1])?
+    } else {
+        std::collections::HashSet::new()
+    };
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] != b'<' {
+            out.push(input[i]);
+            i += 1;
+            continue;
+        }
+        if let Some(end) = input[i + 1..].iter().position(|&b| b == b'>') {
+            let tag_start = i + 1;
+            let tag_end = tag_start + end;
+            let tag_name = extract_tag_name(&input[tag_start..tag_end]);
+            if let Some(name) = tag_name {
+                if allowed.contains(&name) {
+                    out.extend_from_slice(&input[i..=tag_end]);
+                }
+            }
+            i = tag_end + 1;
+        } else {
+            out.push(input[i]);
+            i += 1;
+        }
+    }
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_parse_str(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("parse_str() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let mut root = ArrayData::new();
+    for (raw_key, raw_val) in parse_query_pairs(&input) {
+        if raw_key.is_empty() {
+            continue;
+        }
+        let key = urldecode_bytes(raw_key);
+        let val = urldecode_bytes(raw_val);
+        let (base, segments) = parse_key_segments(&key);
+        if base.is_empty() {
+            continue;
+        }
+        let value_handle = vm.arena.alloc(Val::String(val.into()));
+        insert_parse_str_value(vm, &mut root, &base, &segments, value_handle)?;
+    }
+
+    if args.len() == 2 {
+        let out_handle = args[1];
+        if vm.arena.get(out_handle).is_ref {
+            vm.arena.get_mut(out_handle).value = Val::Array(Rc::new(root));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Null))
+}
+
+fn parse_allowed_tags(vm: &mut VM, handle: Handle) -> Result<std::collections::HashSet<Vec<u8>>, String> {
+    let mut allowed = std::collections::HashSet::new();
+    match &vm.arena.get(handle).value {
+        Val::Null => {}
+        Val::String(s) => {
+            let bytes = s.as_ref();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'<' {
+                    if let Some(end) = bytes[i + 1..].iter().position(|&b| b == b'>') {
+                        let name = extract_tag_name(&bytes[i + 1..i + 1 + end]);
+                        if let Some(tag) = name {
+                            allowed.insert(tag);
+                        }
+                        i += end + 2;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        }
+        Val::Array(arr) => {
+            let entries: Vec<_> = arr.map.values().copied().collect();
+            for entry in entries {
+                let tag = vm.value_to_string(entry)?;
+                let name = extract_tag_name(&tag).unwrap_or_else(|| tag);
+                if !name.is_empty() {
+                    allowed.insert(name);
+                }
+            }
+        }
+        v => {
+            return Err(format!(
+                "strip_tags() expects parameter 2 to be array or string, {} given",
+                v.type_name()
+            ))
+        }
+    }
+    Ok(allowed)
+}
+
+fn extract_tag_name(tag: &[u8]) -> Option<Vec<u8>> {
+    let mut i = 0;
+    while i < tag.len() && (tag[i] == b'/' || tag[i].is_ascii_whitespace()) {
+        i += 1;
+    }
+    if i >= tag.len() {
+        return None;
+    }
+    if tag[i] == b'!' || tag[i] == b'?' {
+        return None;
+    }
+    let start = i;
+    while i < tag.len() && (tag[i].is_ascii_alphanumeric() || tag[i] == b':' || tag[i] == b'-') {
+        i += 1;
+    }
+    if start == i {
+        return None;
+    }
+    Some(tag[start..i].iter().map(|b| b.to_ascii_lowercase()).collect())
+}
+
+fn parse_query_pairs(input: &[u8]) -> Vec<(&[u8], &[u8])> {
+    let mut pairs = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i <= input.len() {
+        let is_end = i == input.len();
+        if is_end || input[i] == b'&' || input[i] == b';' {
+            let part = &input[start..i];
+            if !part.is_empty() {
+                if let Some(eq) = part.iter().position(|&b| b == b'=') {
+                    pairs.push((&part[..eq], &part[eq + 1..]));
+                } else {
+                    pairs.push((part, b""));
+                }
+            }
+            start = i + 1;
+        }
+        i += 1;
+    }
+    pairs
+}
+
+fn from_hex_digits(h: u8, l: u8) -> Option<u8> {
+    fn hex_val(b: u8) -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    Some((hex_val(h)? << 4) | hex_val(l)?)
+}
+
+fn urldecode_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut result = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                result.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                if let Some(b) = from_hex_digits(bytes[i + 1], bytes[i + 2]) {
+                    result.push(b);
+                    i += 3;
+                } else {
+                    result.push(b'%');
+                    i += 1;
+                }
+            }
+            b => {
+                result.push(b);
+                i += 1;
+            }
+        }
+    }
+    result
+}
+
+fn parse_key_segments(key: &[u8]) -> (Vec<u8>, Vec<Option<Vec<u8>>>) {
+    let mut base = Vec::new();
+    let mut i = 0;
+    while i < key.len() && key[i] != b'[' {
+        base.push(key[i]);
+        i += 1;
+    }
+    let mut segments = Vec::new();
+    while i < key.len() {
+        if key[i] != b'[' {
+            i += 1;
+            continue;
+        }
+        i += 1;
+        let start = i;
+        while i < key.len() && key[i] != b']' {
+            i += 1;
+        }
+        if i >= key.len() {
+            break;
+        }
+        let content = &key[start..i];
+        if content.is_empty() {
+            segments.push(None);
+        } else {
+            segments.push(Some(content.to_vec()));
+        }
+        i += 1;
+    }
+    (base, segments)
+}
+
+fn insert_parse_str_value(
+    vm: &mut VM,
+    root: &mut ArrayData,
+    base: &[u8],
+    segments: &[Option<Vec<u8>>],
+    value_handle: Handle,
+) -> Result<(), String> {
+    let base_key = array_key_from_bytes(base);
+    if segments.is_empty() {
+        root.insert(base_key, value_handle);
+        return Ok(());
+    }
+
+    let mut current_handle = ensure_array_for_key(vm, root, base_key);
+    for (idx, segment) in segments.iter().enumerate() {
+        let is_last = idx == segments.len() - 1;
+        let mut current_array = match &vm.arena.get(current_handle).value {
+            Val::Array(arr) => (**arr).clone(),
+            _ => ArrayData::new(),
+        };
+
+        if is_last {
+            match segment {
+                None => current_array.push(value_handle),
+                Some(name) => {
+                    current_array.insert(array_key_from_bytes(name), value_handle);
+                }
+            }
+            vm.arena.get_mut(current_handle).value = Val::Array(Rc::new(current_array));
+            return Ok(());
+        }
+
+        let next_handle = match segment {
+            None => {
+                let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                current_array.push(handle);
+                handle
+            }
+            Some(name) => {
+                let key = array_key_from_bytes(name);
+                match current_array.map.get(&key).copied() {
+                    Some(existing) => match &vm.arena.get(existing).value {
+                        Val::Array(_) => existing,
+                        _ => {
+                            let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                            current_array.insert(key, handle);
+                            handle
+                        }
+                    },
+                    None => {
+                        let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+                        current_array.insert(key, handle);
+                        handle
+                    }
+                }
+            }
+        };
+
+        vm.arena.get_mut(current_handle).value = Val::Array(Rc::new(current_array));
+        current_handle = next_handle;
+    }
+    Ok(())
+}
+
+fn ensure_array_for_key(vm: &mut VM, array: &mut ArrayData, key: ArrayKey) -> Handle {
+    if let Some(existing) = array.map.get(&key).copied() {
+        if matches!(vm.arena.get(existing).value, Val::Array(_)) {
+            return existing;
+        }
+    }
+    let handle = vm.arena.alloc(Val::Array(Rc::new(ArrayData::new())));
+    array.insert(key, handle);
+    handle
+}
+
+fn array_key_from_bytes(bytes: &[u8]) -> ArrayKey {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        if let Ok(num) = s.parse::<i64>() {
+            return ArrayKey::Int(num);
+        }
+    }
+    ArrayKey::Str(Rc::new(bytes.to_vec()))
 }
 
 pub fn php_strcmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -1856,6 +2236,455 @@ fn replace_in_value(
         vm.arena.alloc(Val::String(current_subject.into())),
         total_count,
     ))
+}
+
+pub fn php_metaphone(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("metaphone() expects 1 or 2 parameters".into());
+    }
+
+    let bytes = vm.check_builtin_param_string(args[0], 1, "metaphone")?;
+    let max = if args.len() == 2 {
+        match &vm.arena.get(args[1]).value {
+            Val::Int(i) => *i,
+            _ => return Err("metaphone() expects parameter 2 to be int".into()),
+        }
+    } else {
+        0
+    };
+
+    if max < 0 {
+        return Err(
+            "metaphone(): Argument #2 ($max_phonemes) must be greater than or equal to 0".into(),
+        );
+    }
+
+    let input = String::from_utf8_lossy(&bytes);
+    let encoder = if max == 0 {
+        Metaphone::new(None)
+    } else {
+        Metaphone::new(Some(max as usize))
+    };
+    let result = encoder.encode(&input);
+
+    Ok(vm.arena.alloc(Val::String(result.into_bytes().into())))
+}
+
+pub fn php_setlocale(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("setlocale() expects at least 2 parameters".into());
+    }
+
+    let category = vm.check_builtin_param_int(args[0], 1, "setlocale")? as libc::c_int;
+    let mut locales = Vec::new();
+
+    if args.len() == 2 {
+        match &vm.arena.get(args[1]).value {
+            Val::Array(arr) => {
+                let entries: Vec<_> = arr.map.values().copied().collect();
+                for entry in entries {
+                    locales.push(vm.value_to_string(entry)?);
+                }
+            }
+            _ => {
+                let locale = vm.check_builtin_param_string(args[1], 2, "setlocale")?;
+                locales.push(locale);
+            }
+        }
+    } else {
+        for (idx, handle) in args[1..].iter().enumerate() {
+            let locale = vm.check_builtin_param_string(*handle, idx + 2, "setlocale")?;
+            locales.push(locale);
+        }
+    }
+
+    if locales.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let mut result_ptr = std::ptr::null_mut();
+    for locale in locales {
+        let c_locale = CString::new(locale)
+            .map_err(|_| "setlocale(): Locale string contains null byte".to_string())?;
+        let ptr = unsafe { libc::setlocale(category, c_locale.as_ptr()) };
+        if !ptr.is_null() {
+            result_ptr = ptr;
+            break;
+        }
+    }
+
+    if result_ptr.is_null() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let bytes = unsafe { CStr::from_ptr(result_ptr) }.to_bytes().to_vec();
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_localeconv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if !args.is_empty() {
+        return Err("localeconv() expects exactly 0 parameters".into());
+    }
+
+    let lconv_ptr = unsafe { libc::localeconv() };
+    if lconv_ptr.is_null() {
+        return Ok(vm.arena.alloc(Val::Array(Rc::new(ArrayData::new()))));
+    }
+
+    let lconv = unsafe { &*lconv_ptr };
+    let mut data = ArrayData::new();
+
+    fn c_str_to_bytes(ptr: *const libc::c_char) -> Vec<u8> {
+        if ptr.is_null() {
+            Vec::new()
+        } else {
+            unsafe { CStr::from_ptr(ptr).to_bytes().to_vec() }
+        }
+    }
+
+    fn lconv_char_to_int(value: libc::c_char) -> i64 {
+        let val = value as i64;
+        let max = i8::MAX as i64;
+        if val == max {
+            -1
+        } else {
+            val
+        }
+    }
+
+    fn insert_str(vm: &mut VM, data: &mut ArrayData, key: &str, val: Vec<u8>) {
+        let handle = vm.arena.alloc(Val::String(val.into()));
+        data.insert(ArrayKey::Str(Rc::new(key.as_bytes().to_vec())), handle);
+    }
+
+    fn insert_int(vm: &mut VM, data: &mut ArrayData, key: &str, val: i64) {
+        let handle = vm.arena.alloc(Val::Int(val));
+        data.insert(ArrayKey::Str(Rc::new(key.as_bytes().to_vec())), handle);
+    }
+
+    insert_str(vm, &mut data, "decimal_point", c_str_to_bytes(lconv.decimal_point));
+    insert_str(vm, &mut data, "thousands_sep", c_str_to_bytes(lconv.thousands_sep));
+    insert_str(vm, &mut data, "int_curr_symbol", c_str_to_bytes(lconv.int_curr_symbol));
+    insert_str(vm, &mut data, "currency_symbol", c_str_to_bytes(lconv.currency_symbol));
+    insert_str(vm, &mut data, "mon_decimal_point", c_str_to_bytes(lconv.mon_decimal_point));
+    insert_str(
+        vm,
+        &mut data,
+        "mon_thousands_sep",
+        c_str_to_bytes(lconv.mon_thousands_sep),
+    );
+    insert_str(vm, &mut data, "mon_grouping", c_str_to_bytes(lconv.mon_grouping));
+    insert_str(vm, &mut data, "positive_sign", c_str_to_bytes(lconv.positive_sign));
+    insert_str(vm, &mut data, "negative_sign", c_str_to_bytes(lconv.negative_sign));
+    insert_int(
+        vm,
+        &mut data,
+        "int_frac_digits",
+        lconv_char_to_int(lconv.int_frac_digits),
+    );
+    insert_int(vm, &mut data, "frac_digits", lconv_char_to_int(lconv.frac_digits));
+    insert_int(
+        vm,
+        &mut data,
+        "p_cs_precedes",
+        lconv_char_to_int(lconv.p_cs_precedes),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "p_sep_by_space",
+        lconv_char_to_int(lconv.p_sep_by_space),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_cs_precedes",
+        lconv_char_to_int(lconv.n_cs_precedes),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_sep_by_space",
+        lconv_char_to_int(lconv.n_sep_by_space),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "p_sign_posn",
+        lconv_char_to_int(lconv.p_sign_posn),
+    );
+    insert_int(
+        vm,
+        &mut data,
+        "n_sign_posn",
+        lconv_char_to_int(lconv.n_sign_posn),
+    );
+
+    Ok(vm.arena.alloc(Val::Array(Rc::new(data))))
+}
+
+pub fn php_nl_langinfo(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("nl_langinfo() expects exactly 1 parameter".into());
+    }
+
+    let item = vm.check_builtin_param_int(args[0], 1, "nl_langinfo")? as libc::c_int;
+    #[cfg(unix)]
+    {
+        let ptr = unsafe { libc::nl_langinfo(item) };
+        if ptr.is_null() {
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+        let bytes = unsafe { CStr::from_ptr(ptr) }.to_bytes().to_vec();
+        return Ok(vm.arena.alloc(Val::String(bytes.into())));
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strcoll(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strcoll() expects exactly 2 parameters".into());
+    }
+
+    let a = vm.check_builtin_param_string(args[0], 1, "strcoll")?;
+    let b = vm.check_builtin_param_string(args[1], 2, "strcoll")?;
+
+    let a_c = CString::new(a).map_err(|_| "strcoll(): Invalid string".to_string())?;
+    let b_c = CString::new(b).map_err(|_| "strcoll(): Invalid string".to_string())?;
+    let cmp = unsafe { libc::strcoll(a_c.as_ptr(), b_c.as_ptr()) };
+
+    Ok(vm.arena.alloc(Val::Int(cmp as i64)))
+}
+
+pub fn php_number_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("number_format() expects between 1 and 4 parameters".into());
+    }
+
+    let mut decimals = if args.len() >= 2 {
+        vm.check_builtin_param_int(args[1], 2, "number_format")?
+    } else {
+        0
+    };
+    if decimals < 0 {
+        decimals = 0;
+    }
+
+    let decimal_point = if args.len() >= 3 {
+        vm.check_builtin_param_string(args[2], 3, "number_format")?
+    } else {
+        b".".to_vec()
+    };
+    let thousands_sep = if args.len() >= 4 {
+        vm.check_builtin_param_string(args[3], 4, "number_format")?
+    } else {
+        b",".to_vec()
+    };
+
+    let number = number_format_decimal(vm, args[0], 1)?;
+    let rounded = number.round_dp_with_strategy(decimals as u32, RoundingStrategy::MidpointAwayFromZero);
+    let negative = rounded < Decimal::ZERO;
+    let abs_val = if negative { -rounded } else { rounded };
+
+    let formatted = abs_val.to_string();
+    let (int_part, frac_part) = match formatted.find('.') {
+        Some(dot) => (&formatted[..dot], &formatted[dot + 1..]),
+        None => (formatted.as_str(), ""),
+    };
+
+    let mut frac_bytes = Vec::new();
+    let decimals_usize = decimals as usize;
+    if decimals_usize > 0 {
+        frac_bytes.extend_from_slice(frac_part.as_bytes());
+        if frac_bytes.len() < decimals_usize {
+            frac_bytes.extend(std::iter::repeat(b'0').take(decimals_usize - frac_bytes.len()));
+        }
+    }
+
+    let mut output = Vec::new();
+    if negative {
+        output.push(b'-');
+    }
+
+    let grouped = group_integer_digits(int_part.as_bytes(), &thousands_sep);
+    if grouped.is_empty() {
+        output.extend_from_slice(b"0");
+    } else {
+        output.extend_from_slice(&grouped);
+    }
+
+    if decimals_usize > 0 {
+        output.extend_from_slice(&decimal_point);
+        output.extend_from_slice(&frac_bytes);
+    }
+
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+pub fn php_money_format(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("money_format() expects exactly 2 parameters".into());
+    }
+
+    let format = vm.check_builtin_param_string(args[0], 1, "money_format")?;
+    let value = number_format_float(vm, args[1], 2)?;
+
+    #[cfg(unix)]
+    {
+        let c_format = CString::new(format)
+            .map_err(|_| "money_format(): Format string contains null byte".to_string())?;
+        let mut buf_len = 128usize;
+        loop {
+            let mut buffer = vec![0u8; buf_len];
+            let written = unsafe {
+                strfmon(
+                    buffer.as_mut_ptr() as *mut libc::c_char,
+                    buffer.len(),
+                    c_format.as_ptr(),
+                    value as libc::c_double,
+                )
+            };
+            if written < 0 {
+                let err = std::io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::ERANGE) {
+                    buf_len = buf_len.saturating_mul(2);
+                    if buf_len > 1024 * 1024 {
+                        break;
+                    }
+                    continue;
+                }
+                break;
+            }
+            buffer.truncate(written as usize);
+            return Ok(vm.arena.alloc(Val::String(buffer.into())));
+        }
+        vm.report_error(
+            crate::vm::engine::ErrorLevel::Warning,
+            "money_format(): strfmon failed",
+        );
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    #[cfg(not(unix))]
+    {
+        vm.report_error(
+            crate::vm::engine::ErrorLevel::Warning,
+            "money_format(): not supported on this platform",
+        );
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+fn number_format_decimal(vm: &VM, arg: Handle, param_num: usize) -> Result<Decimal, String> {
+    let val = &vm.arena.get(arg).value;
+    match val {
+        Val::Int(i) => Ok(Decimal::from(*i)),
+        Val::Float(f) => Decimal::from_str(&f.to_string()).map_err(|e| e.to_string()),
+        Val::String(s) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, string given",
+                    param_num
+                ))
+            } else {
+                let text = String::from_utf8_lossy(s);
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    return Ok(Decimal::ZERO);
+                }
+                if let Ok(dec) = Decimal::from_str(trimmed) {
+                    return Ok(dec);
+                }
+                if let Ok(f) = trimmed.parse::<f64>() {
+                    return Decimal::from_str(&f.to_string()).map_err(|e| e.to_string());
+                }
+                Ok(Decimal::ZERO)
+            }
+        }
+        Val::Bool(b) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, bool given",
+                    param_num
+                ))
+            } else {
+                Ok(Decimal::from(if *b { 1 } else { 0 }))
+            }
+        }
+        Val::Null => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "number_format(): Argument #{} must be of type float, null given",
+                    param_num
+                ))
+            } else {
+                Ok(Decimal::ZERO)
+            }
+        }
+        _ => Err(format!(
+            "number_format(): Argument #{} must be of type float, {} given",
+            param_num,
+            val.type_name()
+        )),
+    }
+}
+
+fn number_format_float(vm: &VM, arg: Handle, param_num: usize) -> Result<f64, String> {
+    let val = &vm.arena.get(arg).value;
+    match val {
+        Val::Int(i) => Ok(*i as f64),
+        Val::Float(f) => Ok(*f),
+        Val::String(_) => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "money_format(): Argument #{} must be of type float, string given",
+                    param_num
+                ))
+            } else {
+                Ok(val.to_float())
+            }
+        }
+        Val::Bool(_) | Val::Null => {
+            if vm.builtin_call_strict {
+                Err(format!(
+                    "money_format(): Argument #{} must be of type float, {} given",
+                    param_num,
+                    val.type_name()
+                ))
+            } else {
+                Ok(val.to_float())
+            }
+        }
+        _ => Err(format!(
+            "money_format(): Argument #{} must be of type float, {} given",
+            param_num,
+            val.type_name()
+        )),
+    }
+}
+
+fn group_integer_digits(digits: &[u8], separator: &[u8]) -> Vec<u8> {
+    if separator.is_empty() || digits.len() <= 3 {
+        return digits.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(digits.len() + (digits.len() / 3) * separator.len());
+    let first_group = digits.len() % 3;
+    let mut idx = 0;
+    let first_len = if first_group == 0 { 3 } else { first_group };
+
+    out.extend_from_slice(&digits[..first_len]);
+    idx += first_len;
+    while idx < digits.len() {
+        out.extend_from_slice(separator);
+        out.extend_from_slice(&digits[idx..idx + 3]);
+        idx += 3;
+    }
+
+    out
 }
 
 fn perform_replacement(

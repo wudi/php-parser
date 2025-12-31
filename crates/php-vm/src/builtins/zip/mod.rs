@@ -920,7 +920,7 @@ pub fn php_zip_archive_rename_name(vm: &mut VM, args: &[Handle]) -> Result<Handl
     let wrapper = get_zip_wrapper(vm, this_handle)?;
     let mut wrapper = wrapper.borrow_mut();
 
-    if let Some(content) = wrapper.additions.remove(&name) {
+    if let Some(content) = wrapper.additions.shift_remove(&name) {
         wrapper.additions.insert(new_name, content);
         return Ok(vm.arena.alloc(Val::Bool(true)));
     }
