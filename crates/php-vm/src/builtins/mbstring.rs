@@ -185,6 +185,52 @@ pub fn php_mb_convert_encoding(vm: &mut VM, args: &[Handle]) -> Result<Handle, S
     }
 }
 
+pub fn php_mb_convert_variables(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 3 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_convert_variables() expects at least 3 parameters, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let to = vm.check_builtin_param_string(args[0], 1, "mb_convert_variables")?;
+    let from = vm.check_builtin_param_string(args[1], 2, "mb_convert_variables")?;
+    let to_str = String::from_utf8_lossy(&to).to_string();
+    let from_str = String::from_utf8_lossy(&from).to_string();
+
+    for handle in &args[2..] {
+        convert_value_in_place(vm, *handle, &from_str, &to_str)?;
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+fn convert_value_in_place(
+    vm: &mut VM,
+    handle: Handle,
+    from: &str,
+    to: &str,
+) -> Result<(), String> {
+    let value = vm.arena.get(handle).value.clone();
+    match value {
+        Val::String(bytes) => {
+            let converted = crate::runtime::mb::convert::convert_bytes(&bytes, from, to)?;
+            vm.arena.get_mut(handle).value = Val::String(converted.into());
+        }
+        Val::Array(array) => {
+            for child in array.map.values() {
+                convert_value_in_place(vm, *child, from, to)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
