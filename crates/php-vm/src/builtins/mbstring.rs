@@ -32,10 +32,10 @@ pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, St
     let mut entries = indexmap::IndexMap::new();
 
     for (idx, enc) in crate::runtime::mb::encoding::all_encodings()
-        .into_iter()
+        .iter()
         .enumerate()
     {
-        let val = vm.arena.alloc(Val::String(enc.into_bytes().into()));
+        let val = vm.arena.alloc(Val::String(enc.as_bytes().to_vec().into()));
         entries.insert(ArrayKey::Int(idx as i64), val);
     }
 
