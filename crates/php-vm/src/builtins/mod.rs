@@ -10,6 +10,7 @@ pub mod hash;
 pub mod http;
 pub mod json;
 pub mod math;
+pub mod mbstring;
 pub mod mysqli;
 pub mod openssl;
 pub mod output_control;

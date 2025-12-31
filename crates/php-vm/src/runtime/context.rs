@@ -173,6 +173,12 @@ impl EngineContext {
             .register_extension(Box::new(ZlibExtension))
             .expect("Failed to register Zlib extension");
 
+        // Register MBString extension
+        use crate::runtime::mb_extension::MbStringExtension;
+        registry
+            .register_extension(Box::new(MbStringExtension))
+            .expect("Failed to register mbstring extension");
+
         // Register Zip extension
         use crate::runtime::zip_extension::ZipExtension;
         registry
@@ -530,24 +536,16 @@ impl EngineBuilder {
     /// This includes all core PHP functionality: core functions, classes, interfaces,
     /// exceptions, and the date/time extension.
     pub fn with_core_extensions(mut self) -> Self {
-        self.extensions
-            .push(Box::new(super::core_extension::CoreExtension));
-        self.extensions
-            .push(Box::new(super::date_extension::DateExtension));
-        self.extensions
-            .push(Box::new(super::hash_extension::HashExtension));
-        self.extensions
-            .push(Box::new(super::mysqli_extension::MysqliExtension));
-        self.extensions
-            .push(Box::new(super::json_extension::JsonExtension));
-        self.extensions
-            .push(Box::new(super::openssl_extension::OpenSSLExtension));
-        self.extensions
-            .push(Box::new(super::pdo_extension::PdoExtension));
-        self.extensions
-            .push(Box::new(super::pthreads_extension::PthreadsExtension));
-        self.extensions
-            .push(Box::new(super::zlib_extension::ZlibExtension));
+        self.extensions.push(Box::new(super::core_extension::CoreExtension));
+        self.extensions.push(Box::new(super::date_extension::DateExtension));
+        self.extensions.push(Box::new(super::hash_extension::HashExtension));
+        self.extensions.push(Box::new(super::mysqli_extension::MysqliExtension));
+        self.extensions.push(Box::new(super::json_extension::JsonExtension));
+        self.extensions.push(Box::new(super::openssl_extension::OpenSSLExtension));
+        self.extensions.push(Box::new(super::pdo_extension::PdoExtension));
+        self.extensions.push(Box::new(super::pthreads_extension::PthreadsExtension));
+        self.extensions.push(Box::new(super::zlib_extension::ZlibExtension));
+        self.extensions.push(Box::new(super::mb_extension::MbStringExtension));
         self
     }
 
