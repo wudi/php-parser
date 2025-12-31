@@ -18,6 +18,34 @@ impl Extension for MbStringExtension {
 
     fn module_init(&self, registry: &mut ExtensionRegistry) -> ExtensionResult {
         registry.register_function(b"mb_internal_encoding", mbstring::php_mb_internal_encoding);
+        registry.register_function(b"mb_detect_order", mbstring::php_mb_detect_order);
+        registry.register_function(b"mb_language", mbstring::php_mb_language);
+        registry.register_function(b"mb_get_info", mbstring::php_mb_get_info);
+        registry.register_function(b"mb_convert_encoding", mbstring::php_mb_convert_encoding);
+        registry.register_function(b"mb_convert_variables", mbstring::php_mb_convert_variables);
+        registry.register_function(b"mb_detect_encoding", mbstring::php_mb_detect_encoding);
+        registry.register_function(b"mb_check_encoding", mbstring::php_mb_check_encoding);
+        registry.register_function(b"mb_scrub", mbstring::php_mb_scrub);
+        registry.register_function(b"mb_strlen", mbstring::php_mb_strlen);
+        registry.register_function(b"mb_substr", mbstring::php_mb_substr);
+        registry.register_function(b"mb_strpos", mbstring::php_mb_strpos);
+        registry.register_function(b"mb_strrpos", mbstring::php_mb_strrpos);
+        registry.register_function(b"mb_strtolower", mbstring::php_mb_strtolower);
+        registry.register_function(b"mb_strtoupper", mbstring::php_mb_strtoupper);
+        registry.register_function(b"mb_convert_case", mbstring::php_mb_convert_case);
+        registry.register_function(b"mb_strwidth", mbstring::php_mb_strwidth);
+        registry.register_function(b"mb_strimwidth", mbstring::php_mb_strimwidth);
+        registry.register_function(b"mb_trim", mbstring::php_mb_trim);
+        registry.register_function(b"mb_str_split", mbstring::php_mb_str_split);
+        registry.register_function(b"mb_str_pad", mbstring::php_mb_str_pad);
+        registry.register_function(b"mb_substr_count", mbstring::php_mb_substr_count);
+        registry.register_function(b"mb_strstr", mbstring::php_mb_strstr);
+        registry.register_function(b"mb_chr", mbstring::php_mb_chr);
+        registry.register_function(b"mb_ord", mbstring::php_mb_ord);
+        registry.register_function(b"mb_ucfirst", mbstring::php_mb_ucfirst);
+        registry.register_function(b"mb_lcfirst", mbstring::php_mb_lcfirst);
+        registry.register_function(b"mb_http_output", mbstring::php_mb_http_output);
+        registry.register_function(b"mb_http_input", mbstring::php_mb_http_input);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);

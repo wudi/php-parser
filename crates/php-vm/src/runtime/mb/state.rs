@@ -6,6 +6,8 @@ pub struct MbStringState {
     pub language: String,
     pub regex_encoding: String,
     pub regex_options: String,
+    pub http_input: Option<String>,
+    pub http_output: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,8 @@ impl Default for MbStringState {
             language: "neutral".to_string(),
             regex_encoding: "UTF-8".to_string(),
             regex_options: String::new(),
+            http_input: None,
+            http_output: None,
         }
     }
 }
