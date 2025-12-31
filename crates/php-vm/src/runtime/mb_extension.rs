@@ -40,6 +40,10 @@ impl Extension for MbStringExtension {
         registry.register_function(b"mb_str_pad", mbstring::php_mb_str_pad);
         registry.register_function(b"mb_substr_count", mbstring::php_mb_substr_count);
         registry.register_function(b"mb_strstr", mbstring::php_mb_strstr);
+        registry.register_function(b"mb_chr", mbstring::php_mb_chr);
+        registry.register_function(b"mb_ord", mbstring::php_mb_ord);
+        registry.register_function(b"mb_ucfirst", mbstring::php_mb_ucfirst);
+        registry.register_function(b"mb_lcfirst", mbstring::php_mb_lcfirst);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);

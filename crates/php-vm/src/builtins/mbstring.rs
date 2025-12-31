@@ -927,6 +927,100 @@ pub fn php_mb_strstr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     }
 }
 
+pub fn php_mb_chr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_chr() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let codepoint = vm.check_builtin_param_int(args[0], 1, "mb_chr")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    if let Some(ch) = char::from_u32(codepoint as u32) {
+        let output = crate::runtime::mb::convert::encode_string(&ch.to_string(), &encoding)?;
+        Ok(vm.arena.alloc(Val::String(output.into())))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_mb_ord(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_ord() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_ord")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_ord(): {}", message))?;
+    match decoded.chars().next() {
+        Some(ch) => Ok(vm.arena.alloc(Val::Int(ch as i64))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+pub fn php_mb_ucfirst(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_ucfirst() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_ucfirst")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_ucfirst(): {}", message))?;
+
+    let mut chars = decoded.chars();
+    let result = match chars.next() {
+        Some(first) => {
+            let mut out = crate::runtime::mb::case::to_uppercase(&first.to_string());
+            out.push_str(&chars.collect::<String>());
+            out
+        }
+        None => decoded,
+    };
+
+    let output = crate::runtime::mb::convert::encode_string(&result, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+pub fn php_mb_lcfirst(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_lcfirst() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_lcfirst")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_lcfirst(): {}", message))?;
+
+    let mut chars = decoded.chars();
+    let result = match chars.next() {
+        Some(first) => {
+            let mut out = crate::runtime::mb::case::to_lowercase(&first.to_string());
+            out.push_str(&chars.collect::<String>());
+            out
+        }
+        None => decoded,
+    };
+
+    let output = crate::runtime::mb::convert::encode_string(&result, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
