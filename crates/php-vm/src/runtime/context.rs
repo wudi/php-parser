@@ -173,6 +173,12 @@ impl EngineContext {
             .register_extension(Box::new(ZlibExtension))
             .expect("Failed to register Zlib extension");
 
+        // Register MBString extension
+        use crate::runtime::mb_extension::MbStringExtension;
+        registry
+            .register_extension(Box::new(MbStringExtension))
+            .expect("Failed to register mbstring extension");
+
         // Register Zip extension
         use crate::runtime::zip_extension::ZipExtension;
         registry
@@ -539,6 +545,7 @@ impl EngineBuilder {
         self.extensions.push(Box::new(super::pdo_extension::PdoExtension));
         self.extensions.push(Box::new(super::pthreads_extension::PthreadsExtension));
         self.extensions.push(Box::new(super::zlib_extension::ZlibExtension));
+        self.extensions.push(Box::new(super::mb_extension::MbStringExtension));
         self
     }
 
