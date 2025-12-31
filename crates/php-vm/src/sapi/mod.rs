@@ -5,7 +5,6 @@
 pub mod fpm;
 
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
-use crate::runtime::context::RequestContext;
 use crate::vm::engine::VM;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -88,20 +87,22 @@ pub fn init_superglobals(
     let mut files_data = ArrayData::new();
     for (key, file) in files_vars {
         let key_arr = ArrayKey::Str(Rc::new(key));
-        
+
         let mut file_arr = ArrayData::new();
-        
+
         file_arr.insert(
             ArrayKey::Str(Rc::new(b"name".to_vec())),
             vm.arena.alloc(Val::String(Rc::new(file.name.into_bytes()))),
         );
         file_arr.insert(
             ArrayKey::Str(Rc::new(b"type".to_vec())),
-            vm.arena.alloc(Val::String(Rc::new(file.type_.into_bytes()))),
+            vm.arena
+                .alloc(Val::String(Rc::new(file.type_.into_bytes()))),
         );
         file_arr.insert(
             ArrayKey::Str(Rc::new(b"tmp_name".to_vec())),
-            vm.arena.alloc(Val::String(Rc::new(file.tmp_name.into_bytes()))),
+            vm.arena
+                .alloc(Val::String(Rc::new(file.tmp_name.into_bytes()))),
         );
         file_arr.insert(
             ArrayKey::Str(Rc::new(b"error".to_vec())),
@@ -127,28 +128,28 @@ pub fn init_superglobals(
 
     // $_REQUEST (merge of GET + POST + COOKIE)
     let mut request_data = ArrayData::new();
-    
+
     // Add GET
     if let Val::Array(arr) = &vm.arena.get(get_handle).value {
         for (k, v) in &arr.map {
             request_data.insert(k.clone(), *v);
         }
     }
-    
+
     // Add POST
     if let Val::Array(arr) = &vm.arena.get(post_handle).value {
         for (k, v) in &arr.map {
             request_data.insert(k.clone(), *v);
         }
     }
-    
+
     // Add COOKIE
     if let Val::Array(arr) = &vm.arena.get(cookie_handle).value {
         for (k, v) in &arr.map {
             request_data.insert(k.clone(), *v);
         }
     }
-    
+
     let request_handle = vm.arena.alloc(Val::Array(Rc::new(request_data)));
     vm.arena.get_mut(request_handle).is_ref = true;
     let request_sym = vm.context.interner.intern(b"_REQUEST");
@@ -167,4 +168,3 @@ pub fn init_superglobals(
     vm.arena.get_mut(globals_handle).is_ref = true;
     vm.context.globals.insert(globals_sym, globals_handle);
 }
-

@@ -19,14 +19,15 @@
 //! ```
 
 use crate::compiler::emitter::Emitter;
-use crate::core::value::{Handle, Val};
-use crate::runtime::context::{EngineContext, RequestContext};
-use crate::vm::engine::{CapturingErrorHandler, CapturingOutputWriter, ErrorLevel, OutputWriter, VmError, VM};
+use crate::core::value::Val;
+use crate::runtime::context::RequestContext;
+use crate::vm::engine::{
+    CapturingErrorHandler, CapturingOutputWriter, ErrorLevel, OutputWriter, VmError, VM,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 /// Result of executing PHP code
 #[derive(Debug, Clone)]
@@ -65,10 +66,12 @@ pub struct ExecutionConfig {
     /// Allow network operations (curl, file_get_contents with URLs, etc.)
     pub allow_network: bool,
     /// Allowed function names (empty = all allowed, Some(set) = whitelist)
-    pub allowed_functions: Option<std::collections::HashSet<String>>,    /// Sandboxing: disabled function names (blacklist, like PHP's disable_functions ini)
+    pub allowed_functions: Option<std::collections::HashSet<String>>,
+    /// Sandboxing: disabled function names (blacklist, like PHP's disable_functions ini)
     pub disable_functions: std::collections::HashSet<String>,
     /// Sandboxing: disabled class names (like PHP's disable_classes ini)
-    pub disable_classes: std::collections::HashSet<String>,}
+    pub disable_classes: std::collections::HashSet<String>,
+}
 
 impl Default for ExecutionConfig {
     fn default() -> Self {
@@ -78,9 +81,9 @@ impl Default for ExecutionConfig {
             capture_output: true,
             working_dir: None,
             enable_profiling: false,
-            max_memory_bytes: 0, // Unlimited by default
-            allow_file_io: true, // Allow by default for compatibility
-            allow_network: true, // Allow by default for compatibility
+            max_memory_bytes: 0,     // Unlimited by default
+            allow_file_io: true,     // Allow by default for compatibility
+            allow_network: true,     // Allow by default for compatibility
             allowed_functions: None, // All functions allowed by default
             disable_functions: std::collections::HashSet::new(), // No functions disabled by default
             disable_classes: std::collections::HashSet::new(), // No classes disabled by default
@@ -197,20 +200,24 @@ pub fn execute_code_with_config(
         })));
 
         let stderr_clone = captured_stderr.clone();
-        vm.set_error_handler(Box::new(CapturingErrorHandler::new(move |level, message| {
-            let level_str = match level {
-                ErrorLevel::Notice => "Notice",
-                ErrorLevel::Warning => "Warning",
-                ErrorLevel::Error => "Error",
-                ErrorLevel::ParseError => "Parse error",
-                ErrorLevel::UserNotice => "User notice",
-                ErrorLevel::UserWarning => "User warning",
-                ErrorLevel::UserError => "User error",
-                ErrorLevel::Deprecated => "Deprecated",
-            };
-            let formatted = format!("{}: {}\n", level_str, message);
-            stderr_clone.borrow_mut().extend_from_slice(formatted.as_bytes());
-        })));
+        vm.set_error_handler(Box::new(CapturingErrorHandler::new(
+            move |level, message| {
+                let level_str = match level {
+                    ErrorLevel::Notice => "Notice",
+                    ErrorLevel::Warning => "Warning",
+                    ErrorLevel::Error => "Error",
+                    ErrorLevel::ParseError => "Parse error",
+                    ErrorLevel::UserNotice => "User notice",
+                    ErrorLevel::UserWarning => "User warning",
+                    ErrorLevel::UserError => "User error",
+                    ErrorLevel::Deprecated => "Deprecated",
+                };
+                let formatted = format!("{}: {}\n", level_str, message);
+                stderr_clone
+                    .borrow_mut()
+                    .extend_from_slice(formatted.as_bytes());
+            },
+        )));
     }
 
     // Execute (timeout checking happens inside run_loop)
@@ -459,7 +466,11 @@ mod tests {
         assert_eq!(result.value, Val::Int(45));
         assert!(result.opcodes_executed.is_some());
         let opcodes = result.opcodes_executed.unwrap();
-        assert!(opcodes > 50, "Expected many opcodes for loop, got {}", opcodes);
+        assert!(
+            opcodes > 50,
+            "Expected many opcodes for loop, got {}",
+            opcodes
+        );
     }
 
     #[test]
@@ -558,7 +569,7 @@ mod tests {
         allowed.insert("strlen".to_string());
         allowed.insert("strtoupper".to_string());
         config.allowed_functions = Some(allowed);
-        
+
         // strlen should work
         let result = execute_code_with_config("<?php return strlen('test');", config).unwrap();
         assert_eq!(result.value, Val::Int(4));
@@ -569,7 +580,7 @@ mod tests {
         let mut config = ExecutionConfig::default();
         let allowed = std::collections::HashSet::new(); // Empty whitelist
         config.allowed_functions = Some(allowed);
-        
+
         // Even basic functions should fail with empty whitelist
         let result = execute_code_with_config("<?php return 42;", config).unwrap();
         // Code without function calls should still work
@@ -584,9 +595,10 @@ mod tests {
         let mut allowed = std::collections::HashSet::new();
         allowed.insert("strlen".to_string());
         config.allowed_functions = Some(allowed);
-        
+
         // Basic operations should still work
-        let result = execute_code_with_config("<?php $x = 'hello'; return strlen($x);", config).unwrap();
+        let result =
+            execute_code_with_config("<?php $x = 'hello'; return strlen($x);", config).unwrap();
         assert_eq!(result.value, Val::Int(5));
     }
 
@@ -617,7 +629,7 @@ mod tests {
         disabled.insert("eval".to_string());
         disabled.insert("exec".to_string());
         config.disable_functions = disabled;
-        
+
         // Non-disabled function should work
         let result = execute_code_with_config("<?php return strlen('test');", config).unwrap();
         assert_eq!(result.value, Val::Int(4));
@@ -629,7 +641,7 @@ mod tests {
         let mut disabled = std::collections::HashSet::new();
         disabled.insert("ReflectionClass".to_string());
         config.disable_classes = disabled;
-        
+
         // Non-disabled classes should work
         let result = execute_code_with_config("<?php class MyClass {} return 42;", config).unwrap();
         assert_eq!(result.value, Val::Int(42));
@@ -638,19 +650,19 @@ mod tests {
     #[test]
     fn test_allowed_and_disable_functions_work_together() {
         let mut config = ExecutionConfig::default();
-        
+
         // Create whitelist of allowed functions
         let mut allowed = std::collections::HashSet::new();
         allowed.insert("strlen".to_string());
         allowed.insert("strtoupper".to_string());
         allowed.insert("eval".to_string());
         config.allowed_functions = Some(allowed);
-        
+
         // But also disable eval specifically
         let mut disabled = std::collections::HashSet::new();
         disabled.insert("eval".to_string());
         config.disable_functions = disabled;
-        
+
         // strlen should work (in whitelist, not in blacklist)
         let result = execute_code_with_config("<?php return strlen('test');", config).unwrap();
         assert_eq!(result.value, Val::Int(4));
@@ -665,7 +677,7 @@ mod tests {
         disabled.insert("system".to_string());
         disabled.insert("passthru".to_string());
         config.disable_functions = disabled;
-        
+
         // Regular functions should still work
         let result = execute_code_with_config("<?php return 1 + 1;", config).unwrap();
         assert_eq!(result.value, Val::Int(2));
@@ -677,7 +689,7 @@ mod tests {
     fn test_global_single_variable() {
         let mut config = ExecutionConfig::default();
         config.globals.insert("test".to_string(), Val::Int(42));
-        
+
         let result = execute_code_with_config("<?php return $test;", config).unwrap();
         assert_eq!(result.value, Val::Int(42));
     }
@@ -688,7 +700,7 @@ mod tests {
         config.globals.insert("a".to_string(), Val::Int(10));
         config.globals.insert("b".to_string(), Val::Int(20));
         config.globals.insert("c".to_string(), Val::Int(30));
-        
+
         let result = execute_code_with_config("<?php return $a + $b + $c;", config).unwrap();
         assert_eq!(result.value, Val::Int(60));
     }
@@ -696,8 +708,11 @@ mod tests {
     #[test]
     fn test_global_string_variable() {
         let mut config = ExecutionConfig::default();
-        config.globals.insert("name".to_string(), Val::String(std::rc::Rc::new(b"Alice".to_vec())));
-        
+        config.globals.insert(
+            "name".to_string(),
+            Val::String(std::rc::Rc::new(b"Alice".to_vec())),
+        );
+
         let result = execute_code_with_config("<?php return $name;", config).unwrap();
         match result.value {
             Val::String(s) => assert_eq!(s.as_ref(), b"Alice"),
@@ -709,7 +724,7 @@ mod tests {
     fn test_global_overwrite_in_code() {
         let mut config = ExecutionConfig::default();
         config.globals.insert("x".to_string(), Val::Int(100));
-        
+
         let result = execute_code_with_config("<?php $x = 200; return $x;", config).unwrap();
         assert_eq!(result.value, Val::Int(200));
     }
@@ -718,7 +733,7 @@ mod tests {
     fn test_global_used_in_function() {
         let mut config = ExecutionConfig::default();
         config.globals.insert("multiplier".to_string(), Val::Int(5));
-        
+
         let code = "<?php
             function multiply($n) {
                 global $multiplier;
@@ -742,7 +757,7 @@ mod tests {
     fn test_working_dir_can_be_set() {
         let mut config = ExecutionConfig::default();
         config.working_dir = Some(std::path::PathBuf::from("/tmp"));
-        
+
         // Simple code should still execute
         let result = execute_code_with_config("<?php return 42;", config).unwrap();
         assert_eq!(result.value, Val::Int(42));
@@ -752,7 +767,7 @@ mod tests {
     fn test_working_dir_with_relative_path() {
         let mut config = ExecutionConfig::default();
         config.working_dir = Some(std::path::PathBuf::from("./test_dir"));
-        
+
         // Code execution should work regardless of working dir setting
         let result = execute_code_with_config("<?php return 'hello';", config).unwrap();
         match result.value {
@@ -768,7 +783,7 @@ mod tests {
         let mut config = ExecutionConfig::default();
         config.globals.insert("base".to_string(), Val::Int(10));
         config.enable_profiling = true;
-        
+
         let result = execute_code_with_config("<?php return $base * 2;", config).unwrap();
         assert_eq!(result.value, Val::Int(20));
         assert!(result.opcodes_executed.is_some());
@@ -779,7 +794,7 @@ mod tests {
         let mut config = ExecutionConfig::default();
         config.globals.insert("limit".to_string(), Val::Int(100));
         config.timeout_ms = 5000;
-        
+
         let result = execute_code_with_config("<?php return $limit + 1;", config).unwrap();
         assert_eq!(result.value, Val::Int(101));
     }
@@ -792,8 +807,9 @@ mod tests {
         config.enable_profiling = true;
         config.timeout_ms = 10000;
         config.capture_output = true;
-        
-        let result = execute_code_with_config("<?php echo 'test'; return $value * 10;", config).unwrap();
+
+        let result =
+            execute_code_with_config("<?php echo 'test'; return $value * 10;", config).unwrap();
         assert_eq!(result.value, Val::Int(50));
         assert_eq!(result.stdout, "test");
         assert!(result.opcodes_executed.is_some());

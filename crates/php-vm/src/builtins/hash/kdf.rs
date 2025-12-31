@@ -1,13 +1,12 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
-use std::rc::Rc;
-use pbkdf2::pbkdf2;
+use hkdf::Hkdf;
 use hmac::Hmac;
 use md5::Md5;
+use pbkdf2::pbkdf2;
 use sha1::Sha1;
-use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
-use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
-use hkdf::Hkdf;
+use sha2::{Sha224, Sha256, Sha384, Sha512};
+use std::rc::Rc;
 
 pub fn php_hash_pbkdf2(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 4 || args.len() > 6 {
@@ -69,7 +68,12 @@ pub fn php_hash_pbkdf2(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         "sha256" => compute_pbkdf2!(Hmac<Sha256>, 32),
         "sha384" => compute_pbkdf2!(Hmac<Sha384>, 48),
         "sha512" => compute_pbkdf2!(Hmac<Sha512>, 64),
-        _ => return Err(format!("hash_pbkdf2(): Unknown hashing algorithm: {}", algo_name)),
+        _ => {
+            return Err(format!(
+                "hash_pbkdf2(): Unknown hashing algorithm: {}",
+                algo_name
+            ))
+        }
     };
 
     let result = if binary {
@@ -128,7 +132,8 @@ pub fn php_hash_hkdf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             let out_len = if length > 0 { length } else { $out_len };
             let hk = Hkdf::<$algo>::new(salt, ikm);
             let mut okm = vec![0u8; out_len];
-            hk.expand(info, &mut okm).map_err(|_| "HKDF expansion failed")?;
+            hk.expand(info, &mut okm)
+                .map_err(|_| "HKDF expansion failed")?;
             okm
         }};
     }
@@ -140,7 +145,12 @@ pub fn php_hash_hkdf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         "sha256" => compute_hkdf!(Sha256, 32),
         "sha384" => compute_hkdf!(Sha384, 48),
         "sha512" => compute_hkdf!(Sha512, 64),
-        _ => return Err(format!("hash_hkdf(): Unknown hashing algorithm: {}", algo_name)),
+        _ => {
+            return Err(format!(
+                "hash_hkdf(): Unknown hashing algorithm: {}",
+                algo_name
+            ))
+        }
     };
 
     Ok(vm.arena.alloc(Val::String(Rc::new(digest))))

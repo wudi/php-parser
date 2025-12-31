@@ -16,8 +16,9 @@ fn test_count_return() {
 
 #[test]
 fn test_is_functions() {
-    let vm =
-        run_code_vm_only("<?php return [is_string('s'), is_int(1), is_array([]), is_bool(true), is_null(null)];");
+    let vm = run_code_vm_only(
+        "<?php return [is_string('s'), is_int(1), is_array([]), is_bool(true), is_null(null)];",
+    );
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {

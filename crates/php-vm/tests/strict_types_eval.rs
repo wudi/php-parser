@@ -1,11 +1,11 @@
-use std::fs;
-use std::path::PathBuf;
-use std::rc::Rc;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 use php_vm::compiler::emitter::Emitter;
-use php_vm::vm::engine::VM;
 use php_vm::runtime::context::EngineBuilder;
+use php_vm::vm::engine::VM;
+use std::fs;
+use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Unique temp directory to avoid collisions
@@ -13,7 +13,8 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn create_temp_dir() -> PathBuf {
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let temp_dir = std::env::temp_dir().join(format!("php_vm_test_{}_{}", std::process::id(), counter));
+    let temp_dir =
+        std::env::temp_dir().join(format!("php_vm_test_{}_{}", std::process::id(), counter));
     fs::create_dir_all(&temp_dir).unwrap();
     temp_dir
 }
@@ -58,14 +59,17 @@ function strict_func(int $x): int {
 $result = eval('return strict_func("42");'); // Should fail: string passed to int param
 echo "Should not reach here\n";
 "#;
-    
+
     let result = compile_and_run(code);
-    
+
     // Should error due to strict type checking
     assert!(result.is_err(), "Expected type error in strict mode");
     let err_str = result.unwrap_err();
-    assert!(err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"), 
-           "Expected type error, got: {}", err_str);
+    assert!(
+        err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"),
+        "Expected type error, got: {}",
+        err_str
+    );
 }
 
 /// eval() in weak (non-strict) file without explicit declare → inherits weak mode
@@ -84,9 +88,13 @@ echo "Result: $result\n"; // Should print 43
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should succeed in weak mode (string coerced to int)
-    assert!(result.is_ok(), "Expected success in weak mode: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Expected success in weak mode: {:?}",
+        result.err()
+    );
 }
 
 /// eval() with explicit declare(strict_types=1) → overrides to strict mode even in weak file
@@ -105,12 +113,18 @@ echo "Should not reach here\n";
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should error: eval explicitly enabled strict mode
-    assert!(result.is_err(), "Expected type error in explicit strict mode");
+    assert!(
+        result.is_err(),
+        "Expected type error in explicit strict mode"
+    );
     let err_str = result.unwrap_err();
-    assert!(err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"), 
-           "Expected type error, got: {}", err_str);
+    assert!(
+        err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"),
+        "Expected type error, got: {}",
+        err_str
+    );
 }
 
 /// eval() with explicit declare(strict_types=0) → overrides to weak mode even in strict file
@@ -129,9 +143,13 @@ echo "Result: $result\n"; // Should print 43
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should succeed: eval explicitly disabled strict mode
-    assert!(result.is_ok(), "Expected success with explicit weak mode: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Expected success with explicit weak mode: {:?}",
+        result.err()
+    );
 }
 
 /// Nested eval() → strictness inherits through layers
@@ -153,12 +171,15 @@ echo "Should not reach here\n";
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should error: nested eval inherits strict mode
     assert!(result.is_err(), "Expected type error in nested strict eval");
     let err_str = result.unwrap_err();
-    assert!(err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"), 
-           "Expected type error, got: {}", err_str);
+    assert!(
+        err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be"),
+        "Expected type error, got: {}",
+        err_str
+    );
 }
 
 /// eval() return type checking uses inherited strictness
@@ -177,12 +198,18 @@ echo "Should not reach here\n";
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should error: return type mismatch in strict mode
     assert!(result.is_err(), "Expected return type error in strict mode");
     let err_str = result.unwrap_err();
-    assert!(err_str.contains("type") || err_str.contains("Type") || err_str.contains("must be") || err_str.contains("return"),
-           "Expected type/return error, got: {}", err_str);
+    assert!(
+        err_str.contains("type")
+            || err_str.contains("Type")
+            || err_str.contains("must be")
+            || err_str.contains("return"),
+        "Expected type/return error, got: {}",
+        err_str
+    );
 }
 
 /// eval() in weak mode → return type coercion works
@@ -201,9 +228,13 @@ echo "Result: $result\n"; // Should print 123
 "#;
 
     let result = compile_and_run(code);
-    
+
     // Should succeed in weak mode
-    assert!(result.is_ok(), "Expected success in weak mode: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Expected success in weak mode: {:?}",
+        result.err()
+    );
 }
 
 /// Complex scenario: eval() with mixed inheritance and overrides
@@ -219,9 +250,12 @@ function test_func(int $x): int {
 
 eval('test_func("10");');
 "#;
-    
+
     let result1 = compile_and_run(code1);
-    assert!(result1.is_err(), "Test 1: Expected type error in strict mode");
+    assert!(
+        result1.is_err(),
+        "Test 1: Expected type error in strict mode"
+    );
 
     // Test 2: Override to weak mode allows coercion
     let code2 = r#"<?php
@@ -234,9 +268,13 @@ function test_func(int $x): int {
 $result = eval('declare(strict_types=0); return test_func("10");');
 echo "Result: $result\n";
 "#;
-    
+
     let result2 = compile_and_run(code2);
-    assert!(result2.is_ok(), "Test 2: Expected success with explicit weak mode: {:?}", result2.err());
+    assert!(
+        result2.is_ok(),
+        "Test 2: Expected success with explicit weak mode: {:?}",
+        result2.err()
+    );
 
     // Test 3: Nested eval with mixed modes
     let code3 = r#"<?php
@@ -252,9 +290,13 @@ $nested = eval('
 ');
 echo "Result: $nested\n";
 "#;
-    
+
     let result3 = compile_and_run(code3);
-    assert!(result3.is_ok(), "Test 3: Expected success with int param: {:?}", result3.err());
+    assert!(
+        result3.is_ok(),
+        "Test 3: Expected success with int param: {:?}",
+        result3.err()
+    );
 }
 
 /// eval() with function definition → inherits strictness for later calls
@@ -276,7 +318,11 @@ echo "Result with int: $result\n"; // Should print 142
 "#;
 
     let result = compile_and_run(code);
-    assert!(result.is_ok(), "Expected success with correct type: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Expected success with correct type: {:?}",
+        result.err()
+    );
 
     // Now test that it rejects wrong types
     let code2 = r#"<?php

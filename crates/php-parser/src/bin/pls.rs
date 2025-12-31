@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use dashmap::DashMap;
 use php_parser::ast::locator::AstNode;
-use php_parser::ast::visitor::{Visitor, walk_class_member, walk_expr, walk_stmt};
+use php_parser::ast::visitor::{walk_class_member, walk_expr, walk_stmt, Visitor};
 use php_parser::ast::*;
 use php_parser::lexer::Lexer;
 use php_parser::line_index::LineIndex;

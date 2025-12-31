@@ -2,7 +2,6 @@ mod common;
 
 use common::run_code_with_vm;
 use php_vm::core::value::Val;
-use php_vm::vm::engine::VmError;
 
 #[test]
 fn test_basic_reference() {

@@ -1,6 +1,5 @@
 use crate::builtins::openssl;
-use crate::core::value::{Val, Visibility};
-use crate::runtime::context::RequestContext;
+use crate::core::value::Val;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::{ExtensionRegistry, NativeClassDef};
 use std::collections::HashMap;
@@ -385,4 +384,3 @@ impl Extension for OpenSSLExtension {
         ExtensionResult::Success
     }
 }
-

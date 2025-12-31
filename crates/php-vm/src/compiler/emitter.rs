@@ -252,8 +252,10 @@ impl<'src> Emitter<'src> {
                         if p_name.starts_with(b"$") {
                             let sym = method_emitter.interner.intern(&p_name[1..]);
                             let param_type = info.ty.and_then(|ty| method_emitter.convert_type(ty));
-                            let default_value = info.default.map(|expr| method_emitter.eval_constant_expr(expr));
-                            
+                            let default_value = info
+                                .default
+                                .map(|expr| method_emitter.eval_constant_expr(expr));
+
                             param_syms.push(FuncParam {
                                 name: sym,
                                 by_ref: info.by_ref,
@@ -304,7 +306,10 @@ impl<'src> Emitter<'src> {
                     ));
                 }
                 ClassMember::Property {
-                    entries, modifiers, ty, ..
+                    entries,
+                    modifiers,
+                    ty,
+                    ..
                 } => {
                     let visibility = self.get_visibility(modifiers);
                     let is_static = modifiers.iter().any(|t| t.kind == TokenKind::Static);
@@ -366,7 +371,9 @@ impl<'src> Emitter<'src> {
                         let const_name_str = self.get_text(entry.name.span);
                         let const_sym = self.interner.intern(const_name_str);
 
-                        let val = self.get_literal_value(entry.value).unwrap_or_else(|| Val::Null);
+                        let val = self
+                            .get_literal_value(entry.value)
+                            .unwrap_or_else(|| Val::Null);
                         let val_idx = self.add_constant(val);
                         self.chunk.code.push(OpCode::DefClassConst(
                             class_sym,
@@ -407,9 +414,7 @@ impl<'src> Emitter<'src> {
                                     num = 0;
                                     break;
                                 }
-                                num = num
-                                    .saturating_mul(10)
-                                    .saturating_add((b - b'0') as u64);
+                                num = num.saturating_mul(10).saturating_add((b - b'0') as u64);
                             }
                             self.chunk.strict_types = num == 1;
                         }
@@ -792,8 +797,10 @@ impl<'src> Emitter<'src> {
                     if p_name.starts_with(b"$") {
                         let sym = func_emitter.interner.intern(&p_name[1..]);
                         let param_type = info.ty.and_then(|ty| func_emitter.convert_type(ty));
-                        let default_value = info.default.map(|expr| func_emitter.eval_constant_expr(expr));
-                        
+                        let default_value = info
+                            .default
+                            .map(|expr| func_emitter.eval_constant_expr(expr));
+
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
@@ -896,7 +903,7 @@ impl<'src> Emitter<'src> {
                 self.current_class = Some(class_sym);
                 self.emit_members(class_sym, members);
                 self.current_class = prev_class;
-                
+
                 // Finalize class: validate interfaces, abstract methods, etc.
                 self.chunk.code.push(OpCode::FinalizeClass(class_sym));
             }
@@ -2243,8 +2250,10 @@ impl<'src> Emitter<'src> {
                     if p_name.starts_with(b"$") {
                         let sym = func_emitter.interner.intern(&p_name[1..]);
                         let param_type = info.ty.and_then(|ty| func_emitter.convert_type(ty));
-                        let default_value = info.default.map(|expr| func_emitter.eval_constant_expr(expr));
-                        
+                        let default_value = info
+                            .default
+                            .map(|expr| func_emitter.eval_constant_expr(expr));
+
                         param_syms.push(FuncParam {
                             name: sym,
                             by_ref: info.by_ref,
@@ -3480,7 +3489,7 @@ impl<'src> Emitter<'src> {
     /// Convert AST Type to runtime TypeHint
     fn extract_type_hint(&mut self, ty: &Type) -> crate::runtime::context::TypeHint {
         use crate::runtime::context::TypeHint;
-        
+
         match ty {
             Type::Simple(tok) => match tok.kind {
                 TokenKind::TypeInt => TypeHint::Int,
@@ -3519,29 +3528,34 @@ impl<'src> Emitter<'src> {
     }
 
     /// Extract parameter information for method signature validation
-    fn extract_parameter_info(&mut self, params: &[php_parser::ast::Param]) -> Vec<crate::runtime::context::ParameterInfo> {
+    fn extract_parameter_info(
+        &mut self,
+        params: &[php_parser::ast::Param],
+    ) -> Vec<crate::runtime::context::ParameterInfo> {
         use crate::runtime::context::ParameterInfo;
-        
-        params.iter().map(|param| {
-            let name_str = self.get_text(param.name.span);
-            let name = if name_str.starts_with(b"$") {
-                self.interner.intern(&name_str[1..])
-            } else {
-                self.interner.intern(name_str)
-            };
-            
-            let type_hint = param.ty.map(|ty| self.extract_type_hint(ty));
-            
-            let default_value = param.default.map(|expr| self.eval_constant_expr(expr));
-            
-            ParameterInfo {
-                name,
-                type_hint,
-                is_reference: param.by_ref,
-                is_variadic: param.variadic,
-                default_value,
-            }
-        }).collect()
+
+        params
+            .iter()
+            .map(|param| {
+                let name_str = self.get_text(param.name.span);
+                let name = if name_str.starts_with(b"$") {
+                    self.interner.intern(&name_str[1..])
+                } else {
+                    self.interner.intern(name_str)
+                };
+
+                let type_hint = param.ty.map(|ty| self.extract_type_hint(ty));
+
+                let default_value = param.default.map(|expr| self.eval_constant_expr(expr));
+
+                ParameterInfo {
+                    name,
+                    type_hint,
+                    is_reference: param.by_ref,
+                    is_variadic: param.variadic,
+                    default_value,
+                }
+            })
+            .collect()
     }
 }
-

@@ -1,4 +1,4 @@
-use crate::core::value::{ArrayKey, Handle, ObjectData, Val};
+use crate::core::value::{ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
 use chrono::{
     DateTime as ChronoDateTime, Datelike, Local, NaiveDate, NaiveDateTime, NaiveTime, Offset,
@@ -7,7 +7,6 @@ use chrono::{
 use chrono_tz::Tz;
 use indexmap::IndexMap;
 use regex::Regex;
-use std::any::Any;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -790,9 +789,7 @@ pub fn php_datetime_get_timezone(vm: &mut VM, _args: &[Handle]) -> Result<Handle
     // Create a new DateTimeZone object with the timezone name
     let dtz_sym = vm.context.interner.intern(b"DateTimeZone");
     let tz_name = data.dt.timezone().name().as_bytes().to_vec();
-    let tz_handle = vm
-        .arena
-        .alloc(Val::String(Rc::new(tz_name)));
+    let tz_handle = vm.arena.alloc(Val::String(Rc::new(tz_name)));
     let dtz_handle = vm.instantiate_class(dtz_sym, &[tz_handle])?;
 
     Ok(dtz_handle)
@@ -2343,9 +2340,7 @@ pub fn php_date_timezone_get(vm: &mut VM, args: &[Handle]) -> Result<Handle, Str
     // Create a new DateTimeZone object with the timezone name
     let dtz_sym = vm.context.interner.intern(b"DateTimeZone");
     let tz_name = data.dt.timezone().name().as_bytes().to_vec();
-    let tz_handle = vm
-        .arena
-        .alloc(Val::String(Rc::new(tz_name)));
+    let tz_handle = vm.arena.alloc(Val::String(Rc::new(tz_name)));
     let dtz_handle = vm.instantiate_class(dtz_sym, &[tz_handle])?;
 
     Ok(dtz_handle)

@@ -1,7 +1,7 @@
 use crate::ast::{Name, ParseError, Program};
 use crate::lexer::{
-    Lexer, LexerMode,
-    token::{Token, TokenKind},
+    token::{Token, TokenKind}, Lexer,
+    LexerMode,
 };
 use bumpalo::Bump;
 

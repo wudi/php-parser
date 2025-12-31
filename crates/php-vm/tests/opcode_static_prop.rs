@@ -1,11 +1,10 @@
-use std::rc::Rc;
 use php_vm::compiler::chunk::CodeChunk;
-use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::{Val, Visibility};
-use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::VM;
 use php_vm::vm::opcode::OpCode;
 use std::process::Command;
+use std::rc::Rc;
 
 fn php_out() -> String {
     let script = "class Foo { public static $bar = 123; } echo Foo::$bar;";
@@ -24,7 +23,10 @@ fn php_out() -> String {
 }
 
 fn run_fetch(op: OpCode) -> (VM, i64) {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     let foo_sym = vm.context.interner.intern(b"Foo");

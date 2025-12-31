@@ -5,9 +5,10 @@ fn run_code_expect_error(src: &str, expected_error: &str) {
     use php_vm::runtime::context::{EngineBuilder, RequestContext};
     use php_vm::vm::engine::VM;
     use std::rc::Rc;
-    use std::sync::Arc;
-
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();

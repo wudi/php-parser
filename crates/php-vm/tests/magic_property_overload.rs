@@ -8,7 +8,10 @@ use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::VM;
 
 fn run_php(src: &[u8]) -> Val {
-    let context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(context);
 
     let arena = bumpalo::Bump::new();

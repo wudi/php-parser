@@ -22,7 +22,6 @@ fn test_assign_op_static_prop() {
         return [Test::$count, Test::$val, Test::$null];
     "#;
 
-
     let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let handle = vm.last_return_value.expect("No return value");

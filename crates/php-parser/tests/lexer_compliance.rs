@@ -1,5 +1,5 @@
-use php_parser::lexer::Lexer;
 use php_parser::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
 use std::process::Command;
 use std::str;
 

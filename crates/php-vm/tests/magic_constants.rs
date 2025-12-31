@@ -1,11 +1,9 @@
-use std::rc::Rc;
 use bumpalo::Bump;
-use php_vm::runtime::context::EngineBuilder;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser as PhpParser;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::{ArrayKey, Val};
-use php_vm::runtime::context::EngineContext;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::VM;
 
 #[test]
@@ -20,7 +18,10 @@ return __LINE__;
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
     let emitter = Emitter::new(source, &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
@@ -43,7 +44,10 @@ return [__FILE__, __DIR__];
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
     let emitter =
         Emitter::new(source, &mut vm.context.interner).with_file_path("/var/www/test.php");
@@ -92,7 +96,10 @@ return $obj->test();
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
     let emitter = Emitter::new(source, &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
@@ -130,7 +137,10 @@ return [myFunction(), (new MyClass())->myMethod()];
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
     let emitter = Emitter::new(source, &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);
@@ -193,7 +203,10 @@ return (new TestClass())->test();
     let program = parser.parse_program();
     assert!(program.errors.is_empty());
 
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine_context);
     let emitter = Emitter::new(source, &mut vm.context.interner);
     let (chunk, _) = emitter.compile(program.statements);

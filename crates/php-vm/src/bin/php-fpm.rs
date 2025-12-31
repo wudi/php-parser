@@ -18,9 +18,9 @@ use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::SystemTime;
 use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use tokio::task::LocalSet;
 
@@ -117,7 +117,8 @@ fn run_workers(workers: usize, source: ListenerSource) -> anyhow::Result<()> {
                             if let Ok((stream, _)) = listener.accept().await {
                                 let engine = context.clone();
                                 tokio::task::spawn_local(async move {
-                                    if let Err(e) = handle_fastcgi_connection(stream, engine).await {
+                                    if let Err(e) = handle_fastcgi_connection(stream, engine).await
+                                    {
                                         eprintln!("[php-fpm] Connection error: {}", e);
                                     }
                                 });
@@ -133,7 +134,9 @@ fn run_workers(workers: usize, source: ListenerSource) -> anyhow::Result<()> {
                             if let Ok((stream, _)) = listener.accept().await {
                                 let engine = context.clone();
                                 tokio::task::spawn_local(async move {
-                                    if let Err(e) = handle_fastcgi_unix_connection(stream, engine).await {
+                                    if let Err(e) =
+                                        handle_fastcgi_unix_connection(stream, engine).await
+                                    {
                                         eprintln!("[php-fpm] Connection error: {}", e);
                                     }
                                 });
@@ -162,7 +165,7 @@ async fn handle_fastcgi_connection(
     // Convert to std stream since our fcgi module uses std::io
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?; // Ensure blocking mode
-    
+
     handle_fastcgi_connection_sync(std_stream, engine).await
 }
 
@@ -173,7 +176,7 @@ async fn handle_fastcgi_unix_connection(
 ) -> Result<(), anyhow::Error> {
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?;
-    
+
     handle_fastcgi_connection_sync(std_stream, engine).await
 }
 
@@ -187,7 +190,7 @@ where
 {
     // Use RefCell to allow multiple borrows
     let stream = Rc::new(std::cell::RefCell::new(stream));
-    
+
     loop {
         // Read one complete FastCGI request
         let request = {
@@ -230,7 +233,14 @@ where
         // Send response
         {
             let mut stream_ref = stream.borrow_mut();
-            send_response(&mut *stream_ref, request_id, status.unwrap_or(200), &headers, &body, &errors)?;
+            send_response(
+                &mut *stream_ref,
+                request_id,
+                status.unwrap_or(200),
+                &headers,
+                &body,
+                &errors,
+            )?;
         }
 
         // Handle keep-alive
@@ -374,7 +384,7 @@ async fn execute_php(
     Vec<u8>,
     Vec<php_vm::runtime::context::HeaderEntry>,
     Option<u16>,
-    Vec<u8>,  // stderr/errors
+    Vec<u8>, // stderr/errors
 ) {
     let source = match tokio::fs::read(&fpm_req.script_filename).await {
         Ok(s) => s,
@@ -385,7 +395,7 @@ async fn execute_php(
                 vec![],
                 Some(500),
                 error.into_bytes(),
-            )
+            );
         }
     };
 
@@ -472,6 +482,9 @@ impl php_vm::vm::engine::ErrorHandler for BufferedErrorHandler {
             ErrorLevel::Deprecated => "Deprecated",
         };
         let formatted = format!("PHP {}: {}\n", level_str, message);
-        self.buffer.lock().unwrap().extend_from_slice(formatted.as_bytes());
+        self.buffer
+            .lock()
+            .unwrap()
+            .extend_from_slice(formatted.as_bytes());
     }
 }

@@ -1,6 +1,6 @@
 use super::context::{NativeHandler, RequestContext};
 use super::extension::{Extension, ExtensionResult};
-use crate::core::value::{Symbol, Val, Visibility};
+use crate::core::value::{Val, Visibility};
 use std::collections::HashMap;
 
 /// Native class definition for extension-provided classes
@@ -184,7 +184,11 @@ impl ExtensionRegistry {
     pub fn request_init_all(&self, context: &mut crate::runtime::context::RequestContext) {
         for ext in &self.extensions {
             if let ExtensionResult::Failure(msg) = ext.request_init(context) {
-                eprintln!("Warning: Extension '{}' RINIT failed: {}", ext.info().name, msg);
+                eprintln!(
+                    "Warning: Extension '{}' RINIT failed: {}",
+                    ext.info().name,
+                    msg
+                );
             }
         }
     }
@@ -194,7 +198,11 @@ impl ExtensionRegistry {
         // Call in reverse order (LIFO) for proper cleanup
         for ext in self.extensions.iter().rev() {
             if let ExtensionResult::Failure(msg) = ext.request_shutdown(context) {
-                eprintln!("Warning: Extension '{}' RSHUTDOWN failed: {}", ext.info().name, msg);
+                eprintln!(
+                    "Warning: Extension '{}' RSHUTDOWN failed: {}",
+                    ext.info().name,
+                    msg
+                );
             }
         }
     }
@@ -204,7 +212,11 @@ impl ExtensionRegistry {
         // Call in reverse order (LIFO) for proper cleanup
         for ext in self.extensions.iter_mut().rev() {
             if let ExtensionResult::Failure(msg) = ext.module_shutdown() {
-                eprintln!("Warning: Extension '{}' MSHUTDOWN failed: {}", ext.info().name, msg);
+                eprintln!(
+                    "Warning: Extension '{}' MSHUTDOWN failed: {}",
+                    ext.info().name,
+                    msg
+                );
             }
         }
     }

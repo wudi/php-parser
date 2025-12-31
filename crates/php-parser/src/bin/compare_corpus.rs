@@ -1,6 +1,6 @@
 use bumpalo::Bump;
-use php_parser::lexer::Lexer;
 use php_parser::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 use rayon::prelude::*;
 use serde_json::Value;

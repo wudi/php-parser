@@ -1,10 +1,12 @@
 use php_vm::core::value::Val;
 use php_vm::runtime::context::EngineBuilder;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
 
 fn setup_vm() -> VM {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 

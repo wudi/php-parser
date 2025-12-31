@@ -1,15 +1,18 @@
-use std::rc::Rc;
 use indexmap::IndexMap;
 use php_vm::compiler::chunk::CodeChunk;
-use php_vm::core::value::{Handle, ObjectData, Symbol, Val};
-use php_vm::runtime::context::{EngineBuilder, RequestContext};
+use php_vm::core::value::{ObjectData, Val};
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::VM;
 use php_vm::vm::frame::CallFrame;
 use std::collections::HashSet;
 use std::fs;
+use std::rc::Rc;
 
 fn create_test_vm() -> VM {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     VM::new(engine)
 }
 

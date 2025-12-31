@@ -12,7 +12,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     pub(super) fn parse_top_stmt(&mut self) -> StmtId<'ast> {
         let stmt = self.parse_stmt_impl(true);
-        
+
         // Track non-declare statements for strict_types position enforcement
         // Ignore Nop (opening tags) and Declare statements
         match stmt {
@@ -24,7 +24,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                 self.seen_non_declare_stmt = true;
             }
         }
-        
+
         stmt
     }
 

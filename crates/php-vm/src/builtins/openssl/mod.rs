@@ -1,5 +1,4 @@
-use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val};
-use crate::runtime::context::RequestContext;
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Val};
 use crate::vm::engine::VM;
 use indexmap::IndexMap;
 use openssl::cms::{CMSOptions, CmsContentInfo};
@@ -9,10 +8,8 @@ use openssl::pkcs7::{Pkcs7, Pkcs7Flags};
 use openssl::pkey::{PKey, Private, Public};
 use openssl::sign::{Signer, Verifier};
 use openssl::symm::{decrypt, encrypt, Cipher};
-use openssl::x509::store::X509StoreBuilder;
-use openssl::x509::{X509Name, X509Req, X509};
+use openssl::x509::{X509Req, X509};
 use std::any::Any;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 

@@ -4,6 +4,7 @@ use crate::core::value::Val;
 use crate::vm::engine::{ErrorHandler, ErrorLevel, VmError};
 use std::rc::Rc;
 
+
 /// Increment a value in-place, following PHP semantics
 /// Reference: $PHP_SRC_PATH/Zend/zend_operators.c - increment_function
 pub fn increment_value(val: Val, error_handler: &mut dyn ErrorHandler) -> Result<Val, VmError> {

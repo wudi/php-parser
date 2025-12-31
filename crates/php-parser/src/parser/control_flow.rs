@@ -593,7 +593,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
                     message: "strict_types declaration must be the first statement in the file",
                 });
             }
-            
+
             if let Some(num) = self.int_literal_value(value) {
                 if num != 0 && num != 1 {
                     self.errors.push(crate::ast::ParseError {

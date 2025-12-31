@@ -1,7 +1,6 @@
 mod common;
 use common::run_code_capture_output;
 
-
 #[test]
 fn test_basic_string_interpolation_with_newline() {
     let code = r#"<?php

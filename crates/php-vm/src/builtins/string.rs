@@ -226,9 +226,6 @@ pub fn php_str_contains(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
         return Err("str_contains() expects exactly 2 parameters".into());
     }
 
-    let haystack_val = vm.arena.get(args[0]);
-    let needle_val = vm.arena.get(args[1]);
-
     let haystack_bytes = vm.value_to_string(args[0])?;
     let needle_bytes = vm.value_to_string(args[1])?;
 
@@ -247,9 +244,6 @@ pub fn php_str_starts_with(vm: &mut VM, args: &[Handle]) -> Result<Handle, Strin
     if args.len() != 2 {
         return Err("str_starts_with() expects exactly 2 parameters".into());
     }
-
-    let haystack_val = vm.arena.get(args[0]);
-    let needle_val = vm.arena.get(args[1]);
 
     let haystack_bytes = vm.value_to_string(args[0])?;
     let needle_bytes = vm.value_to_string(args[1])?;
@@ -412,7 +406,7 @@ fn do_substr_replace(
         start = str_len;
     }
 
-    let mut end = if let Some(len) = l {
+    let end = if let Some(len) = l {
         if len < 0 {
             let e = str_len + len;
             if e < start {

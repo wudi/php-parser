@@ -134,7 +134,9 @@ impl VM {
     ) -> Result<(), VmError> {
         // Find property in inheritance chain
         let found = self.walk_inheritance_chain(class_name, |def, cls| {
-            def.properties.get(&prop_name).map(|entry| (entry.visibility, cls))
+            def.properties
+                .get(&prop_name)
+                .map(|entry| (entry.visibility, cls))
         });
 
         if let Some((vis, defined_class)) = found {
@@ -165,7 +167,7 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::context::{ClassDef, EngineContext};
+    use crate::runtime::context::EngineContext;
     use std::sync::Arc;
 
     #[test]

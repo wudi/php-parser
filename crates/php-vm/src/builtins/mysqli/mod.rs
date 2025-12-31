@@ -28,7 +28,6 @@ pub mod types;
 
 use crate::core::value::{ArrayData, ArrayKey, Handle, Val};
 use crate::vm::engine::VM;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use connection::MysqliConnection;
@@ -99,10 +98,9 @@ pub fn php_mysqli_connect(vm: &mut VM, args: &[Handle]) -> Result<Handle, String
             let conn_id = vm.context.next_resource_id;
             vm.context.next_resource_id += 1;
 
-            vm.context.resource_manager.register(
-                conn_id,
-                Rc::new(std::cell::RefCell::new(conn))
-            );
+            vm.context
+                .resource_manager
+                .register(conn_id, Rc::new(std::cell::RefCell::new(conn)));
 
             // Return resource handle
             let resource_val = Val::Resource(Rc::new(conn_id));
@@ -134,7 +132,9 @@ pub fn php_mysqli_close(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
     };
 
     // Remove connection from resource manager (triggers Drop/cleanup)
-    let removed = vm.context.resource_manager
+    let removed = vm
+        .context
+        .resource_manager
         .remove::<MysqliConnection>(conn_id)
         .is_some();
 
@@ -181,10 +181,12 @@ pub fn php_mysqli_query(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> 
             // Store result - capture resource ID first to avoid borrow conflicts
             let result_id = vm.context.next_resource_id;
             vm.context.next_resource_id += 1;
-            
+
             let result_rc = Rc::new(std::cell::RefCell::new(result));
             vm.context
-                .get_or_init_extension_data(|| crate::runtime::mysqli_extension::MysqliExtensionData::default())
+                .get_or_init_extension_data(|| {
+                    crate::runtime::mysqli_extension::MysqliExtensionData::default()
+                })
                 .results
                 .insert(result_id, result_rc);
 

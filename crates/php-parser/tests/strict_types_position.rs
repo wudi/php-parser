@@ -1,4 +1,3 @@
-use php_parser::ast::ParseError;
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 
@@ -13,9 +12,14 @@ function foo() {}
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Should have no errors
-    assert_eq!(program.errors.len(), 0, "Expected no errors, got: {:?}", program.errors);
+    assert_eq!(
+        program.errors.len(),
+        0,
+        "Expected no errors, got: {:?}",
+        program.errors
+    );
 }
 
 #[test]
@@ -28,17 +32,15 @@ declare(strict_types=1);
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Should have position error
-    assert!(
-        program.errors.len() > 0,
-        "Expected position error"
-    );
-    
-    let has_position_error = program.errors.iter().any(|e| {
-        e.message.contains("first statement")
-    });
-    
+    assert!(program.errors.len() > 0, "Expected position error");
+
+    let has_position_error = program
+        .errors
+        .iter()
+        .any(|e| e.message.contains("first statement"));
+
     assert!(
         has_position_error,
         "Expected 'first statement' error, got: {:?}",
@@ -56,12 +58,13 @@ declare(strict_types=1);
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Should have position error
     assert!(program.errors.len() > 0);
-    let has_position_error = program.errors.iter().any(|e| {
-        e.message.contains("first statement")
-    });
+    let has_position_error = program
+        .errors
+        .iter()
+        .any(|e| e.message.contains("first statement"));
     assert!(has_position_error);
 }
 
@@ -78,13 +81,18 @@ function foo() {}
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Multiple declares at the start are allowed
     // strict_types should not have position error
-    let has_position_error = program.errors.iter().any(|e| {
-        e.message.contains("first statement")
-    });
-    assert!(!has_position_error, "Should not have position error, got: {:?}", program.errors);
+    let has_position_error = program
+        .errors
+        .iter()
+        .any(|e| e.message.contains("first statement"));
+    assert!(
+        !has_position_error,
+        "Should not have position error, got: {:?}",
+        program.errors
+    );
 }
 
 #[test]
@@ -97,11 +105,12 @@ declare(strict_types=1);
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Should have no position errors
-    let has_position_error = program.errors.iter().any(|e| {
-        e.message.contains("first statement")
-    });
+    let has_position_error = program
+        .errors
+        .iter()
+        .any(|e| e.message.contains("first statement"));
     assert!(!has_position_error);
 }
 
@@ -115,10 +124,14 @@ declare(strict_types=1);
     let lexer = Lexer::new(code.as_bytes());
     let mut parser = Parser::new(lexer, &arena);
     let program = parser.parse_program();
-    
+
     // Namespace is a statement, so strict_types after it should error
-    let has_position_error = program.errors.iter().any(|e| {
-        e.message.contains("first statement")
-    });
-    assert!(has_position_error, "Should have position error after namespace");
+    let has_position_error = program
+        .errors
+        .iter()
+        .any(|e| e.message.contains("first statement"));
+    assert!(
+        has_position_error,
+        "Should have position error after namespace"
+    );
 }

@@ -1,4 +1,4 @@
-use crate::builtins::{class, datetime, exception, hash, json, output_control, string, url};
+use crate::builtins::{hash, json};
 use crate::compiler::chunk::UserFunc;
 use crate::core::interner::Interner;
 use crate::core::value::{Handle, Symbol, Val, Visibility};
@@ -266,21 +266,21 @@ impl RequestContext {
             strtok_string: None,
             strtok_pos: 0,
             working_dir: None,
-            extension_data: HashMap::new(),         // Generic extension storage
+            extension_data: HashMap::new(), // Generic extension storage
             resource_manager: ResourceManager::new(), // Type-safe resource management
         };
-        
+
         // OPTIMIZATION: Copy constants from extension registry in bulk
         // This is faster than calling register_builtin_constants() which re-interns
         // and re-inserts every constant individually.
         ctx.copy_engine_constants();
-        
+
         // Materialize classes from extensions (all builtin classes now come from extensions)
         ctx.materialize_extension_classes();
-        
+
         // Call RINIT for all extensions
         engine.registry.invoke_request_init(&mut ctx).ok();
-        
+
         ctx
     }
 
@@ -297,7 +297,7 @@ impl RequestContext {
             let sym = self.interner.intern(name);
             self.constants.insert(sym, val.clone());
         }
-        
+
         // Still need to register builtin constants that aren't in the registry
         self.register_builtin_constants();
     }
@@ -530,15 +530,24 @@ impl EngineBuilder {
     /// This includes all core PHP functionality: core functions, classes, interfaces,
     /// exceptions, and the date/time extension.
     pub fn with_core_extensions(mut self) -> Self {
-        self.extensions.push(Box::new(super::core_extension::CoreExtension));
-        self.extensions.push(Box::new(super::date_extension::DateExtension));
-        self.extensions.push(Box::new(super::hash_extension::HashExtension));
-        self.extensions.push(Box::new(super::mysqli_extension::MysqliExtension));
-        self.extensions.push(Box::new(super::json_extension::JsonExtension));
-        self.extensions.push(Box::new(super::openssl_extension::OpenSSLExtension));
-        self.extensions.push(Box::new(super::pdo_extension::PdoExtension));
-        self.extensions.push(Box::new(super::pthreads_extension::PthreadsExtension));
-        self.extensions.push(Box::new(super::zlib_extension::ZlibExtension));
+        self.extensions
+            .push(Box::new(super::core_extension::CoreExtension));
+        self.extensions
+            .push(Box::new(super::date_extension::DateExtension));
+        self.extensions
+            .push(Box::new(super::hash_extension::HashExtension));
+        self.extensions
+            .push(Box::new(super::mysqli_extension::MysqliExtension));
+        self.extensions
+            .push(Box::new(super::json_extension::JsonExtension));
+        self.extensions
+            .push(Box::new(super::openssl_extension::OpenSSLExtension));
+        self.extensions
+            .push(Box::new(super::pdo_extension::PdoExtension));
+        self.extensions
+            .push(Box::new(super::pthreads_extension::PthreadsExtension));
+        self.extensions
+            .push(Box::new(super::zlib_extension::ZlibExtension));
         self
     }
 

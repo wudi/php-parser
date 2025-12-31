@@ -1,9 +1,9 @@
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::{ArrayKey, Val};
 use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::{ErrorHandler, ErrorLevel, VM};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 // Custom error handler to capture warnings
 struct TestErrorHandler {
@@ -27,7 +27,10 @@ impl ErrorHandler for TestErrorHandler {
 }
 
 fn run_code(src: &str) -> (Val, Vec<(ErrorLevel, String)>, VM) {
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();
@@ -146,11 +149,11 @@ fn test_strlen_object() {
 #[test]
 fn test_str_contains_basic() {
     let src = "<?php return str_contains('abc', 'a');";
-    let (result, warnings, _) = run_code(src);
+    let (result, _warnings, _) = run_code(src);
     assert_eq!(result, Val::Bool(true));
 
     let src = "<?php return str_contains('abc', 'd');";
-    let (result, warnings, _) = run_code(src);
+    let (result, _warnings, _) = run_code(src);
     assert_eq!(result, Val::Bool(false));
 }
 

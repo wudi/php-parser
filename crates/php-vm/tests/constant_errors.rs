@@ -1,12 +1,13 @@
-use php_vm::runtime::context::EngineContext;
 use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::{VmError, VM};
 use std::rc::Rc;
-use std::sync::Arc;
 
 #[test]
 fn test_undefined_constant_error_message_format() {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     let source = "<?php echo UNDEFINED_CONST;";
@@ -38,7 +39,10 @@ fn test_undefined_constant_error_message_format() {
 
 #[test]
 fn test_multiple_undefined_constants() {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     // Test that the first undefined constant throws immediately
@@ -69,7 +73,10 @@ fn test_multiple_undefined_constants() {
 
 #[test]
 fn test_defined_then_undefined() {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     // Define one constant, then use an undefined one

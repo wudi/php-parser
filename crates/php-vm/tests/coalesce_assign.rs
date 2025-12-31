@@ -46,7 +46,6 @@ fn test_coalesce_assign_var() {
         return [$a, $b, $c, $d, $e, $f, $o->p, $o->q, $o->r];
     "#;
 
-
     let (_val, vm) = run_code_with_vm(src).expect("Failed to execute code");
 
     let handle = vm.last_return_value.expect("No return value");

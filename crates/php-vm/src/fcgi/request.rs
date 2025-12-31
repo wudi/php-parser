@@ -132,24 +132,31 @@ pub fn read_request<R: Read>(reader: &mut R) -> io::Result<Request> {
 
         match header.record_type {
             RecordType::BeginRequest => {
-                builder.begin_request(header.request_id, &content)
+                builder
+                    .begin_request(header.request_id, &content)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             }
             RecordType::Params => {
-                builder.add_params(&content)
+                builder
+                    .add_params(&content)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             }
             RecordType::Stdin => {
-                builder.add_stdin(&content)
+                builder
+                    .add_stdin(&content)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                 if builder.is_complete() {
-                    return builder.build()
+                    return builder
+                        .build()
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
                 }
             }
             RecordType::AbortRequest => {
-                return Err(io::Error::new(io::ErrorKind::Interrupted, "request aborted"));
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "request aborted",
+                ));
             }
             _ => {
                 // Ignore other record types during request phase
@@ -161,7 +168,9 @@ pub fn read_request<R: Read>(reader: &mut R) -> io::Result<Request> {
 impl Request {
     /// Get param value as UTF-8 string (lossy).
     pub fn param_str(&self, key: &[u8]) -> Option<String> {
-        self.params.get(key).map(|v| String::from_utf8_lossy(v).to_string())
+        self.params
+            .get(key)
+            .map(|v| String::from_utf8_lossy(v).to_string())
     }
 
     /// Get param value as bytes.

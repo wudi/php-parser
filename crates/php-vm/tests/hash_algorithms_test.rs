@@ -38,7 +38,6 @@ fn test_new_algorithms() {
         }
     "#;
 
-
     match run_code(source) {
         Val::Null => { /* success */ }
         other => panic!("Expected int return, got {:?}", other),

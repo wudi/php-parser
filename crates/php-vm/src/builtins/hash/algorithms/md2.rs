@@ -1,5 +1,5 @@
-use digest::Digest;
 use crate::builtins::hash::{HashAlgorithm, HashState};
+use digest::Digest;
 use md2::Md2;
 
 pub struct Md2Algorithm;
@@ -18,9 +18,7 @@ impl HashAlgorithm for Md2Algorithm {
     }
 
     fn new_hasher(&self) -> Box<dyn HashState> {
-        Box::new(Md2State {
-            hasher: Md2::new(),
-        })
+        Box::new(Md2State { hasher: Md2::new() })
     }
 }
 

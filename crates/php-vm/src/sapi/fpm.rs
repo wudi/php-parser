@@ -4,10 +4,10 @@
 
 use crate::fcgi::request::Request;
 use crate::sapi::FileUpload;
+use multipart::server::Multipart;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use std::time::{SystemTime, UNIX_EPOCH};
-use multipart::server::Multipart;
 use tempfile::NamedTempFile;
 
 /// Extract superglobal data from FastCGI request params.
@@ -38,9 +38,12 @@ impl FpmRequest {
             let secs = duration.as_secs();
             let micros = duration.subsec_micros();
             let float_time = secs as f64 + (micros as f64 / 1_000_000.0);
-            
+
             server_vars.insert(b"REQUEST_TIME".to_vec(), secs.to_string().into_bytes());
-            server_vars.insert(b"REQUEST_TIME_FLOAT".to_vec(), format!("{:.6}", float_time).into_bytes());
+            server_vars.insert(
+                b"REQUEST_TIME_FLOAT".to_vec(),
+                format!("{:.6}", float_time).into_bytes(),
+            );
         }
 
         // Extract script filename (required)
@@ -66,7 +69,7 @@ impl FpmRequest {
         let (post_vars, files_vars) = if param(req, b"REQUEST_METHOD") == Some(b"POST") {
             let content_type = param(req, b"CONTENT_TYPE").unwrap_or(b"");
             let content_type_str = String::from_utf8_lossy(content_type);
-            
+
             if content_type.starts_with(b"application/x-www-form-urlencoded") {
                 (parse_query_string(&req.stdin_data), HashMap::new())
             } else if content_type.starts_with(b"multipart/form-data") {
@@ -178,7 +181,10 @@ fn parse_cookies(cookie_header: &[u8]) -> HashMap<Vec<u8>, Vec<u8>> {
 
 /// Parse multipart/form-data into $_POST (text fields) and $_FILES (uploads).
 /// Reference: php-src/main/rfc1867.c
-fn parse_multipart(content_type: &str, body: &[u8]) -> (HashMap<Vec<u8>, Vec<u8>>, HashMap<Vec<u8>, FileUpload>) {
+fn parse_multipart(
+    content_type: &str,
+    body: &[u8],
+) -> (HashMap<Vec<u8>, Vec<u8>>, HashMap<Vec<u8>, FileUpload>) {
     let mut post_vars = HashMap::new();
     let mut files_vars = HashMap::new();
 
@@ -273,7 +279,10 @@ mod tests {
     fn test_parse_cookies() {
         let header = b"session_id=abc123; user=john_doe; theme=dark";
         let cookies = parse_cookies(header);
-        assert_eq!(cookies.get(b"session_id".as_slice()), Some(&b"abc123".to_vec()));
+        assert_eq!(
+            cookies.get(b"session_id".as_slice()),
+            Some(&b"abc123".to_vec())
+        );
         assert_eq!(cookies.get(b"user".as_slice()), Some(&b"john_doe".to_vec()));
         assert_eq!(cookies.get(b"theme".as_slice()), Some(&b"dark".to_vec()));
     }
@@ -281,9 +290,15 @@ mod tests {
     #[test]
     fn test_extract_boundary() {
         let ct = "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW";
-        assert_eq!(extract_boundary(ct), Some("----WebKitFormBoundary7MA4YWxkTrZu0gW".to_string()));
-        
+        assert_eq!(
+            extract_boundary(ct),
+            Some("----WebKitFormBoundary7MA4YWxkTrZu0gW".to_string())
+        );
+
         let ct_quoted = "multipart/form-data; boundary=\"----Boundary\"";
-        assert_eq!(extract_boundary(ct_quoted), Some("----Boundary".to_string()));
+        assert_eq!(
+            extract_boundary(ct_quoted),
+            Some("----Boundary".to_string())
+        );
     }
 }

@@ -1,7 +1,7 @@
 mod common;
 
-use common::run_code_capture_output;
 use crate::common::run_code_with_vm;
+use common::run_code_capture_output;
 
 #[test]
 fn test_eval_basic() {

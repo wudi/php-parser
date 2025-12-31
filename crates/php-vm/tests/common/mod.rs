@@ -5,16 +5,14 @@
 
 use php_vm::core::value::Val;
 use php_vm::vm::engine::{VmError, VM};
-use php_vm::vm::executor::{execute_code, execute_code_with_config, ExecutionConfig};
+use php_vm::vm::executor::{execute_code, ExecutionConfig};
 
 /// Legacy helper: Execute PHP code and return the result value
 ///
 /// Code must contain the full `<?php` opening tag.
 /// Panics if execution fails.
 pub fn run_code(code: &str) -> Val {
-    execute_code(code)
-        .expect("code execution failed")
-        .value
+    execute_code(code).expect("code execution failed").value
 }
 
 /// Legacy helper: Alias for `run_code`

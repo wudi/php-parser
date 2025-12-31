@@ -12,31 +12,63 @@ const FNV_OFFSET_BASIS_64: u64 = 14695981039346656037;
 const FNV_PRIME_64: u64 = 1099511628211;
 
 impl HashAlgorithm for Fnv132Algorithm {
-    fn name(&self) -> &'static str { "fnv132" }
-    fn output_size(&self) -> usize { 4 }
-    fn block_size(&self) -> usize { 4 }
-    fn new_hasher(&self) -> Box<dyn HashState> { Box::new(FnvState32::new(false)) }
+    fn name(&self) -> &'static str {
+        "fnv132"
+    }
+    fn output_size(&self) -> usize {
+        4
+    }
+    fn block_size(&self) -> usize {
+        4
+    }
+    fn new_hasher(&self) -> Box<dyn HashState> {
+        Box::new(FnvState32::new(false))
+    }
 }
 
 impl HashAlgorithm for Fnv1a32Algorithm {
-    fn name(&self) -> &'static str { "fnv1a32" }
-    fn output_size(&self) -> usize { 4 }
-    fn block_size(&self) -> usize { 4 }
-    fn new_hasher(&self) -> Box<dyn HashState> { Box::new(FnvState32::new(true)) }
+    fn name(&self) -> &'static str {
+        "fnv1a32"
+    }
+    fn output_size(&self) -> usize {
+        4
+    }
+    fn block_size(&self) -> usize {
+        4
+    }
+    fn new_hasher(&self) -> Box<dyn HashState> {
+        Box::new(FnvState32::new(true))
+    }
 }
 
 impl HashAlgorithm for Fnv164Algorithm {
-    fn name(&self) -> &'static str { "fnv164" }
-    fn output_size(&self) -> usize { 8 }
-    fn block_size(&self) -> usize { 8 }
-    fn new_hasher(&self) -> Box<dyn HashState> { Box::new(FnvState64::new(false)) }
+    fn name(&self) -> &'static str {
+        "fnv164"
+    }
+    fn output_size(&self) -> usize {
+        8
+    }
+    fn block_size(&self) -> usize {
+        8
+    }
+    fn new_hasher(&self) -> Box<dyn HashState> {
+        Box::new(FnvState64::new(false))
+    }
 }
 
 impl HashAlgorithm for Fnv1a64Algorithm {
-    fn name(&self) -> &'static str { "fnv1a64" }
-    fn output_size(&self) -> usize { 8 }
-    fn block_size(&self) -> usize { 8 }
-    fn new_hasher(&self) -> Box<dyn HashState> { Box::new(FnvState64::new(true)) }
+    fn name(&self) -> &'static str {
+        "fnv1a64"
+    }
+    fn output_size(&self) -> usize {
+        8
+    }
+    fn block_size(&self) -> usize {
+        8
+    }
+    fn new_hasher(&self) -> Box<dyn HashState> {
+        Box::new(FnvState64::new(true))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -47,7 +79,10 @@ struct FnvState32 {
 
 impl FnvState32 {
     fn new(is_a: bool) -> Self {
-        Self { hash: FNV_OFFSET_BASIS_32, is_a }
+        Self {
+            hash: FNV_OFFSET_BASIS_32,
+            is_a,
+        }
     }
 }
 
@@ -81,7 +116,10 @@ struct FnvState64 {
 
 impl FnvState64 {
     fn new(is_a: bool) -> Self {
-        Self { hash: FNV_OFFSET_BASIS_64, is_a }
+        Self {
+            hash: FNV_OFFSET_BASIS_64,
+            is_a,
+        }
     }
 }
 

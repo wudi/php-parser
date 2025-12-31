@@ -1,21 +1,21 @@
+use crate::builtins::hash::HashState;
 use crate::core::value::{ArrayData, Handle, Val};
 use crate::vm::engine::VM;
-use std::rc::Rc;
+use digest::core_api::BlockSizeUser;
+use digest::generic_array::GenericArray;
+use digest::typenum::{Unsigned, U16, U20, U64};
+use digest::{Digest, FixedOutput, HashMarker, OutputSizeUser, Reset, Update};
 use hmac::{Hmac, Mac};
-use md5::Md5;
 use md2::Md2;
 use md4::Md4;
+use md5::Md5;
 use ripemd::{Ripemd128, Ripemd160, Ripemd256, Ripemd320};
 use sha1::Sha1;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
+use std::rc::Rc;
 use tiger::Tiger;
 use whirlpool::Whirlpool;
-use digest::{Digest, FixedOutput, HashMarker, OutputSizeUser, Reset, Update};
-use digest::core_api::BlockSizeUser;
-use digest::generic_array::GenericArray;
-use digest::typenum::{U16, U20, U64, Unsigned};
-use crate::builtins::hash::HashState;
 
 #[derive(Clone, Default, Debug)]
 pub struct Tiger128 {
@@ -139,7 +139,10 @@ impl<D: Digest + BlockSizeUser + Clone + Update + FixedOutput> ManualTigerHmacSt
     }
 }
 
-impl<D: Digest + BlockSizeUser + Clone + Update + FixedOutput + std::fmt::Debug + Send + 'static> HashState for ManualTigerHmacState<D> {
+impl<
+        D: Digest + BlockSizeUser + Clone + Update + FixedOutput + std::fmt::Debug + Send + 'static,
+    > HashState for ManualTigerHmacState<D>
+{
     fn update(&mut self, data: &[u8]) {
         Update::update(&mut self.inner, data);
     }
@@ -225,7 +228,12 @@ fn manual_hmac<D: Digest + BlockSizeUser + Update>(key: &[u8], data: &[u8]) -> V
     outer.finalize().to_vec()
 }
 
-pub fn compute_hmac(_vm: &mut VM, algo_name: &str, key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
+pub fn compute_hmac(
+    _vm: &mut VM,
+    algo_name: &str,
+    key: &[u8],
+    data: &[u8],
+) -> Result<Vec<u8>, String> {
     macro_rules! do_hmac {
         ($algo:ty) => {{
             let mut mac = Hmac::<$algo>::new_from_slice(key).map_err(|e| e.to_string())?;
@@ -289,7 +297,9 @@ pub fn php_hash_hmac_algos(vm: &mut VM, _args: &[Handle]) -> Result<Handle, Stri
 
     let mut array = ArrayData::new();
     for algo in algos {
-        let val = vm.arena.alloc(Val::String(Rc::new(algo.as_bytes().to_vec())));
+        let val = vm
+            .arena
+            .alloc(Val::String(Rc::new(algo.as_bytes().to_vec())));
         array.push(val);
     }
 

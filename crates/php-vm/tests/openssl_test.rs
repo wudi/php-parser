@@ -1,8 +1,7 @@
-use std::rc::Rc;
 use php_vm::core::value::{ArrayData, ObjectData, Val};
 use php_vm::runtime::context::EngineBuilder;
-use php_vm::runtime::context::EngineContext;
 use php_vm::vm::engine::VM;
+use std::rc::Rc;
 
 fn create_test_vm() -> VM {
     let engine = EngineBuilder::new()

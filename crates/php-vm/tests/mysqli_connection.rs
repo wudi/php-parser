@@ -4,8 +4,8 @@ use std::rc::Rc;
 // Tests for connection management functions.
 
 use php_vm::builtins::mysqli;
-use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::Val;
+use php_vm::runtime::context::EngineBuilder;
 use php_vm::vm::engine::VM;
 
 fn create_test_vm() -> VM {
@@ -143,7 +143,11 @@ fn test_mysqli_error_functions() {
         Ok(conn_handle) => {
             // Initially should have no error
             let error_result = mysqli::php_mysqli_error(&mut vm, &[conn_handle]);
-            assert!(error_result.is_ok(), "mysqli_error failed: {:?}", error_result.err());
+            assert!(
+                error_result.is_ok(),
+                "mysqli_error failed: {:?}",
+                error_result.err()
+            );
 
             let error_handle = error_result.unwrap();
             match &vm.arena.get(error_handle).value {
@@ -158,7 +162,11 @@ fn test_mysqli_error_functions() {
 
             // Errno should be 0
             let errno_result = mysqli::php_mysqli_errno(&mut vm, &[conn_handle]);
-            assert!(errno_result.is_ok(), "mysqli_errno failed: {:?}", errno_result.err());
+            assert!(
+                errno_result.is_ok(),
+                "mysqli_errno failed: {:?}",
+                errno_result.err()
+            );
 
             let errno_handle = errno_result.unwrap();
             match &vm.arena.get(errno_handle).value {

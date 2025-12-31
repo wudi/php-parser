@@ -24,7 +24,7 @@ pub mod kdf;
 use crate::builtins::exec::{PipeKind, PipeResource};
 use crate::builtins::filesystem::FileHandle;
 use crate::builtins::zlib::GzFile;
-use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Symbol, Val};
+use crate::core::value::{ArrayData, ArrayKey, Handle, ObjectData, Val};
 use crate::vm::engine::VM;
 use std::collections::HashMap;
 use std::io::Read;
@@ -39,7 +39,9 @@ pub fn php_hash_equals(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
 
     let known = match &vm.arena.get(args[0]).value {
         Val::String(s) => s.as_slice(),
-        _ => return Err("hash_equals(): Argument #1 ($known_string) must be of type string".into()),
+        _ => {
+            return Err("hash_equals(): Argument #1 ($known_string) must be of type string".into())
+        }
     };
 
     let user = match &vm.arena.get(args[1]).value {
@@ -197,7 +199,8 @@ pub fn php_hash(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
         .ok_or("Hash extension not initialized")?;
 
-    let algo = hash_data.registry
+    let algo = hash_data
+        .registry
         .get(&algo_name)
         .ok_or_else(|| format!("hash(): Unknown hashing algorithm: {}", algo_name))?;
 
@@ -265,10 +268,11 @@ pub fn php_hash_init(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
             .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
             .ok_or("Hash extension not initialized")?;
 
-        let algo = hash_data.registry
+        let algo = hash_data
+            .registry
             .get(&algo_name)
             .ok_or_else(|| format!("hash_init(): Unknown hashing algorithm: {}", algo_name))?;
-        
+
         algo.new_hasher()
     };
 
@@ -397,7 +401,9 @@ pub fn php_hash_update_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, Stri
     // Extract filename
     let filename = match &vm.arena.get(args[1]).value {
         Val::String(s) => String::from_utf8_lossy(s).to_string(),
-        _ => return Err("hash_update_file(): Argument #2 ($filename) must be of type string".into()),
+        _ => {
+            return Err("hash_update_file(): Argument #2 ($filename) must be of type string".into())
+        }
     };
 
     // Get object payload
@@ -547,11 +553,7 @@ pub fn php_hash_update_stream(vm: &mut VM, args: &[Handle]) -> Result<Handle, St
                     PipeKind::Stderr(stderr) => stderr
                         .read(&mut buffer[..to_read])
                         .map_err(|e| format!("hash_update_stream(): {}", e))?,
-                    _ => {
-                        return Err(
-                            "hash_update_stream(): Cannot read from stdin pipe".into(),
-                        )
-                    }
+                    _ => return Err("hash_update_stream(): Cannot read from stdin pipe".into()),
                 }
             } else if let Some(gz) = stream_rc.downcast_ref::<GzFile>() {
                 gz.inner
@@ -813,7 +815,8 @@ pub fn php_hash_file(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         .get_extension_data::<crate::runtime::hash_extension::HashExtensionData>()
         .ok_or("Hash extension not initialized")?;
 
-    let algo = hash_data.registry
+    let algo = hash_data
+        .registry
         .get(&algo_name)
         .ok_or_else(|| format!("hash_file(): Unknown hashing algorithm: {}", algo_name))?;
 

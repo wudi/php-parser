@@ -4,8 +4,8 @@ use std::rc::Rc;
 // Tests for query execution and result fetching.
 
 use php_vm::builtins::mysqli;
-use php_vm::runtime::context::EngineBuilder;
 use php_vm::core::value::{ArrayKey, Val};
+use php_vm::runtime::context::EngineBuilder;
 
 use php_vm::vm::engine::VM;
 

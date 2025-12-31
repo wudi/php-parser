@@ -28,7 +28,6 @@
 /// - `getdate()`, `localtime()`, `checkdate()`
 /// - `date_parse()`, `date_parse_from_format()`
 /// - `timezone_open()`, `timezone_name_get()`, etc.
-
 use crate::builtins::datetime;
 use crate::core::value::{Val, Visibility};
 use crate::runtime::context::RequestContext;
@@ -36,6 +35,7 @@ use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::{ExtensionRegistry, NativeClassDef, NativeMethodEntry};
 use std::collections::HashMap;
 use std::rc::Rc;
+
 
 pub struct DateExtension;
 
@@ -346,13 +346,13 @@ impl Extension for DateExtension {
                 is_static: false,
             },
         );
-        
+
         let mut dateperiod_constants = HashMap::new();
         dateperiod_constants.insert(
             b"EXCLUDE_START_DATE".to_vec(),
             (Val::Int(1), Visibility::Public),
         );
-        
+
         registry.register_class(NativeClassDef {
             name: b"DatePeriod".to_vec(),
             parent: None,
@@ -557,7 +557,10 @@ impl Extension for DateExtension {
         // ========================================
 
         // Register date/time functions that exist
-        registry.register_function(b"date_default_timezone_get", datetime::php_date_default_timezone_get);
+        registry.register_function(
+            b"date_default_timezone_get",
+            datetime::php_date_default_timezone_get,
+        );
         registry.register_function(b"date", datetime::php_date);
         registry.register_function(b"gmdate", datetime::php_gmdate);
         registry.register_function(b"time", datetime::php_time);
@@ -570,28 +573,49 @@ impl Extension for DateExtension {
         registry.register_function(b"getdate", datetime::php_getdate);
         registry.register_function(b"idate", datetime::php_idate);
         registry.register_function(b"date_parse", datetime::php_date_parse);
-        registry.register_function(b"date_parse_from_format", datetime::php_date_parse_from_format);
+        registry.register_function(
+            b"date_parse_from_format",
+            datetime::php_date_parse_from_format,
+        );
         registry.register_function(b"date_create", datetime::php_date_create);
-        registry.register_function(b"date_create_from_format", datetime::php_datetime_create_from_format);
+        registry.register_function(
+            b"date_create_from_format",
+            datetime::php_datetime_create_from_format,
+        );
         registry.register_function(b"date_format", datetime::php_date_format);
         registry.register_function(b"date_modify", datetime::php_date_modify);
         registry.register_function(b"date_add", datetime::php_date_add);
         registry.register_function(b"date_sub", datetime::php_date_sub);
         registry.register_function(b"date_diff", datetime::php_date_diff);
-        registry.register_function(b"date_interval_create_from_date_string", datetime::php_date_interval_create_from_date_string);
+        registry.register_function(
+            b"date_interval_create_from_date_string",
+            datetime::php_date_interval_create_from_date_string,
+        );
         registry.register_function(b"date_interval_format", datetime::php_dateinterval_format);
         registry.register_function(b"checkdate", datetime::php_checkdate);
         registry.register_function(b"timezone_open", datetime::php_timezone_open);
-        registry.register_function(b"date_default_timezone_set", datetime::php_date_default_timezone_set);
-        registry.register_function(b"date_create_immutable", datetime::php_date_create_immutable);
-        registry.register_function(b"date_create_immutable_from_format", datetime::php_date_create_immutable_from_format);
+        registry.register_function(
+            b"date_default_timezone_set",
+            datetime::php_date_default_timezone_set,
+        );
+        registry.register_function(
+            b"date_create_immutable",
+            datetime::php_date_create_immutable,
+        );
+        registry.register_function(
+            b"date_create_immutable_from_format",
+            datetime::php_date_create_immutable_from_format,
+        );
         registry.register_function(b"date_timestamp_get", datetime::php_date_timestamp_get);
         registry.register_function(b"date_timestamp_set", datetime::php_date_timestamp_set);
         registry.register_function(b"date_timezone_get", datetime::php_date_timezone_get);
         registry.register_function(b"date_timezone_set", datetime::php_date_timezone_set);
         registry.register_function(b"timezone_name_get", datetime::php_timezone_name_get);
-        registry.register_function(b"timezone_identifiers_list", datetime::php_timezone_identifiers_list);
-                
+        registry.register_function(
+            b"timezone_identifiers_list",
+            datetime::php_timezone_identifiers_list,
+        );
+
         ExtensionResult::Success
     }
 
@@ -610,4 +634,3 @@ impl Extension for DateExtension {
         ExtensionResult::Success
     }
 }
-

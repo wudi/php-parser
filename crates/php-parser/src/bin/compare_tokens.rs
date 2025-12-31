@@ -1,5 +1,5 @@
-use php_parser::lexer::Lexer;
 use php_parser::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
 use serde_json::Value;
 use std::env;
 use std::fs;

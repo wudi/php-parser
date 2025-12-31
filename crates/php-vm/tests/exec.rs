@@ -3,7 +3,8 @@ use common::run_code_with_vm;
 
 #[test]
 fn test_escapeshellarg() {
-    let (_val, vm) = run_code_with_vm("<?php return escapeshellarg('hello');").expect("Execution failed");
+    let (_val, vm) =
+        run_code_with_vm("<?php return escapeshellarg('hello');").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -17,7 +18,8 @@ fn test_escapeshellarg() {
 
 #[test]
 fn test_escapeshellarg_with_quotes() {
-    let (_val, vm) = run_code_with_vm("<?php return escapeshellarg(\"hello'world\");").expect("Execution failed");
+    let (_val, vm) = run_code_with_vm("<?php return escapeshellarg(\"hello'world\");")
+        .expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -31,7 +33,8 @@ fn test_escapeshellarg_with_quotes() {
 
 #[test]
 fn test_escapeshellcmd() {
-    let (_val, vm) = run_code_with_vm("<?php return escapeshellcmd('echo hello; rm -rf /');").expect("Execution failed");
+    let (_val, vm) = run_code_with_vm("<?php return escapeshellcmd('echo hello; rm -rf /');")
+        .expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -46,7 +49,8 @@ fn test_escapeshellcmd() {
 
 #[test]
 fn test_shell_exec() {
-    let (_val, vm) = run_code_with_vm("<?php return shell_exec('echo hello');").expect("Execution failed");
+    let (_val, vm) =
+        run_code_with_vm("<?php return shell_exec('echo hello');").expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -67,7 +71,8 @@ fn test_exec_with_output() {
         $last_line = exec('echo "line1"; echo "line2"', $output, $return_var);
         return [$last_line, $output, $return_var];
     "#,
-    ).expect("Execution failed");
+    )
+    .expect("Execution failed");
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);
     match &val.value {
@@ -118,7 +123,8 @@ fn test_proc_open_basic() {
         // Just verify we got a process resource and pipes array
         return [gettype($process), count($pipes)];
     "#,
-    ).expect("Execution failed");
+    )
+    .expect("Execution failed");
 
     let ret = vm.last_return_value.expect("No return value");
     let val = vm.arena.get(ret);

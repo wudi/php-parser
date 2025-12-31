@@ -1,8 +1,5 @@
 mod common;
-use crate::common::run_code_with_vm;
 use common::run_code_capture_output;
-use php_vm::core::value::Val;
-use php_vm::vm::engine::{VmError, VM};
 // ============================================================================
 // Finally execution during exception unwinding
 // ============================================================================

@@ -9,7 +9,8 @@ fn test_datetime_construct() {
     $dt = new DateTime("2023-10-27 12:00:00");
     echo $dt->format("Y-m-d H:i:s");
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "2023-10-27 12:00:00");
 }
 
@@ -26,7 +27,8 @@ fn test_dateperiod_iteration() {
         echo $date->format("Y-m-d") . "\n";
     }
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "2023-10-27\n2023-10-28\n2023-10-29\n");
 }
 
@@ -39,7 +41,8 @@ fn test_datetime_add() {
     $dt->add($interval);
     echo $dt->format("Y-m-d H:i:s");
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "2023-10-28 12:00:00");
 }
 
@@ -52,7 +55,8 @@ fn test_datetime_sub() {
     $dt->sub($interval);
     echo $dt->format("Y-m-d H:i:s");
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "2023-10-26 12:00:00");
 }
 
@@ -65,7 +69,8 @@ fn test_datetime_diff() {
     $diff = $dt1->diff($dt2);
     echo $diff->d . " days " . $diff->h . " hours";
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "1 days 1 hours");
 }
 
@@ -76,7 +81,8 @@ fn test_datetimezone_construct() {
     $tz = new DateTimeZone("Europe/London");
     echo $tz->getName();
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "Europe/London");
 }
 
@@ -88,7 +94,8 @@ fn test_datetime_set_timezone() {
     $dt->setTimezone(new DateTimeZone("Europe/Paris"));
     echo $dt->format("Y-m-d H:i:s");
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     // Paris is UTC+2 in October (DST)
     assert_eq!(output, "2023-10-27 14:00:00");
 }
@@ -100,6 +107,7 @@ fn test_dateinterval_properties() {
     $interval = new DateInterval("P1Y2M3DT4H5M6S");
     echo $interval->y . $interval->m . $interval->d . $interval->h . $interval->i . $interval->s;
     "#,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(output, "123456");
 }

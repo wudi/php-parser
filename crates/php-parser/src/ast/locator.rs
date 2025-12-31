@@ -1,4 +1,4 @@
-use crate::ast::visitor::{Visitor, walk_class_member, walk_expr, walk_stmt};
+use crate::ast::visitor::{walk_class_member, walk_expr, walk_stmt, Visitor};
 use crate::ast::*;
 use crate::span::Span;
 

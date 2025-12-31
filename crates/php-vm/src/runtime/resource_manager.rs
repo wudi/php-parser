@@ -49,7 +49,7 @@ impl ResourceManager {
             .or_insert_with(|| Box::new(HashMap::<u64, Rc<RefCell<T>>>::new()))
             .downcast_mut::<HashMap<u64, Rc<RefCell<T>>>>()
             .expect("TypeId mismatch - this should never happen");
-        
+
         map.insert(id, resource);
     }
 
@@ -62,7 +62,7 @@ impl ResourceManager {
             .storage
             .get(&type_id)?
             .downcast_ref::<HashMap<u64, Rc<RefCell<T>>>>()?;
-        
+
         map.get(&id).cloned()
     }
 
@@ -75,7 +75,7 @@ impl ResourceManager {
             .storage
             .get_mut(&type_id)?
             .downcast_mut::<HashMap<u64, Rc<RefCell<T>>>>()?;
-        
+
         map.remove(&id)
     }
 
@@ -153,9 +153,9 @@ mod tests {
     fn test_register_and_get() {
         let mut manager = ResourceManager::new();
         let resource = Rc::new(RefCell::new(TestResource { value: 42 }));
-        
+
         manager.register(1, resource.clone());
-        
+
         let retrieved = manager.get::<TestResource>(1).unwrap();
         assert_eq!(retrieved.borrow().value, 42);
     }
@@ -164,10 +164,10 @@ mod tests {
     fn test_remove() {
         let mut manager = ResourceManager::new();
         let resource = Rc::new(RefCell::new(TestResource { value: 42 }));
-        
+
         manager.register(1, resource);
         assert!(manager.contains::<TestResource>(1));
-        
+
         let removed = manager.remove::<TestResource>(1);
         assert!(removed.is_some());
         assert!(!manager.contains::<TestResource>(1));
@@ -176,36 +176,45 @@ mod tests {
     #[test]
     fn test_type_isolation() {
         let mut manager = ResourceManager::new();
-        
+
         manager.register(1, Rc::new(RefCell::new(TestResource { value: 42 })));
-        manager.register(1, Rc::new(RefCell::new(AnotherResource { 
-            name: "test".to_string() 
-        })));
-        
+        manager.register(
+            1,
+            Rc::new(RefCell::new(AnotherResource {
+                name: "test".to_string(),
+            })),
+        );
+
         // Both IDs coexist for different types
         assert!(manager.contains::<TestResource>(1));
         assert!(manager.contains::<AnotherResource>(1));
-        
+
         // Getting with wrong type returns None
         assert_eq!(manager.get::<TestResource>(1).unwrap().borrow().value, 42);
-        assert_eq!(manager.get::<AnotherResource>(1).unwrap().borrow().name, "test");
+        assert_eq!(
+            manager.get::<AnotherResource>(1).unwrap().borrow().name,
+            "test"
+        );
     }
 
     #[test]
     fn test_ids_of_type() {
         let mut manager = ResourceManager::new();
-        
+
         manager.register(1, Rc::new(RefCell::new(TestResource { value: 1 })));
         manager.register(2, Rc::new(RefCell::new(TestResource { value: 2 })));
-        manager.register(3, Rc::new(RefCell::new(AnotherResource { 
-            name: "test".to_string() 
-        })));
-        
+        manager.register(
+            3,
+            Rc::new(RefCell::new(AnotherResource {
+                name: "test".to_string(),
+            })),
+        );
+
         let test_ids = manager.ids_of_type::<TestResource>();
         assert_eq!(test_ids.len(), 2);
         assert!(test_ids.contains(&1));
         assert!(test_ids.contains(&2));
-        
+
         let another_ids = manager.ids_of_type::<AnotherResource>();
         assert_eq!(another_ids.len(), 1);
         assert!(another_ids.contains(&3));
@@ -214,14 +223,17 @@ mod tests {
     #[test]
     fn test_clear_type() {
         let mut manager = ResourceManager::new();
-        
+
         manager.register(1, Rc::new(RefCell::new(TestResource { value: 1 })));
-        manager.register(2, Rc::new(RefCell::new(AnotherResource { 
-            name: "test".to_string() 
-        })));
-        
+        manager.register(
+            2,
+            Rc::new(RefCell::new(AnotherResource {
+                name: "test".to_string(),
+            })),
+        );
+
         manager.clear_type::<TestResource>();
-        
+
         assert!(!manager.contains::<TestResource>(1));
         assert!(manager.contains::<AnotherResource>(2));
     }
@@ -229,10 +241,10 @@ mod tests {
     #[test]
     fn test_count_of_type() {
         let mut manager = ResourceManager::new();
-        
+
         manager.register(1, Rc::new(RefCell::new(TestResource { value: 1 })));
         manager.register(2, Rc::new(RefCell::new(TestResource { value: 2 })));
-        
+
         assert_eq!(manager.count_of_type::<TestResource>(), 2);
         assert_eq!(manager.count_of_type::<AnotherResource>(), 0);
     }

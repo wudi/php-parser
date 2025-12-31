@@ -1,9 +1,9 @@
 use bumpalo::Bump;
-use php_parser::Span;
-use php_parser::ast::visitor::{Visitor, walk_expr, walk_stmt};
+use php_parser::ast::visitor::{walk_expr, walk_stmt, Visitor};
 use php_parser::ast::{Expr, Stmt};
 use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
+use php_parser::Span;
 
 #[derive(Default)]
 struct LintVisitor {

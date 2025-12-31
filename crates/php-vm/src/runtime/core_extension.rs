@@ -1,8 +1,8 @@
 use crate::builtins::{
-    array, bcmath, class, datetime, exception, exec, filesystem, function, hash, http, json, math,
+    array, bcmath, class, exception, exec, filesystem, function, http, math,
     output_control, pcre, spl, string, url, variable,
 };
-use crate::core::value::{Symbol, Val, Visibility};
+use crate::core::value::{Val, Visibility};
 use crate::runtime::context::RequestContext;
 use crate::runtime::extension::{Extension, ExtensionInfo, ExtensionResult};
 use crate::runtime::registry::{ExtensionRegistry, NativeClassDef, NativeMethodEntry};
@@ -708,7 +708,11 @@ impl Extension for CoreExtension {
             parent: None,
             is_interface: false,
             is_trait: false,
-            interfaces: vec![b"ArrayAccess".to_vec(), b"Countable".to_vec(), b"IteratorAggregate".to_vec()],
+            interfaces: vec![
+                b"ArrayAccess".to_vec(),
+                b"Countable".to_vec(),
+                b"IteratorAggregate".to_vec(),
+            ],
             methods: weakmap_methods,
             constants: HashMap::new(),
             constructor: None,
@@ -998,8 +1002,14 @@ impl Extension for CoreExtension {
         registry.register_function(b"ob_get_status", output_control::php_ob_get_status);
         registry.register_function(b"ob_implicit_flush", output_control::php_ob_implicit_flush);
         registry.register_function(b"ob_list_handlers", output_control::php_ob_list_handlers);
-        registry.register_function(b"output_add_rewrite_var", output_control::php_output_add_rewrite_var);
-        registry.register_function(b"output_reset_rewrite_vars", output_control::php_output_reset_rewrite_vars);
+        registry.register_function(
+            b"output_add_rewrite_var",
+            output_control::php_output_add_rewrite_var,
+        );
+        registry.register_function(
+            b"output_reset_rewrite_vars",
+            output_control::php_output_reset_rewrite_vars,
+        );
 
         // Register core string constants
         registry.register_constant(b"STR_PAD_LEFT", Val::Int(0));
@@ -1019,24 +1029,66 @@ impl Extension for CoreExtension {
         registry.register_constant(b"PHP_QUERY_RFC3986", Val::Int(url::PHP_QUERY_RFC3986));
 
         // Register output control constants - Phase flags
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_START", Val::Int(output_control::PHP_OUTPUT_HANDLER_START));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_WRITE", Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_FLUSH", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_CLEAN", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_FINAL", Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_CONT", Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_END", Val::Int(output_control::PHP_OUTPUT_HANDLER_END));
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_START",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_START),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_WRITE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_WRITE),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_FLUSH",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSH),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_CLEAN",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEAN),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_FINAL",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FINAL),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_CONT",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CONT),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_END",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_END),
+        );
 
         // Register output control constants - Control flags
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_CLEANABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_FLUSHABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_REMOVABLE", Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_STDFLAGS", Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS));
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_CLEANABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_CLEANABLE),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_FLUSHABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_FLUSHABLE),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_REMOVABLE",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_REMOVABLE),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_STDFLAGS",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_STDFLAGS),
+        );
 
         // Register output control constants - Status flags
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_STARTED", Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_DISABLED", Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED));
-        registry.register_constant(b"PHP_OUTPUT_HANDLER_PROCESSED", Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED));
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_STARTED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_STARTED),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_DISABLED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_DISABLED),
+        );
+        registry.register_constant(
+            b"PHP_OUTPUT_HANDLER_PROCESSED",
+            Val::Int(output_control::PHP_OUTPUT_HANDLER_PROCESSED),
+        );
 
         ExtensionResult::Success
     }
@@ -1053,4 +1105,3 @@ impl Extension for CoreExtension {
         ExtensionResult::Success
     }
 }
-

@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+
 impl VM {
     /// Execute a pending function/method call
     /// Reference: $PHP_SRC_PATH/Zend/zend_execute.c - ZEND_INIT_FCALL handler
@@ -218,14 +219,12 @@ impl VM {
                 self.invoke_function_symbol(sym, args, callsite_strict_types)
             }
             // Object callable: closure or __invoke
-            Val::Object(payload_handle) => {
-                self.invoke_object_callable(
-                    payload_handle,
-                    callable_handle,
-                    args,
-                    callsite_strict_types,
-                )
-            }
+            Val::Object(payload_handle) => self.invoke_object_callable(
+                payload_handle,
+                callable_handle,
+                args,
+                callsite_strict_types,
+            ),
             // Array callable: [$obj, 'method'] or ['Class', 'method']
             Val::Array(map) => self.invoke_array_callable(&map.map, args, callsite_strict_types),
             _ => Err(VmError::RuntimeError(format!(

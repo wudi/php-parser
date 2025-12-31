@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// Extension-specific data for Hash module
 pub struct HashExtensionData {
     pub registry: Arc<hash::HashRegistry>,
-    pub states: HashMap<u64, Box<dyn hash::HashState>>,  // Use u64 for resource IDs
+    pub states: HashMap<u64, Box<dyn hash::HashState>>, // Use u64 for resource IDs
 }
 
 impl std::fmt::Debug for HashExtensionData {

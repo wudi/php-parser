@@ -1,4 +1,4 @@
-use crate::ast::visitor::{Visitor, walk_expr, walk_param, walk_program, walk_stmt};
+use crate::ast::visitor::{walk_expr, walk_param, walk_program, walk_stmt, Visitor};
 use crate::ast::*;
 use crate::span::Span;
 use std::collections::HashMap;

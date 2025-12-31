@@ -1,7 +1,6 @@
 use crate::core::value::{Handle, Val};
 use crate::vm::engine::VM;
-use rust_decimal::{Decimal, RoundingStrategy};
-use std::ops::{Add, Div, Mul, Sub};
+use rust_decimal::Decimal;
 use std::rc::Rc;
 use std::str::FromStr;
 

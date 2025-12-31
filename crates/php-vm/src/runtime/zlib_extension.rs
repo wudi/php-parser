@@ -123,4 +123,3 @@ impl Extension for ZlibExtension {
         ExtensionResult::Success
     }
 }
-

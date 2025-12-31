@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use php_vm::runtime::context::EngineBuilder;
+use std::rc::Rc;
 
 use bumpalo::Bump;
 use php_parser::lexer::Lexer;
@@ -9,7 +9,10 @@ use php_vm::core::value::Val;
 use php_vm::vm::engine::VM;
 
 fn run_php_and_get_result(source: &str) -> Val {
-    let engine = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut vm = VM::new(engine);
 
     let arena = Bump::new();
@@ -39,7 +42,8 @@ fn detects_builtin_and_user_functions() {
     assert!(matches!(result, Val::Bool(true)));
 
     // Test user-defined function
-    let result = run_php_and_get_result("<?php function SampleFn() {} return function_exists('SampleFn');");
+    let result =
+        run_php_and_get_result("<?php function SampleFn() {} return function_exists('SampleFn');");
     assert!(matches!(result, Val::Bool(true)));
 
     // Test missing function

@@ -1,5 +1,5 @@
-use php_parser::lexer::Lexer;
 use php_parser::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
 
 #[test]
 fn lexes_yield_from_as_single_token() {

@@ -1,8 +1,8 @@
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::VM;
+use std::rc::Rc;
 
 #[test]
 fn test_yield_from_array() {
@@ -21,8 +21,10 @@ fn test_yield_from_array() {
         return $res;
     "#;
 
-
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();
@@ -104,8 +106,10 @@ fn test_yield_from_generator() {
         return $res;
     "#;
 
-
-    let engine_context = EngineBuilder::new().with_core_extensions().build().expect("Failed to build engine");
+    let engine_context = EngineBuilder::new()
+        .with_core_extensions()
+        .build()
+        .expect("Failed to build engine");
     let mut request_context = RequestContext::new(engine_context);
 
     let arena = bumpalo::Bump::new();

@@ -75,6 +75,7 @@ fn test_echo_null_byte() {
 
 #[test]
 fn test_echo_multiple_escapes() {
-    let (_, output) = run_code_capture_output(r#"<?php echo "Line1\nLine2\tTabbed\rReturn";"#).unwrap();
+    let (_, output) =
+        run_code_capture_output(r#"<?php echo "Line1\nLine2\tTabbed\rReturn";"#).unwrap();
     assert_eq!(output, "Line1\nLine2\tTabbed\rReturn");
 }

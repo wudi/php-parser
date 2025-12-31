@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use php_parser::ast::Stmt;
-use php_parser::lexer::Lexer;
 use php_parser::lexer::token::TokenKind;
+use php_parser::lexer::Lexer;
 use php_parser::parser::Parser;
 
 #[test]

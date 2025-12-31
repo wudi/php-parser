@@ -165,7 +165,9 @@ impl EndRequestBody {
             (self.app_status >> 8) as u8,
             self.app_status as u8,
             self.protocol_status as u8,
-            0, 0, 0, // reserved
+            0,
+            0,
+            0, // reserved
         ]
     }
 }
@@ -283,12 +285,7 @@ fn decode_length(data: &[u8]) -> Result<(usize, usize), &'static str> {
         if data.len() < 4 {
             return Err("truncated 4-byte length field");
         }
-        let len = u32::from_be_bytes([
-            data[0] & 0x7F,
-            data[1],
-            data[2],
-            data[3],
-        ]) as usize;
+        let len = u32::from_be_bytes([data[0] & 0x7F, data[1], data[2], data[3]]) as usize;
         Ok((len, 4))
     }
 }
@@ -321,8 +318,7 @@ mod tests {
         let data = vec![
             4, // name length (1 byte)
             5, // value length (1 byte)
-            b'N', b'A', b'M', b'E',
-            b'v', b'a', b'l', b'u', b'e',
+            b'N', b'A', b'M', b'E', b'v', b'a', b'l', b'u', b'e',
         ];
         let params = decode_params(&data).unwrap();
         assert_eq!(params.len(), 1);
@@ -335,7 +331,7 @@ mod tests {
         // 4-byte length encoding (high bit set)
         let data = vec![
             0x80, 0x00, 0x01, 0x00, // name length = 256 (4 bytes)
-            2, // value length = 2 (1 byte)
+            2,    // value length = 2 (1 byte)
         ];
         let mut data = data;
         data.extend(vec![b'X'; 256]); // name

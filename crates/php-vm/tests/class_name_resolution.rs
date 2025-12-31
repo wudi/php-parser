@@ -1,8 +1,8 @@
-use std::rc::Rc;
 use php_vm::compiler::emitter::Emitter;
 use php_vm::core::value::Val;
 use php_vm::runtime::context::{EngineBuilder, RequestContext};
 use php_vm::vm::engine::VM;
+use std::rc::Rc;
 
 fn run_php(src: &[u8]) -> Val {
     let context = EngineBuilder::new()
