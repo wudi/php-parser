@@ -44,6 +44,8 @@ impl Extension for MbStringExtension {
         registry.register_function(b"mb_ord", mbstring::php_mb_ord);
         registry.register_function(b"mb_ucfirst", mbstring::php_mb_ucfirst);
         registry.register_function(b"mb_lcfirst", mbstring::php_mb_lcfirst);
+        registry.register_function(b"mb_http_output", mbstring::php_mb_http_output);
+        registry.register_function(b"mb_http_input", mbstring::php_mb_http_input);
         registry.register_function(b"mb_list_encodings", mbstring::php_mb_list_encodings);
         registry.register_function(b"mb_encoding_aliases", mbstring::php_mb_encoding_aliases);
         registry.register_function(b"mb_substitute_character", mbstring::php_mb_substitute_character);

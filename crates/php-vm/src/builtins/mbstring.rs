@@ -1021,6 +1021,51 @@ pub fn php_mb_lcfirst(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(output.into())))
 }
 
+pub fn php_mb_http_output(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() > 1 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_http_output() expects at most 1 parameter, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    if args.is_empty() {
+        let state = vm.context.get_or_init_extension_data(MbStringState::default);
+        return match &state.http_output {
+            Some(value) => Ok(vm.arena.alloc(Val::String(value.as_bytes().to_vec().into()))),
+            None => Ok(vm.arena.alloc(Val::Bool(false))),
+        };
+    }
+
+    let enc = vm.check_builtin_param_string(args[0], 1, "mb_http_output")?;
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+    state.http_output = Some(String::from_utf8_lossy(&enc).to_string());
+    Ok(vm.arena.alloc(Val::Bool(true)))
+}
+
+pub fn php_mb_http_input(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() > 1 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!(
+                "mb_http_input() expects at most 1 parameter, {} given",
+                args.len()
+            ),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+    match &state.http_input {
+        Some(value) => Ok(vm.arena.alloc(Val::String(value.as_bytes().to_vec().into()))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
