@@ -404,6 +404,211 @@ fn apply_substitution(input: &str, substitute: Option<char>) -> String {
     out
 }
 
+pub fn php_mb_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strlen() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_strlen")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+
+    match crate::runtime::mb::convert::decode_bytes(&input, &encoding) {
+        Ok(decoded) => Ok(vm.arena.alloc(Val::Int(decoded.chars().count() as i64))),
+        Err(message) => {
+            vm.report_error(ErrorLevel::Warning, &format!("mb_strlen(): {}", message));
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    }
+}
+
+pub fn php_mb_substr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_substr() expects 2 to 4 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_substr")?;
+    let start = vm.check_builtin_param_int(args[1], 2, "mb_substr")?;
+    let length = if args.len() >= 3 {
+        Some(vm.check_builtin_param_int(args[2], 3, "mb_substr")?)
+    } else {
+        None
+    };
+    let encoding = if args.len() == 4 {
+        resolve_encoding_arg(vm, args.get(3))
+    } else {
+        resolve_encoding_arg(vm, None)
+    };
+
+    match crate::runtime::mb::convert::decode_bytes(&input, &encoding) {
+        Ok(decoded) => {
+            let chars: Vec<char> = decoded.chars().collect();
+            let len = chars.len() as i64;
+            let mut start_idx = if start < 0 { len + start } else { start };
+            if start_idx < 0 {
+                start_idx = 0;
+            }
+            if start_idx >= len {
+                return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+            }
+
+            let end_idx = match length {
+                Some(len_arg) if len_arg >= 0 => (start_idx + len_arg).min(len),
+                Some(len_arg) => (len + len_arg).max(start_idx).min(len),
+                None => len,
+            } as usize;
+
+            let slice = chars[start_idx as usize..end_idx].iter().collect::<String>();
+            Ok(vm.arena.alloc(Val::String(slice.into_bytes().into())))
+        }
+        Err(message) => {
+            vm.report_error(ErrorLevel::Warning, &format!("mb_substr(): {}", message));
+            Ok(vm.arena.alloc(Val::Bool(false)))
+        }
+    }
+}
+
+pub fn php_mb_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strpos() expects 2 to 4 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let haystack = vm.check_builtin_param_string(args[0], 1, "mb_strpos")?;
+    let needle = vm.check_builtin_param_string(args[1], 2, "mb_strpos")?;
+    let offset = if args.len() >= 3 {
+        vm.check_builtin_param_int(args[2], 3, "mb_strpos")?
+    } else {
+        0
+    };
+    let encoding = if args.len() == 4 {
+        resolve_encoding_arg(vm, args.get(3))
+    } else {
+        resolve_encoding_arg(vm, None)
+    };
+
+    let haystack = crate::runtime::mb::convert::decode_bytes(&haystack, &encoding)
+        .map_err(|message| format!("mb_strpos(): {}", message))?;
+    let needle =
+        crate::runtime::mb::convert::decode_bytes(&needle, &encoding).map_err(|message| {
+            format!("mb_strpos(): {}", message)
+        })?;
+
+    let hay_chars: Vec<char> = haystack.chars().collect();
+    let needle_chars: Vec<char> = needle.chars().collect();
+    let start_idx = if offset < 0 {
+        (hay_chars.len() as i64 + offset).max(0) as usize
+    } else {
+        offset as usize
+    };
+
+    if needle_chars.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let pos = find_subsequence(&hay_chars[start_idx..], &needle_chars)
+        .map(|idx| idx + start_idx);
+
+    match pos {
+        Some(idx) => Ok(vm.arena.alloc(Val::Int(idx as i64))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+pub fn php_mb_strrpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strrpos() expects 2 to 4 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let haystack = vm.check_builtin_param_string(args[0], 1, "mb_strrpos")?;
+    let needle = vm.check_builtin_param_string(args[1], 2, "mb_strrpos")?;
+    let offset = if args.len() >= 3 {
+        vm.check_builtin_param_int(args[2], 3, "mb_strrpos")?
+    } else {
+        0
+    };
+    let encoding = if args.len() == 4 {
+        resolve_encoding_arg(vm, args.get(3))
+    } else {
+        resolve_encoding_arg(vm, None)
+    };
+
+    let haystack = crate::runtime::mb::convert::decode_bytes(&haystack, &encoding)
+        .map_err(|message| format!("mb_strrpos(): {}", message))?;
+    let needle =
+        crate::runtime::mb::convert::decode_bytes(&needle, &encoding).map_err(|message| {
+            format!("mb_strrpos(): {}", message)
+        })?;
+
+    let hay_chars: Vec<char> = haystack.chars().collect();
+    let needle_chars: Vec<char> = needle.chars().collect();
+    let start_idx = if offset < 0 {
+        (hay_chars.len() as i64 + offset).max(0) as usize
+    } else {
+        offset as usize
+    };
+
+    if needle_chars.is_empty() || start_idx >= hay_chars.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let pos = find_subsequence_rev(&hay_chars[start_idx..], &needle_chars)
+        .map(|idx| idx + start_idx);
+
+    match pos {
+        Some(idx) => Ok(vm.arena.alloc(Val::Int(idx as i64))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+fn resolve_encoding_arg(vm: &mut VM, handle: Option<&Handle>) -> String {
+    if let Some(handle) = handle {
+        if let Ok(enc) = vm.check_builtin_param_string(*handle, 1, "mbstring") {
+            return String::from_utf8_lossy(&enc).to_string();
+        }
+    }
+    let state = vm.context.get_or_init_extension_data(MbStringState::default);
+    state.internal_encoding.clone()
+}
+
+fn find_subsequence(haystack: &[char], needle: &[char]) -> Option<usize> {
+    if needle.len() > haystack.len() {
+        return None;
+    }
+    for idx in 0..=haystack.len() - needle.len() {
+        if haystack[idx..idx + needle.len()] == *needle {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+fn find_subsequence_rev(haystack: &[char], needle: &[char]) -> Option<usize> {
+    if needle.len() > haystack.len() {
+        return None;
+    }
+    for idx in (0..=haystack.len() - needle.len()).rev() {
+        if haystack[idx..idx + needle.len()] == *needle {
+            return Some(idx);
+        }
+    }
+    None
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
