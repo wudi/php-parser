@@ -609,6 +609,77 @@ fn find_subsequence_rev(haystack: &[char], needle: &[char]) -> Option<usize> {
     None
 }
 
+pub fn php_mb_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strtolower() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_strtolower")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_strtolower(): {}", message))?;
+    let lowered = crate::runtime::mb::case::to_lowercase(&decoded);
+    let output = crate::runtime::mb::convert::encode_string(&lowered, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+pub fn php_mb_strtoupper(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_strtoupper() expects 1 or 2 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_strtoupper")?;
+    let encoding = resolve_encoding_arg(vm, args.get(1));
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_strtoupper(): {}", message))?;
+    let upper = crate::runtime::mb::case::to_uppercase(&decoded);
+    let output = crate::runtime::mb::convert::encode_string(&upper, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
+pub fn php_mb_convert_case(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        vm.report_error(
+            ErrorLevel::Warning,
+            &format!("mb_convert_case() expects 2 or 3 parameters, {} given", args.len()),
+        );
+        return Ok(vm.arena.alloc(Val::Null));
+    }
+
+    let input = vm.check_builtin_param_string(args[0], 1, "mb_convert_case")?;
+    let mode = vm.check_builtin_param_int(args[1], 2, "mb_convert_case")?;
+    let encoding = if args.len() == 3 {
+        resolve_encoding_arg(vm, args.get(2))
+    } else {
+        resolve_encoding_arg(vm, None)
+    };
+
+    let decoded = crate::runtime::mb::convert::decode_bytes(&input, &encoding)
+        .map_err(|message| format!("mb_convert_case(): {}", message))?;
+    let converted = match mode {
+        0 => crate::runtime::mb::case::to_uppercase(&decoded),
+        1 => crate::runtime::mb::case::to_lowercase(&decoded),
+        2 => crate::runtime::mb::case::to_titlecase(&decoded),
+        _ => {
+            vm.report_error(
+                ErrorLevel::Warning,
+                "mb_convert_case(): Unknown case type",
+            );
+            return Ok(vm.arena.alloc(Val::Bool(false)));
+        }
+    };
+    let output = crate::runtime::mb::convert::encode_string(&converted, &encoding)?;
+    Ok(vm.arena.alloc(Val::String(output.into())))
+}
+
 pub fn php_mb_list_encodings(vm: &mut VM, _args: &[Handle]) -> Result<Handle, String> {
     let mut entries = indexmap::IndexMap::new();
 
