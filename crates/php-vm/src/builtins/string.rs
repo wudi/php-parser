@@ -3,7 +3,9 @@ use crate::vm::engine::VM;
 use libc;
 use rphonetic::{Encoder, Metaphone};
 use rust_decimal::{Decimal, RoundingStrategy};
+use crc32fast::Hasher;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::ffi::{CStr, CString};
 use std::rc::Rc;
 use std::str;
@@ -18,6 +20,17 @@ extern "C" {
         ...
     ) -> libc::ssize_t;
 }
+
+pub const HTML_SPECIALCHARS: i64 = 0;
+pub const HTML_ENTITIES: i64 = 1;
+pub const ENT_NOQUOTES: i64 = 0;
+pub const ENT_COMPAT: i64 = 2;
+pub const ENT_QUOTES: i64 = 3;
+pub const ENT_SUBSTITUTE: i64 = 8;
+pub const ENT_HTML401: i64 = 0;
+pub const ENT_XML1: i64 = 16;
+pub const ENT_XHTML: i64 = 32;
+pub const ENT_HTML5: i64 = 48;
 
 pub fn php_strlen(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
@@ -585,6 +598,268 @@ pub fn php_addslashes(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(result.into())))
 }
 
+pub fn php_quoted_printable_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quoted_printable_decode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    if input.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let mut result = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'=' {
+            if i + 2 < input.len()
+                && input[i + 1].is_ascii_hexdigit()
+                && input[i + 2].is_ascii_hexdigit()
+            {
+                let hi = (input[i + 1] as char).to_digit(16).unwrap() as u8;
+                let lo = (input[i + 2] as char).to_digit(16).unwrap() as u8;
+                result.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+
+            let mut k = 1;
+            while i + k < input.len() && (input[i + k] == b' ' || input[i + k] == b'\t') {
+                k += 1;
+            }
+            if i + k >= input.len() {
+                i += k;
+                continue;
+            }
+            if input[i + k] == b'\r' && i + k + 1 < input.len() && input[i + k + 1] == b'\n' {
+                i += k + 2;
+                continue;
+            }
+            if input[i + k] == b'\r' || input[i + k] == b'\n' {
+                i += k + 1;
+                continue;
+            }
+            result.push(b'=');
+            i += 1;
+        } else {
+            result.push(input[i]);
+            i += 1;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_quoted_printable_encode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("quoted_printable_encode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    if input.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let mut result = Vec::with_capacity(input.len());
+    let mut line_len = 0usize;
+
+    let mut i = 0;
+    while i < input.len() {
+        let c = input[i];
+        if c == b'\r' && i + 1 < input.len() && input[i + 1] == b'\n' {
+            result.push(b'\r');
+            result.push(b'\n');
+            i += 2;
+            line_len = 0;
+            continue;
+        }
+
+        let mut encode = c == b'=' || c < 0x20 || c == 0x7f || (c & 0x80) != 0;
+        if (c == b' ' || c == b'\t')
+            && (i + 1 == input.len() || input[i + 1] == b'\r' || input[i + 1] == b'\n')
+        {
+            encode = true;
+        }
+
+        let needed = if encode { 3 } else { 1 };
+        if line_len + needed > 75 {
+            result.extend_from_slice(b"=\r\n");
+            line_len = 0;
+        }
+
+        if encode {
+            result.push(b'=');
+            result.push(hex_upper(c >> 4));
+            result.push(hex_upper(c & 0x0f));
+            line_len += 3;
+        } else {
+            result.push(c);
+            line_len += 1;
+        }
+
+        i += 1;
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_convert_uuencode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("convert_uuencode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let encoded = uuencode_bytes(&input);
+    Ok(vm.arena.alloc(Val::String(encoded.into())))
+}
+
+pub fn php_convert_uudecode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("convert_uudecode() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let decoded = uudecode_bytes(&input);
+    match decoded {
+        Some(bytes) => Ok(vm.arena.alloc(Val::String(bytes.into()))),
+        None => Ok(vm.arena.alloc(Val::Bool(false))),
+    }
+}
+
+pub fn php_crc32(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("crc32() expects exactly 1 parameter".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let mut hasher = Hasher::new();
+    hasher.update(&input);
+    let checksum = hasher.finalize();
+    Ok(vm.arena.alloc(Val::Int(checksum as i64)))
+}
+
+fn hex_upper(nibble: u8) -> u8 {
+    match nibble {
+        0..=9 => b'0' + nibble,
+        _ => b'A' + (nibble - 10),
+    }
+}
+
+fn from_hex_digits(h: u8, l: u8) -> Option<u8> {
+    let h = from_hex_digit(h)?;
+    let l = from_hex_digit(l)?;
+    Some((h << 4) | l)
+}
+
+fn from_hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn uuencode_bytes(input: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        let chunk_len = std::cmp::min(45, input.len() - i);
+        out.push(uu_enc(chunk_len as u8));
+
+        let mut j = 0;
+        while j < chunk_len {
+            let b1 = input[i + j];
+            let b2 = if j + 1 < chunk_len {
+                input[i + j + 1]
+            } else {
+                0
+            };
+            let b3 = if j + 2 < chunk_len {
+                input[i + j + 2]
+            } else {
+                0
+            };
+
+            out.push(uu_enc(b1 >> 2));
+            out.push(uu_enc(((b1 << 4) & 0x30) | ((b2 >> 4) & 0x0f)));
+            out.push(uu_enc(((b2 << 2) & 0x3c) | ((b3 >> 6) & 0x03)));
+            out.push(uu_enc(b3 & 0x3f));
+            j += 3;
+        }
+
+        out.push(b'\n');
+        i += chunk_len;
+    }
+
+    out.push(uu_enc(0));
+    out.push(b'\n');
+    out
+}
+
+fn uudecode_bytes(input: &[u8]) -> Option<Vec<u8>> {
+    if input.is_empty() {
+        return None;
+    }
+
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        let len_char = input[i];
+        i += 1;
+        let len = uu_dec(len_char) as usize;
+        if len == 0 {
+            break;
+        }
+
+        let mut written = 0usize;
+        while written < len {
+            if i + 4 > input.len() {
+                return None;
+            }
+            let c1 = uu_dec(input[i]);
+            let c2 = uu_dec(input[i + 1]);
+            let c3 = uu_dec(input[i + 2]);
+            let c4 = uu_dec(input[i + 3]);
+
+            let b1 = (c1 << 2) | (c2 >> 4);
+            let b2 = (c2 << 4) | (c3 >> 2);
+            let b3 = (c3 << 6) | c4;
+
+            out.push(b1);
+            written += 1;
+            if written < len {
+                out.push(b2);
+                written += 1;
+            }
+            if written < len {
+                out.push(b3);
+                written += 1;
+            }
+
+            i += 4;
+        }
+
+        if i < input.len() && input[i] == b'\n' {
+            i += 1;
+        }
+    }
+
+    Some(out)
+}
+
+fn uu_enc(c: u8) -> u8 {
+    if c == 0 {
+        b'`'
+    } else {
+        (c & 0x3f) + b' '
+    }
+}
+
+fn uu_dec(c: u8) -> u8 {
+    (c.wrapping_sub(b' ')) & 0x3f
+}
+
 pub fn php_stripslashes(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("stripslashes() expects exactly 1 parameter".into());
@@ -830,6 +1105,167 @@ pub fn php_str_split(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     )))
 }
 
+pub fn php_chunk_split(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("chunk_split() expects between 1 and 3 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let chunk_len = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        76
+    };
+    let end = if args.len() == 3 {
+        vm.value_to_string(args[2])?
+    } else {
+        b"\r\n".to_vec()
+    };
+
+    if chunk_len <= 0 {
+        return Err("chunk_split(): Chunk length must be greater than 0".into());
+    }
+
+    if s.is_empty() {
+        return Ok(vm.arena.alloc(Val::String(Vec::new().into())));
+    }
+
+    let chunk_len = chunk_len as usize;
+    if chunk_len > s.len() {
+        let mut result = Vec::with_capacity(s.len() + end.len());
+        result.extend_from_slice(&s);
+        result.extend_from_slice(&end);
+        return Ok(vm.arena.alloc(Val::String(result.into())));
+    }
+
+    let mut result =
+        Vec::with_capacity(s.len() + ((s.len() + chunk_len - 1) / chunk_len) * end.len());
+    for chunk in s.chunks(chunk_len) {
+        result.extend_from_slice(chunk);
+        result.extend_from_slice(&end);
+    }
+
+    Ok(vm.arena.alloc(Val::String(result.into())))
+}
+
+pub fn php_str_getcsv(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("str_getcsv() expects between 1 and 4 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let delimiter = if args.len() >= 2 {
+        let d = vm.value_to_string(args[1])?;
+        if d.len() != 1 {
+            return Err("str_getcsv(): Delimiter must be a single character".into());
+        }
+        d[0]
+    } else {
+        b','
+    };
+
+    let enclosure = if args.len() >= 3 {
+        let e = vm.value_to_string(args[2])?;
+        if e.len() != 1 {
+            return Err("str_getcsv(): Enclosure must be a single character".into());
+        }
+        e[0]
+    } else {
+        b'"'
+    };
+
+    let escape = if args.len() == 4 {
+        let esc = vm.value_to_string(args[3])?;
+        if esc.len() > 1 {
+            return Err("str_getcsv(): Escape must be empty or a single character".into());
+        }
+        if esc.is_empty() {
+            None
+        } else {
+            Some(esc[0])
+        }
+    } else {
+        Some(b'\\')
+    };
+
+    if input.is_empty() {
+        let mut result_map = indexmap::IndexMap::new();
+        result_map.insert(
+            crate::core::value::ArrayKey::Int(0),
+            vm.arena.alloc(Val::Null),
+        );
+        return Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )));
+    }
+
+    let fields = parse_csv_line(&input, delimiter, enclosure, escape);
+    let mut result_map = indexmap::IndexMap::new();
+    for (i, field) in fields.into_iter().enumerate() {
+        let val = vm.arena.alloc(Val::String(field.into()));
+        result_map.insert(crate::core::value::ArrayKey::Int(i as i64), val);
+    }
+
+    Ok(vm.arena.alloc(Val::Array(
+        crate::core::value::ArrayData::from(result_map).into(),
+    )))
+}
+
+fn parse_csv_line(
+    input: &[u8],
+    delimiter: u8,
+    enclosure: u8,
+    escape: Option<u8>,
+) -> Vec<Vec<u8>> {
+    let mut fields = Vec::new();
+    let mut field = Vec::new();
+    let mut in_quotes = false;
+    let mut i = 0;
+
+    while i < input.len() {
+        let b = input[i];
+        if in_quotes {
+            if let Some(escape_char) = escape {
+                if b == escape_char && i + 1 < input.len() {
+                    field.push(input[i + 1]);
+                    i += 2;
+                    continue;
+                }
+            }
+            if b == enclosure {
+                if i + 1 < input.len() && input[i + 1] == enclosure {
+                    field.push(enclosure);
+                    i += 2;
+                    continue;
+                }
+                in_quotes = false;
+                i += 1;
+                continue;
+            }
+            field.push(b);
+            i += 1;
+            continue;
+        }
+
+        if b == delimiter {
+            fields.push(field);
+            field = Vec::new();
+            i += 1;
+            continue;
+        }
+        if b == enclosure {
+            in_quotes = true;
+            i += 1;
+            continue;
+        }
+        field.push(b);
+        i += 1;
+    }
+
+    fields.push(field);
+    fields
+}
+
 pub fn php_strrev(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() != 1 {
         return Err("strrev() expects exactly 1 parameter".into());
@@ -905,7 +1341,7 @@ pub fn php_strip_tags(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     let allowed = if args.len() == 2 {
         parse_allowed_tags(vm, args[1])?
     } else {
-        std::collections::HashSet::new()
+        HashSet::new()
     };
     let mut out = Vec::with_capacity(input.len());
     let mut i = 0;
@@ -963,8 +1399,246 @@ pub fn php_parse_str(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Null))
 }
 
-fn parse_allowed_tags(vm: &mut VM, handle: Handle) -> Result<std::collections::HashSet<Vec<u8>>, String> {
-    let mut allowed = std::collections::HashSet::new();
+pub fn php_htmlspecialchars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("htmlspecialchars() expects between 1 and 4 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let double_encode = if args.len() == 4 {
+        vm.arena.get(args[3]).value.to_bool()
+    } else {
+        true
+    };
+    let out = html_encode(&input, flags, false, double_encode);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_htmlspecialchars_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("htmlspecialchars_decode() expects 1 or 2 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let out = html_decode(&input, flags, false);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_htmlentities(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 4 {
+        return Err("htmlentities() expects between 1 and 4 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let double_encode = if args.len() == 4 {
+        vm.arena.get(args[3]).value.to_bool()
+    } else {
+        true
+    };
+    let out = html_encode(&input, flags, true, double_encode);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_html_entity_decode(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("html_entity_decode() expects between 1 and 3 parameters".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+    let out = html_decode(&input, flags, true);
+    Ok(vm.arena.alloc(Val::String(out.into())))
+}
+
+pub fn php_get_html_translation_table(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() > 3 {
+        return Err("get_html_translation_table() expects between 0 and 3 parameters".into());
+    }
+    let table = if args.len() >= 1 {
+        vm.arena.get(args[0]).value.to_int()
+    } else {
+        HTML_SPECIALCHARS
+    };
+    let flags = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        ENT_QUOTES
+    };
+
+    let mapping = build_html_translation_table(vm, table, flags)?;
+    Ok(vm.arena.alloc(Val::Array(Rc::new(mapping))))
+}
+
+fn build_html_translation_table(vm: &mut VM, table: i64, flags: i64) -> Result<ArrayData, String> {
+    if table != HTML_SPECIALCHARS && table != HTML_ENTITIES {
+        return Err("get_html_translation_table(): Table must be HTML_SPECIALCHARS or HTML_ENTITIES".into());
+    }
+
+    let encode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let encode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut map = ArrayData::new();
+    map.insert(
+        ArrayKey::Str(Rc::new(b"&".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&amp;".to_vec()))),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new(b"<".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&lt;".to_vec()))),
+    );
+    map.insert(
+        ArrayKey::Str(Rc::new(b">".to_vec())),
+        vm.arena.alloc(Val::String(Rc::new(b"&gt;".to_vec()))),
+    );
+    if encode_double {
+        map.insert(
+            ArrayKey::Str(Rc::new(b"\"".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(b"&quot;".to_vec()))),
+        );
+    }
+    if encode_single {
+        map.insert(
+            ArrayKey::Str(Rc::new(b"'".to_vec())),
+            vm.arena.alloc(Val::String(Rc::new(b"&#039;".to_vec()))),
+        );
+    }
+    Ok(map)
+}
+
+fn html_encode(input: &[u8], flags: i64, encode_all: bool, double_encode: bool) -> Vec<u8> {
+    let encode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let encode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        let b = input[i];
+        if b == b'&' && !double_encode {
+            if let Some(len) = scan_entity(input, i) {
+                out.extend_from_slice(&input[i..i + len]);
+                i += len;
+                continue;
+            }
+        }
+        match b {
+            b'&' => out.extend_from_slice(b"&amp;"),
+            b'<' => out.extend_from_slice(b"&lt;"),
+            b'>' => out.extend_from_slice(b"&gt;"),
+            b'"' if encode_double => out.extend_from_slice(b"&quot;"),
+            b'\'' if encode_single => out.extend_from_slice(b"&#039;"),
+            _ if encode_all && b >= 0x80 => {
+                let entity = format!("&#{};", b);
+                out.extend_from_slice(entity.as_bytes());
+            }
+            _ => out.push(b),
+        }
+        i += 1;
+    }
+    out
+}
+
+fn html_decode(input: &[u8], flags: i64, decode_all: bool) -> Vec<u8> {
+    let decode_double = flags & ENT_COMPAT == ENT_COMPAT || flags & ENT_QUOTES == ENT_QUOTES;
+    let decode_single = flags & ENT_QUOTES == ENT_QUOTES;
+    let mut out = Vec::with_capacity(input.len());
+    let mut i = 0;
+    while i < input.len() {
+        if input[i] == b'&' {
+            if let Some((len, decoded)) = decode_entity(&input[i..], decode_double, decode_single, decode_all) {
+                out.extend_from_slice(&decoded);
+                i += len;
+                continue;
+            }
+        }
+        out.push(input[i]);
+        i += 1;
+    }
+    out
+}
+
+fn scan_entity(input: &[u8], start: usize) -> Option<usize> {
+    let slice = &input[start..];
+    let end = slice.iter().position(|&b| b == b';')?;
+    if end == 0 {
+        return None;
+    }
+    let name = &slice[1..end];
+    if name.starts_with(b"#") {
+        if name.len() == 1 {
+            return None;
+        }
+        if name[1] == b'x' || name[1] == b'X' {
+            if name[2..].is_empty() || !name[2..].iter().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+        } else if !name[1..].iter().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        return Some(end + 1);
+    }
+    let known = matches!(name, b"amp" | b"lt" | b"gt" | b"quot" | b"apos" | b"#039");
+    if known {
+        return Some(end + 1);
+    }
+    None
+}
+
+fn decode_entity(
+    input: &[u8],
+    decode_double: bool,
+    decode_single: bool,
+    decode_all: bool,
+) -> Option<(usize, Vec<u8>)> {
+    let end = input.iter().position(|&b| b == b';')?;
+    if end == 0 {
+        return None;
+    }
+    let name = &input[1..end];
+    let decoded = match name {
+        b"amp" => Some(b"&".to_vec()),
+        b"lt" => Some(b"<".to_vec()),
+        b"gt" => Some(b">".to_vec()),
+        b"quot" if decode_double => Some(b"\"".to_vec()),
+        b"apos" | b"#039" if decode_single => Some(b"'".to_vec()),
+        _ if decode_all && name.starts_with(b"#") => decode_numeric_entity(name),
+        _ => None,
+    }?;
+    Some((end + 1, decoded))
+}
+
+fn decode_numeric_entity(name: &[u8]) -> Option<Vec<u8>> {
+    if name.len() < 2 {
+        return None;
+    }
+    let value = if name[1] == b'x' || name[1] == b'X' {
+        u32::from_str_radix(std::str::from_utf8(&name[2..]).ok()?, 16).ok()?
+    } else {
+        u32::from_str_radix(std::str::from_utf8(&name[1..]).ok()?, 10).ok()?
+    };
+    if let Some(ch) = std::char::from_u32(value) {
+        let mut buf = [0u8; 4];
+        let encoded = ch.encode_utf8(&mut buf);
+        Some(encoded.as_bytes().to_vec())
+    } else {
+        None
+    }
+}
+
+fn parse_allowed_tags(vm: &mut VM, handle: Handle) -> Result<HashSet<Vec<u8>>, String> {
+    let mut allowed = HashSet::new();
     match &vm.arena.get(handle).value {
         Val::Null => {}
         Val::String(s) => {
@@ -1045,19 +1719,6 @@ fn parse_query_pairs(input: &[u8]) -> Vec<(&[u8], &[u8])> {
         i += 1;
     }
     pairs
-}
-
-fn from_hex_digits(h: u8, l: u8) -> Option<u8> {
-    fn hex_val(b: u8) -> Option<u8> {
-        match b {
-            b'0'..=b'9' => Some(b - b'0'),
-            b'a'..=b'f' => Some(b - b'a' + 10),
-            b'A'..=b'F' => Some(b - b'A' + 10),
-            _ => None,
-        }
-    }
-
-    Some((hex_val(h)? << 4) | hex_val(l)?)
 }
 
 fn urldecode_bytes(bytes: &[u8]) -> Vec<u8> {
@@ -1267,6 +1928,368 @@ pub fn php_strncasecmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
         Ordering::Greater => 1,
     };
     Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+pub fn php_strnatcmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strnatcmp() expects exactly 2 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let res = natural_compare(&s1, &s2, false);
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+pub fn php_strnatcasecmp(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strnatcasecmp() expects exactly 2 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let res = natural_compare(&s1, &s2, true);
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+pub fn php_levenshtein(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 5 {
+        return Err("levenshtein() expects between 2 and 5 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let replace_cost = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        1
+    };
+    let insert_cost = if args.len() >= 4 {
+        vm.arena.get(args[3]).value.to_int()
+    } else {
+        1
+    };
+    let delete_cost = if args.len() >= 5 {
+        vm.arena.get(args[4]).value.to_int()
+    } else {
+        1
+    };
+    let dist = levenshtein_distance(&s1, &s2, replace_cost, insert_cost, delete_cost);
+    Ok(vm.arena.alloc(Val::Int(dist)))
+}
+
+pub fn php_similar_text(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("similar_text() expects 2 or 3 parameters".into());
+    }
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let matches = similar_text_count(&s1, &s2);
+    if args.len() == 3 {
+        let percent = if s1.is_empty() && s2.is_empty() {
+            0.0
+        } else {
+            (matches as f64) * 200.0 / ((s1.len() + s2.len()) as f64)
+        };
+        let handle = args[2];
+        if vm.arena.get(handle).is_ref {
+            vm.arena.get_mut(handle).value = Val::Float(percent);
+        }
+    }
+    Ok(vm.arena.alloc(Val::Int(matches as i64)))
+}
+
+pub fn php_soundex(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 1 {
+        return Err("soundex() expects exactly 1 parameter".into());
+    }
+    let input = vm.value_to_string(args[0])?;
+    let code = soundex_code(&input);
+    Ok(vm.arena.alloc(Val::String(code.into())))
+}
+
+pub fn php_substr_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 3 || args.len() > 5 {
+        return Err("substr_compare() expects between 3 and 5 parameters".into());
+    }
+
+    let s1 = vm.value_to_string(args[0])?;
+    let s2 = vm.value_to_string(args[1])?;
+    let mut offset = vm.arena.get(args[2]).value.to_int();
+
+    if offset < 0 {
+        offset = s1.len() as i64 + offset;
+        if offset < 0 {
+            offset = 0;
+        }
+    }
+
+    if offset as usize > s1.len() {
+        return Err("substr_compare(): Offset not contained in string".into());
+    }
+
+    let mut len_is_default = true;
+    let mut length = 0i64;
+    if args.len() >= 4 {
+        let value = &vm.arena.get(args[3]).value;
+        if !matches!(value, Val::Null) {
+            len_is_default = false;
+            length = value.to_int();
+        }
+    }
+
+    if !len_is_default && length <= 0 {
+        if length == 0 {
+            return Ok(vm.arena.alloc(Val::Int(0)));
+        }
+        return Err("substr_compare(): Length must be greater than or equal to 0".into());
+    }
+
+    let case_insensitive = if args.len() == 5 {
+        vm.arena.get(args[4]).value.to_bool()
+    } else {
+        false
+    };
+
+    let offset = offset as usize;
+    let cmp_len = if len_is_default {
+        std::cmp::max(s2.len(), s1.len() - offset)
+    } else {
+        length as usize
+    };
+
+    let haystack = &s1[offset..];
+    let res = if case_insensitive {
+        binary_strncasecmp(haystack, &s2, cmp_len)
+    } else {
+        binary_strncmp(haystack, &s2, cmp_len)
+    };
+
+    Ok(vm.arena.alloc(Val::Int(res)))
+}
+
+fn natural_compare(a: &[u8], b: &[u8], case_insensitive: bool) -> i64 {
+    let mut i = 0;
+    let mut j = 0;
+    while i < a.len() && j < b.len() {
+        let ca = if case_insensitive {
+            a[i].to_ascii_lowercase()
+        } else {
+            a[i]
+        };
+        let cb = if case_insensitive {
+            b[j].to_ascii_lowercase()
+        } else {
+            b[j]
+        };
+        if ca.is_ascii_digit() && cb.is_ascii_digit() {
+            let (next_i, next_j, cmp) = compare_numeric_run(a, b, i, j);
+            if cmp != 0 {
+                return cmp;
+            }
+            i = next_i;
+            j = next_j;
+            continue;
+        }
+        if ca != cb {
+            return if ca < cb { -1 } else { 1 };
+        }
+        i += 1;
+        j += 1;
+    }
+    match a.len().cmp(&b.len()) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
+fn compare_numeric_run(a: &[u8], b: &[u8], start_a: usize, start_b: usize) -> (usize, usize, i64) {
+    let mut i = start_a;
+    let mut j = start_b;
+    while i < a.len() && a[i].is_ascii_digit() {
+        i += 1;
+    }
+    while j < b.len() && b[j].is_ascii_digit() {
+        j += 1;
+    }
+    let run_a = &a[start_a..i];
+    let run_b = &b[start_b..j];
+    let (sig_a, zeros_a) = strip_leading_zeros(run_a);
+    let (sig_b, zeros_b) = strip_leading_zeros(run_b);
+    if sig_a.len() != sig_b.len() {
+        return (
+            i,
+            j,
+            if sig_a.len() < sig_b.len() { -1 } else { 1 },
+        );
+    }
+    for (da, db) in sig_a.iter().zip(sig_b.iter()) {
+        if da != db {
+            return (i, j, if da < db { -1 } else { 1 });
+        }
+    }
+    if run_a.len() != run_b.len() {
+        return (
+            i,
+            j,
+            if run_a.len() < run_b.len() { -1 } else { 1 },
+        );
+    }
+    let zeros_cmp = zeros_a.cmp(&zeros_b);
+    let cmp = match zeros_cmp {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    (i, j, cmp)
+}
+
+fn strip_leading_zeros(run: &[u8]) -> (&[u8], usize) {
+    let mut idx = 0;
+    while idx < run.len() && run[idx] == b'0' {
+        idx += 1;
+    }
+    let sig = if idx == run.len() { &run[run.len() - 1..] } else { &run[idx..] };
+    (sig, idx)
+}
+
+fn levenshtein_distance(a: &[u8], b: &[u8], replace_cost: i64, insert_cost: i64, delete_cost: i64) -> i64 {
+    if a.is_empty() {
+        return (b.len() as i64) * insert_cost;
+    }
+    if b.is_empty() {
+        return (a.len() as i64) * delete_cost;
+    }
+    let mut prev: Vec<i64> = (0..=b.len())
+        .map(|j| (j as i64) * insert_cost)
+        .collect();
+    let mut curr = vec![0i64; b.len() + 1];
+    for (i, &ca) in a.iter().enumerate() {
+        curr[0] = (i as i64 + 1) * delete_cost;
+        for (j, &cb) in b.iter().enumerate() {
+            let cost_replace = if ca == cb { 0 } else { replace_cost };
+            let del = prev[j + 1] + delete_cost;
+            let ins = curr[j] + insert_cost;
+            let rep = prev[j] + cost_replace;
+            curr[j + 1] = del.min(ins).min(rep);
+        }
+        prev.clone_from_slice(&curr);
+    }
+    prev[b.len()]
+}
+
+fn similar_text_count(a: &[u8], b: &[u8]) -> usize {
+    let mut max_len = 0;
+    let mut max_pos_a = 0;
+    let mut max_pos_b = 0;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut k = 0;
+            while i + k < a.len() && j + k < b.len() && a[i + k] == b[j + k] {
+                k += 1;
+            }
+            if k > max_len {
+                max_len = k;
+                max_pos_a = i;
+                max_pos_b = j;
+            }
+        }
+    }
+    if max_len == 0 {
+        return 0;
+    }
+    let mut count = max_len;
+    if max_pos_a > 0 && max_pos_b > 0 {
+        count += similar_text_count(&a[..max_pos_a], &b[..max_pos_b]);
+    }
+    if max_pos_a + max_len < a.len() && max_pos_b + max_len < b.len() {
+        count += similar_text_count(
+            &a[max_pos_a + max_len..],
+            &b[max_pos_b + max_len..],
+        );
+    }
+    count
+}
+
+fn soundex_code(input: &[u8]) -> Vec<u8> {
+    let mut first = None;
+    for &b in input {
+        if b.is_ascii_alphabetic() {
+            first = Some(b.to_ascii_uppercase());
+            break;
+        }
+    }
+    let Some(first_letter) = first else {
+        return b"0000".to_vec();
+    };
+    let mut out = vec![first_letter];
+    let mut prev = soundex_digit(first_letter);
+    for &b in input {
+        if !b.is_ascii_alphabetic() {
+            continue;
+        }
+        let upper = b.to_ascii_uppercase();
+        let code = soundex_digit(upper);
+        if code != 0 && code != prev {
+            out.push(b'0' + code);
+        }
+        prev = code;
+        if out.len() == 4 {
+            break;
+        }
+    }
+    while out.len() < 4 {
+        out.push(b'0');
+    }
+    out
+}
+
+fn soundex_digit(b: u8) -> u8 {
+    match b {
+        b'B' | b'F' | b'P' | b'V' => 1,
+        b'C' | b'G' | b'J' | b'K' | b'Q' | b'S' | b'X' | b'Z' => 2,
+        b'D' | b'T' => 3,
+        b'L' => 4,
+        b'M' | b'N' => 5,
+        b'R' => 6,
+        _ => 0,
+    }
+}
+
+fn binary_strncmp(s1: &[u8], s2: &[u8], length: usize) -> i64 {
+    let len = std::cmp::min(length, std::cmp::min(s1.len(), s2.len()));
+    for i in 0..len {
+        let b1 = s1[i];
+        let b2 = s2[i];
+        if b1 != b2 {
+            return b1 as i64 - b2 as i64;
+        }
+    }
+
+    let left = std::cmp::min(length, s1.len());
+    let right = std::cmp::min(length, s2.len());
+    match left.cmp(&right) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
+}
+
+fn binary_strncasecmp(s1: &[u8], s2: &[u8], length: usize) -> i64 {
+    let len = std::cmp::min(length, std::cmp::min(s1.len(), s2.len()));
+    for i in 0..len {
+        let b1 = s1[i].to_ascii_lowercase();
+        let b2 = s2[i].to_ascii_lowercase();
+        if b1 != b2 {
+            return b1 as i64 - b2 as i64;
+        }
+    }
+
+    let left = std::cmp::min(length, s1.len());
+    let right = std::cmp::min(length, s2.len());
+    match left.cmp(&right) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
 }
 
 pub fn php_strstr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -1535,6 +2558,188 @@ pub fn php_strtok(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::String(result.into())))
 }
 
+pub fn php_count_chars(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err("count_chars() expects 1 or 2 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let mode = if args.len() == 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        0
+    };
+
+    if mode < 0 || mode > 4 {
+        return Err("count_chars(): Mode must be between 0 and 4 (inclusive)".into());
+    }
+
+    let mut counts = [0usize; 256];
+    for &b in &input {
+        counts[b as usize] += 1;
+    }
+
+    if mode < 3 {
+        let mut result_map = indexmap::IndexMap::new();
+        for (idx, count) in counts.iter().enumerate() {
+            let include = match mode {
+                0 => true,
+                1 => *count != 0,
+                2 => *count == 0,
+                _ => false,
+            };
+            if include {
+                let handle = vm.arena.alloc(Val::Int(*count as i64));
+                result_map.insert(crate::core::value::ArrayKey::Int(idx as i64), handle);
+            }
+        }
+        return Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )));
+    }
+
+    let mut bytes = Vec::new();
+    for (idx, count) in counts.iter().enumerate() {
+        let include = match mode {
+            3 => *count != 0,
+            4 => *count == 0,
+            _ => false,
+        };
+        if include {
+            bytes.push(idx as u8);
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_str_word_count(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.is_empty() || args.len() > 3 {
+        return Err("str_word_count() expects between 1 and 3 parameters".into());
+    }
+
+    let input = vm.value_to_string(args[0])?;
+    let word_type = if args.len() >= 2 {
+        vm.arena.get(args[1]).value.to_int()
+    } else {
+        0
+    };
+
+    let char_list = if args.len() == 3 {
+        match &vm.arena.get(args[2]).value {
+            Val::Null => None,
+            _ => Some(vm.value_to_string(args[2])?),
+        }
+    } else {
+        None
+    };
+
+    let mask = char_list.as_ref().map(|chars| build_char_mask(chars));
+
+    if input.is_empty() {
+        return match word_type {
+            0 => Ok(vm.arena.alloc(Val::Int(0))),
+            1 | 2 => Ok(vm.arena.alloc(Val::Array(
+                crate::core::value::ArrayData::new().into(),
+            ))),
+            _ => Err("str_word_count(): Invalid format".into()),
+        };
+    }
+
+    match word_type {
+        0 | 1 | 2 => {}
+        _ => return Err("str_word_count(): Invalid format".into()),
+    }
+
+    let mut start = 0usize;
+    let mut end = input.len();
+    if start < end {
+        let first = input[start];
+        let allowed = mask
+            .as_ref()
+            .map(|m| m[first as usize])
+            .unwrap_or(false);
+        if (first == b'\'' || first == b'-') && !allowed {
+            start += 1;
+        }
+    }
+    if start < end {
+        let last = input[end - 1];
+        let allowed = mask
+            .as_ref()
+            .map(|m| m[last as usize])
+            .unwrap_or(false);
+        if last == b'-' && !allowed {
+            end -= 1;
+        }
+    }
+
+    let mut p = start;
+    let mut word_count = 0i64;
+    let mut result_map = indexmap::IndexMap::new();
+    let mut idx = 0i64;
+
+    while p < end {
+        let s = p;
+        while p < end && is_word_char(input[p], mask.as_ref()) {
+            p += 1;
+        }
+        if p > s {
+            match word_type {
+                1 => {
+                    let handle = vm.arena.alloc(Val::String(input[s..p].to_vec().into()));
+                    result_map.insert(crate::core::value::ArrayKey::Int(idx), handle);
+                    idx += 1;
+                }
+                2 => {
+                    let handle = vm.arena.alloc(Val::String(input[s..p].to_vec().into()));
+                    result_map.insert(crate::core::value::ArrayKey::Int(s as i64), handle);
+                }
+                _ => {
+                    word_count += 1;
+                }
+            }
+        }
+        p += 1;
+    }
+
+    if word_type == 0 {
+        Ok(vm.arena.alloc(Val::Int(word_count)))
+    } else {
+        Ok(vm.arena.alloc(Val::Array(
+            crate::core::value::ArrayData::from(result_map).into(),
+        )))
+    }
+}
+
+fn build_char_mask(chars: &[u8]) -> [bool; 256] {
+    let mut mask = [false; 256];
+    let mut i = 0;
+    while i < chars.len() {
+        let start = chars[i];
+        if i + 3 < chars.len() && chars[i + 1] == b'.' && chars[i + 2] == b'.' {
+            let end = chars[i + 3];
+            if end >= start {
+                for b in start..=end {
+                    mask[b as usize] = true;
+                }
+                i += 4;
+                continue;
+            }
+        }
+        mask[start as usize] = true;
+        i += 1;
+    }
+    mask
+}
+
+fn is_word_char(b: u8, mask: Option<&[bool; 256]>) -> bool {
+    b.is_ascii_alphabetic()
+        || mask.map(|m| m[b as usize]).unwrap_or(false)
+        || b == b'\''
+        || b == b'-'
+}
+
 pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     if args.len() < 2 || args.len() > 3 {
         return Err("strpos() expects 2 or 3 parameters".into());
@@ -1579,6 +2784,245 @@ pub fn php_strpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     } else {
         Ok(vm.arena.alloc(Val::Bool(false)))
     }
+}
+
+pub fn php_stripos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("stripos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if offset < 0 || offset as usize > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let hay = haystack[offset as usize..]
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+    let nee = needle
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+
+    if let Some(pos) = hay.windows(nee.len()).position(|window| window == nee.as_slice()) {
+        Ok(vm.arena.alloc(Val::Int(offset + pos as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strrpos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("strrpos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let start = if offset >= 0 {
+        offset as usize
+    } else {
+        haystack
+            .len()
+            .saturating_sub((-offset) as usize)
+    };
+    if start > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let search_area = &haystack[start..];
+    if let Some(pos) = search_area
+        .windows(needle.len())
+        .rposition(|window| window == needle.as_slice())
+    {
+        Ok(vm.arena.alloc(Val::Int((start + pos) as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strripos(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("strripos() expects 2 or 3 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let offset = if args.len() == 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+
+    if needle.is_empty() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let start = if offset >= 0 {
+        offset as usize
+    } else {
+        haystack
+            .len()
+            .saturating_sub((-offset) as usize)
+    };
+    if start > haystack.len() {
+        return Ok(vm.arena.alloc(Val::Bool(false)));
+    }
+
+    let hay = haystack[start..]
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+    let nee = needle
+        .iter()
+        .map(|b| b.to_ascii_lowercase())
+        .collect::<Vec<u8>>();
+
+    if let Some(pos) = hay.windows(nee.len()).rposition(|window| window == nee.as_slice()) {
+        Ok(vm.arena.alloc(Val::Int((start + pos) as i64)))
+    } else {
+        Ok(vm.arena.alloc(Val::Bool(false)))
+    }
+}
+
+pub fn php_strrchr(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strrchr() expects exactly 2 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let needle = vm.value_to_string(args[1])?;
+    let ch = needle.first().copied().unwrap_or(0);
+
+    if let Some(pos) = haystack.iter().rposition(|b| *b == ch) {
+        return Ok(vm.arena.alloc(Val::String(haystack[pos..].to_vec().into())));
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_strpbrk(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("strpbrk() expects exactly 2 parameters".into());
+    }
+
+    let haystack = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+
+    for (idx, b) in haystack.iter().enumerate() {
+        if mask.contains(b) {
+            return Ok(vm
+                .arena
+                .alloc(Val::String(haystack[idx..].to_vec().into())));
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Bool(false)))
+}
+
+pub fn php_strspn(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err("strspn() expects 2 to 4 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+    let start = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+    let length = if args.len() == 4 {
+        Some(vm.arena.get(args[3]).value.to_int())
+    } else {
+        None
+    };
+
+    let start = if start < 0 { 0 } else { start as usize };
+    if start > s.len() {
+        return Ok(vm.arena.alloc(Val::Int(0)));
+    }
+
+    let slice = &s[start..];
+    let slice = if let Some(len) = length {
+        &slice[..slice.len().min(len as usize)]
+    } else {
+        slice
+    };
+
+    let mut count = 0;
+    for b in slice {
+        if mask.contains(b) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Int(count)))
+}
+
+pub fn php_strcspn(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err("strcspn() expects 2 to 4 parameters".into());
+    }
+
+    let s = vm.value_to_string(args[0])?;
+    let mask = vm.value_to_string(args[1])?;
+    let start = if args.len() >= 3 {
+        vm.arena.get(args[2]).value.to_int()
+    } else {
+        0
+    };
+    let length = if args.len() == 4 {
+        Some(vm.arena.get(args[3]).value.to_int())
+    } else {
+        None
+    };
+
+    let start = if start < 0 { 0 } else { start as usize };
+    if start > s.len() {
+        return Ok(vm.arena.alloc(Val::Int(0)));
+    }
+
+    let slice = &s[start..];
+    let slice = if let Some(len) = length {
+        &slice[..slice.len().min(len as usize)]
+    } else {
+        slice
+    };
+
+    let mut count = 0;
+    for b in slice {
+        if !mask.contains(b) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+
+    Ok(vm.arena.alloc(Val::Int(count)))
 }
 
 pub fn php_strtolower(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
@@ -1630,6 +3074,49 @@ pub fn php_printf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
     Ok(vm.arena.alloc(Val::Int(bytes.len() as i64)))
 }
 
+pub fn php_vprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("vprintf() expects exactly 2 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[0], args[1], "vprintf", 2)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    vm.print_bytes(&bytes)?;
+    Ok(vm.arena.alloc(Val::Int(bytes.len() as i64)))
+}
+
+pub fn php_vsprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 2 {
+        return Err("vsprintf() expects exactly 2 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[0], args[1], "vsprintf", 2)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    Ok(vm.arena.alloc(Val::String(bytes.into())))
+}
+
+pub fn php_fprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() < 2 {
+        return Err("fprintf() expects at least 2 parameters".into());
+    }
+
+    let format_args: Vec<Handle> = args[1..].to_vec();
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    let str_handle = vm.arena.alloc(Val::String(bytes.into()));
+    crate::builtins::filesystem::php_fwrite(vm, &[args[0], str_handle])
+}
+
+pub fn php_vfprintf(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {
+    if args.len() != 3 {
+        return Err("vfprintf() expects exactly 3 parameters".into());
+    }
+
+    let format_args = build_format_args_from_array(vm, args[1], args[2], "vfprintf", 3)?;
+    let bytes = format_sprintf_bytes(vm, &format_args)?;
+    let str_handle = vm.arena.alloc(Val::String(bytes.into()));
+    crate::builtins::filesystem::php_fwrite(vm, &[args[0], str_handle])
+}
+
 fn format_sprintf_bytes(vm: &mut VM, args: &[Handle]) -> Result<Vec<u8>, String> {
     if args.is_empty() {
         return Err("sprintf() expects at least 1 parameter".into());
@@ -1678,6 +3165,33 @@ fn format_sprintf_bytes(vm: &mut VM, args: &[Handle]) -> Result<Vec<u8>, String>
     }
 
     Ok(output)
+}
+
+fn build_format_args_from_array(
+    vm: &mut VM,
+    format_handle: Handle,
+    array_handle: Handle,
+    name: &str,
+    arg_index: usize,
+) -> Result<Vec<Handle>, String> {
+    let mut args = Vec::new();
+    args.push(format_handle);
+
+    match &vm.arena.get(array_handle).value {
+        Val::Array(arr) => {
+            let handles: Vec<Handle> = arr.map.values().copied().collect();
+            args.extend(handles);
+        }
+        Val::ConstArray(arr) => {
+            let values: Vec<Val> = arr.values().cloned().collect();
+            for value in values {
+                args.push(vm.arena.alloc(value));
+            }
+        }
+        _ => return Err(format!("{}(): Argument #{} must be an array", name, arg_index)),
+    }
+
+    Ok(args)
 }
 
 pub fn php_version_compare(vm: &mut VM, args: &[Handle]) -> Result<Handle, String> {

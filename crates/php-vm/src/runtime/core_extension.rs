@@ -27,14 +27,27 @@ impl Extension for CoreExtension {
         registry.register_function(b"substr", string::php_substr);
         registry.register_function(b"substr_replace", string::php_substr_replace);
         registry.register_function(b"strpos", string::php_strpos);
+        registry.register_function(b"stripos", string::php_stripos);
+        registry.register_function(b"strrpos", string::php_strrpos);
+        registry.register_function(b"strripos", string::php_strripos);
+        registry.register_function(b"strrchr", string::php_strrchr);
+        registry.register_function(b"strpbrk", string::php_strpbrk);
+        registry.register_function(b"strspn", string::php_strspn);
+        registry.register_function(b"strcspn", string::php_strcspn);
         registry.register_function(b"strtr", string::php_strtr);
         registry.register_function(b"trim", string::php_trim);
         registry.register_function(b"ltrim", string::php_ltrim);
         registry.register_function(b"rtrim", string::php_rtrim);
+        registry.register_function(b"chop", string::php_rtrim);
         registry.register_function(b"chr", string::php_chr);
         registry.register_function(b"ord", string::php_ord);
         registry.register_function(b"bin2hex", string::php_bin2hex);
         registry.register_function(b"hex2bin", string::php_hex2bin);
+        registry.register_function(b"crc32", string::php_crc32);
+        registry.register_function(b"quoted_printable_decode", string::php_quoted_printable_decode);
+        registry.register_function(b"quoted_printable_encode", string::php_quoted_printable_encode);
+        registry.register_function(b"convert_uuencode", string::php_convert_uuencode);
+        registry.register_function(b"convert_uudecode", string::php_convert_uudecode);
         registry.register_function(b"addslashes", string::php_addslashes);
         registry.register_function(b"stripslashes", string::php_stripslashes);
         registry.register_function(b"addcslashes", string::php_addcslashes);
@@ -43,6 +56,8 @@ impl Extension for CoreExtension {
         registry.register_function(b"str_rot13", string::php_str_rot13);
         registry.register_function(b"str_shuffle", string::php_str_shuffle);
         registry.register_function(b"str_split", string::php_str_split);
+        registry.register_function(b"chunk_split", string::php_chunk_split);
+        registry.register_function(b"str_getcsv", string::php_str_getcsv);
         registry.register_function(b"strrev", string::php_strrev);
         registry.register_function(b"metaphone", string::php_metaphone);
         registry.register_function(b"setlocale", string::php_setlocale);
@@ -55,6 +70,12 @@ impl Extension for CoreExtension {
         registry.register_function(b"strcasecmp", string::php_strcasecmp);
         registry.register_function(b"strncmp", string::php_strncmp);
         registry.register_function(b"strncasecmp", string::php_strncasecmp);
+        registry.register_function(b"strnatcmp", string::php_strnatcmp);
+        registry.register_function(b"strnatcasecmp", string::php_strnatcasecmp);
+        registry.register_function(b"levenshtein", string::php_levenshtein);
+        registry.register_function_with_by_ref(b"similar_text", string::php_similar_text, vec![2]);
+        registry.register_function(b"soundex", string::php_soundex);
+        registry.register_function(b"substr_compare", string::php_substr_compare);
         registry.register_function(b"strstr", string::php_strstr);
         registry.register_function(b"stristr", string::php_stristr);
         registry.register_function(b"substr_count", string::php_substr_count);
@@ -62,19 +83,36 @@ impl Extension for CoreExtension {
         registry.register_function(b"lcfirst", string::php_lcfirst);
         registry.register_function(b"ucwords", string::php_ucwords);
         registry.register_function(b"wordwrap", string::php_wordwrap);
+        registry.register_function(b"quotemeta", string::php_quotemeta);
+        registry.register_function(b"nl2br", string::php_nl2br);
+        registry.register_function(b"strip_tags", string::php_strip_tags);
         registry.register_function(b"strtok", string::php_strtok);
+        registry.register_function(b"count_chars", string::php_count_chars);
+        registry.register_function(b"str_word_count", string::php_str_word_count);
         registry.register_function(b"str_contains", string::php_str_contains);
         registry.register_function(b"str_starts_with", string::php_str_starts_with);
         registry.register_function(b"str_ends_with", string::php_str_ends_with);
+        registry.register_function(b"htmlspecialchars", string::php_htmlspecialchars);
+        registry.register_function(b"htmlspecialchars_decode", string::php_htmlspecialchars_decode);
+        registry.register_function(b"htmlentities", string::php_htmlentities);
+        registry.register_function(b"html_entity_decode", string::php_html_entity_decode);
+        registry.register_function(b"get_html_translation_table", string::php_get_html_translation_table);
         registry.register_function_with_by_ref(b"str_replace", string::php_str_replace, vec![3]);
         registry.register_function_with_by_ref(b"str_ireplace", string::php_str_ireplace, vec![3]);
+        registry.register_function_with_by_ref(b"parse_str", string::php_parse_str, vec![1]);
         registry.register_function(b"strtolower", string::php_strtolower);
         registry.register_function(b"strtoupper", string::php_strtoupper);
         registry.register_function(b"version_compare", string::php_version_compare);
         registry.register_function(b"implode", string::php_implode);
+        registry.register_function(b"join", string::php_implode);
         registry.register_function(b"explode", string::php_explode);
+        registry.register_function(b"strchr", string::php_strstr);
         registry.register_function(b"sprintf", string::php_sprintf);
         registry.register_function(b"printf", string::php_printf);
+        registry.register_function(b"vsprintf", string::php_vsprintf);
+        registry.register_function(b"vprintf", string::php_vprintf);
+        registry.register_function(b"fprintf", string::php_fprintf);
+        registry.register_function(b"vfprintf", string::php_vfprintf);
 
         // Array functions
         registry.register_function(b"array_merge", array::php_array_merge);
@@ -1022,6 +1060,16 @@ impl Extension for CoreExtension {
         registry.register_constant(b"STR_PAD_LEFT", Val::Int(0));
         registry.register_constant(b"STR_PAD_RIGHT", Val::Int(1));
         registry.register_constant(b"STR_PAD_BOTH", Val::Int(2));
+        registry.register_constant(b"HTML_SPECIALCHARS", Val::Int(string::HTML_SPECIALCHARS));
+        registry.register_constant(b"HTML_ENTITIES", Val::Int(string::HTML_ENTITIES));
+        registry.register_constant(b"ENT_NOQUOTES", Val::Int(string::ENT_NOQUOTES));
+        registry.register_constant(b"ENT_COMPAT", Val::Int(string::ENT_COMPAT));
+        registry.register_constant(b"ENT_QUOTES", Val::Int(string::ENT_QUOTES));
+        registry.register_constant(b"ENT_SUBSTITUTE", Val::Int(string::ENT_SUBSTITUTE));
+        registry.register_constant(b"ENT_HTML401", Val::Int(string::ENT_HTML401));
+        registry.register_constant(b"ENT_XML1", Val::Int(string::ENT_XML1));
+        registry.register_constant(b"ENT_XHTML", Val::Int(string::ENT_XHTML));
+        registry.register_constant(b"ENT_HTML5", Val::Int(string::ENT_HTML5));
 
         // Register locale category constants
         #[cfg(unix)]
