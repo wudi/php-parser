@@ -74,7 +74,8 @@ fn main() {
     let output = formatter.finish();
     println!("{}", output);
 }
-``` 
+```
+
 Gives the output:
 
 ```
@@ -150,6 +151,10 @@ cargo run --release --bin corpus_test -- /path/to/php/project
 - **Parser**: A combination of Recursive Descent and Pratt parsing for expressions.
 - **AST**: All nodes are allocated in a `Bump` arena. Strings are stored as references to the original source (`&'src [u8]`) or arena-allocated slices.
 
+## Use Cases
+
+- [php-rs](https://github.com/wudi/php-rs) A PHP interpreter written in Rust.
 
 ## License
+
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
