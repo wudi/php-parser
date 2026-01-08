@@ -1,5 +1,7 @@
 # php-parser
 
+**⚠️ In Experimental State**
+
 A production-grade, fault-tolerant, zero-copy PHP parser written in Rust.
 
 ## Features
